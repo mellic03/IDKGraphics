@@ -10,7 +10,6 @@ file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKRenderEngine/render/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKRenderEngine/render/idk_batch_system/*.cpp
 )
-
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
 set_target_properties(

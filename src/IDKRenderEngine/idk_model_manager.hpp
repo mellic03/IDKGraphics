@@ -99,6 +99,7 @@ public:
                                             float x, float z );
 
 
+    Allocator<Model> &  getModels() { return m_models; };
     Model &             getModel( int id ) { return m_models.get(id); };
     Model_Terrain &     getModel_Terrain( int id ) { return m_terrain_models.get(id); };
 

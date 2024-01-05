@@ -55,6 +55,8 @@ public:
 
     glm::mat4 &         projection()    { return m_projection; };
     glm::mat4           view();
+    glm::mat4 &         viewref()       { return m_view; };
+
 
     float               getFOV()    const { return m_fov;    };
     float               getAspect() const { return m_aspect; };

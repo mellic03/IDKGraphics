@@ -131,7 +131,6 @@ private:
 
 public:
 
-    IDK_VISIBILITY_HIDDEN
     RenderEngine( const std::string &name, int w, int h,
                   int gl_major, int gl_minor,
                   uint32_t flags=0 );

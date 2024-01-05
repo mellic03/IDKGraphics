@@ -389,6 +389,7 @@ idk::ModelSystem::loadModel( const std::string &root, const std::string &name )
 
     int model_id = m_models.create();
     idk::Model &model = getModel(model_id);
+    model.name = name;
 
     std::ifstream stream(root+name+".idkvi", std::ios::binary);
 

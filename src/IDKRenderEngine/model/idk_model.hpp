@@ -111,6 +111,7 @@ struct IDK_VISIBLE idk::Model
 {
     uint32_t render_flags = ModelRenderFlag::NONE;
 
+    std::string               name;
     std::vector<idk::Mesh>    meshes;
     idk::iBuffer             *m_vertices = nullptr;
     std::vector<uint32_t>     m_indices;
