@@ -2,7 +2,7 @@
 
 #include <libidk/idk_gl.hpp>
 
-#include <libidk/containers/idk_buffer.hpp>
+#include <libidk/idk_buffer.hpp>
 #include <libidk/idk_export.hpp>
 
 #include "idk_vertex.hpp"

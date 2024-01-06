@@ -64,17 +64,35 @@ float heightQuery( vec2 worldspace )
 }
 
 
+// vec3 compute_normal( vec2 worldspace )
+// {
+//     vec3 offset = vec3(2.0, 2.0, 0.0);
+
+//     float hl = heightQuery(worldspace - offset.xz);
+//     float hr = heightQuery(worldspace + offset.xz);
+//     float hd = heightQuery(worldspace - offset.zy);
+//     float hu = heightQuery(worldspace + offset.zy);
+
+//     return normalize(vec3(hl-hr, hd-hu, 2.0));
+// }
+
+
 vec3 compute_normal( vec2 worldspace )
 {
-    vec3 offset = vec3(2.0, 2.0, 0.0);
+    // vec2 offset = 5.0 / textureSize(un_heightmap, 4);
+    vec2 offset = vec2(0.01, 0.01);
 
-    float hl = heightQuery(worldspace - offset.xz);
-    float hr = heightQuery(worldspace + offset.xz);
-    float hd = heightQuery(worldspace - offset.zy);
-    float hu = heightQuery(worldspace + offset.zy);
+    vec2 sample0 = worldspace + vec2(0.0,  0.0);
+    vec2 sample1 = worldspace + vec2(0.0,  offset.x);
+    vec2 sample2 = worldspace + vec2(offset.x, 0.0);
 
-    return normalize(vec3(hl-hr, hd-hu, 2.0));
+    vec3 v0 = vec3(sample0.x, heightQuery(sample0), sample0.y);
+    vec3 v1 = vec3(sample1.x, heightQuery(sample1), sample1.y);
+    vec3 v2 = vec3(sample2.x, heightQuery(sample2), sample2.y);
+
+    return normalize(cross(v1-v0, v2-v0));
 }
+
 
 
 void main()
