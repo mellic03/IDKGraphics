@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.9)
-project(IDKRenderEngine)
+project(IDKGraphics)
 
 file(GLOB SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKRenderEngine/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKRenderEngine/lighting/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKRenderEngine/model/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKRenderEngine/animation/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKRenderEngine/camera/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKRenderEngine/render/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKRenderEngine/render/idk_batch_system/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/lighting/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/model/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/animation/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/camera/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/idk_batch_system/*.cpp
 )
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
