@@ -172,6 +172,7 @@ public:
     ModelAllocator &                    modelAllocator() { return m_model_allocator; };
 
     int                                 loadSkybox( const std::string &filepath );
+    void                                useSkybox( int skybox ) { current_skybox = skybox; };
 
     int                                 createRenderQueue( const std::string &program_name,
                                                            const RenderQueueConfig &,

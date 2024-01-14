@@ -1,9 +1,16 @@
 #include "idk_camera.hpp"
 
+#include <glm/gtx/matrix_decompose.hpp>
+#include <glm/gtx/rotate_vector.hpp>
 
-idk::Camera::Camera(float fov, float near, float far):
-m_projection(1.0f), m_view(1.0f),
-m_fov(fov), m_near(near), m_far(far)
+
+idk::Camera::Camera(float fov, float near, float far)
+:   m_model(1.0f),
+    m_projection(1.0f),
+    m_view(1.0f),
+    m_fov(fov),
+    m_near(near),
+    m_far(far)
 {
 
 }
@@ -12,7 +19,7 @@ m_fov(fov), m_near(near), m_far(far)
 idk::Camera::Camera():
 Camera(80.0f, 0.1f, 100.0f)
 {
-    glm::vec3 pos = m_transform.position();
+    glm::vec3 pos;
 
     pos    = glm::vec3( 0.0f,  0.0f,  0.0f );
     _front = glm::vec3( 0.0f,  0.0f, -1.0f );
@@ -60,7 +67,7 @@ idk::Camera::setOffset(const glm::vec3 &v)
 
 
 void
-idk::Camera::addOffset(const glm::vec3 &v)
+idk::Camera::addOffset( const glm::vec3 &v )
 {
     m_offset += v;
 
@@ -76,31 +83,29 @@ idk::Camera::addOffset(const glm::vec3 &v)
 
 
 void
-idk::Camera::translate(glm::vec3 v)
+idk::Camera::translate( const glm::vec3 &v )
 {
-    m_transform.translate(v);
+    m_model = glm::translate(glm::mat4(1.0f), v) * m_model;
 }
 
 
 void
-idk::Camera::elevation(float f)
+idk::Camera::elevation( float f )
 {
-    m_transform.translate(glm::vec3(0.0f, f, 0.0f));
+    m_model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, f, 0.0f)) * m_model;
 }
 
 
 void
-idk::Camera::pitch(float f)
+idk::Camera::pitch( float f )
 {
-    m_transform.pitch(f);
+    m_model = m_model * glm::rotate(f, glm::vec3(1.0f, 0.0f, 0.0f));
 }
 
 
 void
-idk::Camera::roll(float f)
+idk::Camera::roll( float f )
 {
-    // m_transform.roll(f);
-
     m_view = glm::rotate(m_view, f, _front);
 
     if (_noroll == false)
@@ -113,16 +118,17 @@ idk::Camera::roll(float f)
 
 
 void
-idk::Camera::yaw(float f)
+idk::Camera::yaw( float f )
 {
-    m_transform.yaw(f);
+    glm::mat4 rot = glm::rotate(f, glm::inverse(glm::mat3(m_model)) * glm::vec3(0.0f, 1.0f, 0.0f));
+    m_model = m_model * rot;
 }
 
 
 glm::vec3
 idk::Camera::front()
 {
-    return m_transform.front();
+    return m_model * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f);
 }
 
 
@@ -130,7 +136,7 @@ idk::Camera::front()
 glm::vec3
 idk::Camera::right()
 {
-    return m_transform.right();
+    return m_model * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
 }
 
 
@@ -138,6 +144,11 @@ idk::Camera::right()
 glm::mat4
 idk::Camera::view()
 {
-    return m_view * glm::inverse(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, m_offset.y, 0.0f)) * m_transform.modelMatrix());
+    static glm::mat4 model_mat;
+
+    model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, m_offset.y, 0.0f)) * m_model;
+    model_mat = glm::inverse(model_mat);
+
+    return m_view * model_mat;
 }
 

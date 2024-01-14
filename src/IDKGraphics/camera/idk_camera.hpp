@@ -10,7 +10,8 @@ namespace idk { class Camera; };
 class IDK_VISIBLE idk::Camera
 {
 private:
-    idk::Transform      m_transform;
+
+    glm::mat4           m_model;
     glm::mat4           m_projection;
     glm::mat4           m_view;
     glm::mat4           m_rotation = glm::mat4(1.0f);
@@ -50,9 +51,11 @@ public:
                         Camera(float fov, float near, float far);
                         Camera();
 
-    const glm::vec3     position()       { return m_transform.position(); };
+    // const glm::vec3     position()       { return m_transform.position(); };
+    const glm::vec3 &   position()       { return *reinterpret_cast<glm::vec3 *>(&m_model[3]); };
     const glm::vec3     renderPosition() { return glm::inverse(view())[3]; };
 
+    glm::mat4 &         model()         { return m_model; };
     glm::mat4 &         projection()    { return m_projection; };
     glm::mat4           view();
     glm::mat4 &         viewref()       { return m_view; };
@@ -67,7 +70,7 @@ public:
 
     
 
-    void                translate(glm::vec3 v);
+    void                translate(const glm::vec3 &v);
     void                elevation(float f);
 
     void                pitch(float f);
