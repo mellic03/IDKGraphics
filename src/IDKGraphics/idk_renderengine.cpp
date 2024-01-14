@@ -1,5 +1,5 @@
 #include "idk_renderengine.hpp"
-#include "idk_initflags.hpp"
+#include "render/idk_initflags.hpp"
 
 #include <libidk/GL/idk_glShaderStage.hpp>
 

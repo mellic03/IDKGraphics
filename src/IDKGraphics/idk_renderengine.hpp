@@ -1,17 +1,17 @@
 #pragma once
 
-#include "idk_sdl_glew_init.hpp"
-
-#include <unordered_map>
+#include "render/idk_sdl_glew_init.hpp"
+#include "render/idk_renderqueue.hpp"
+#include "batching/idk_model_allocator.hpp"
 
 #include <libidk/GL/common.hpp>
 #include <libidk/idk_allocator.hpp>
 
-#include "idk_renderqueue.hpp"
+#include "camera/idk_camera.hpp"
+#include "idk_noisegen.hpp"
+#include "lighting/IDKlighting.hpp"
 
-#include "../camera/idk_camera.hpp"
-#include "../idk_noisegen.hpp"
-#include "../lighting/IDKlighting.hpp"
+#include <unordered_map>
 
 #define IDK_MAX_POINTLIGHTS 10
 #define IDK_MAX_SPOTLIGHTS 10
@@ -49,8 +49,8 @@ private:
 
     // Shaders
     // -----------------------------------------------------------------------------------------
-    std::map<std::string, glShaderProgram>     m_shaders;
-    std::vector<std::string>            m_shader_names;
+    std::map<std::string, glShaderProgram>  m_shaders;
+    std::vector<std::string>                m_shader_names;
     // -----------------------------------------------------------------------------------------
 
     // UBO
@@ -66,6 +66,9 @@ private:
     Allocator<Camera>                   m_camera_allocator;
     idk::ModelSystem                    m_modelsystem;
     idk::LightSystem                    m_lightsystem;
+
+
+    idk::ModelAllocator                 m_model_allocator;
 
     // Render queues
     // -----------------------------------------------------------------------------------------
@@ -166,7 +169,7 @@ public:
 
     idk::LightSystem &                  lightSystem() { return m_lightsystem; };
     ModelSystem &                       modelSystem() { return m_modelsystem; };
-
+    ModelAllocator &                    modelAllocator() { return m_model_allocator; };
 
     int                                 loadSkybox( const std::string &filepath );
 

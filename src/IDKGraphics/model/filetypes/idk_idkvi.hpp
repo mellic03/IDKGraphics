@@ -5,8 +5,8 @@
 
 namespace idk
 {
-    enum TextureIndex { ALBEDO_IDX, NORMAL_IDX, RM_IDX, AO_IDX, NUM_IDX };
-    enum TextureBit   { ALBEDO_BIT=1<<0, NORMAL_BIT=1<<1, RM_BIT=1<<2, AO_BIT=1<<3 };
+    // enum TextureIndex { ALBEDO_IDX, NORMAL_IDX, RM_IDX, AO_IDX, NUM_IDX };
+    // enum TextureBit   { ALBEDO_BIT=1<<0, NORMAL_BIT=1<<1, RM_BIT=1<<2, AO_BIT=1<<3 };
 
     struct idkvi_header_t;
     struct idkvi_mesh_t;

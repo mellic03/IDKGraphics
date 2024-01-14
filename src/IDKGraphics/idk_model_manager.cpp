@@ -6,34 +6,22 @@
 #include <filesystem>
 
 #include <libidk/idk_gl.hpp>
-
+#include <libidk/idk_texturegen.hpp>
 
 
 std::unique_ptr<uint8_t[]> do_thing_r( size_t size, uint8_t value )
 {
-    auto data = std::unique_ptr<uint8_t[]>(new uint8_t[size*size]);
+    auto data = std::unique_ptr<uint8_t[]>(new uint8_t[4*size*size]);
 
     for (size_t i=0; i<size*size; i++)
     {
-        data[i] = value;
+        data[4*i+0] = value;
+        data[4*i+1] = value;
+        data[4*i+2] = value;
+        data[4*i+3] = 255;
     }
 
     return data;
-
-    // GLuint texture;
-
-    // idk::gl::genTextures(1, &texture);
-    // idk::gl::bindTexture(GL_TEXTURE_2D, texture);
-
-    // idk::gl::texParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    // idk::gl::texParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    // idk::gl::texParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    // idk::gl::texParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-    // idk::gl::texImage2D(GL_TEXTURE_2D, 0, GL_RED, size, size, 0, GL_RED, GL_FLOAT, data);
-    // idk::gl::generateMipmap(GL_TEXTURE_2D);
-
-    // idk::gl::bindTexture(GL_TEXTURE_2D, 0);
 }
 
 
@@ -41,38 +29,15 @@ std::unique_ptr<uint8_t[]> do_thing_rgba( size_t size, uint8_t r, uint8_t g, uin
 {
     auto data = std::unique_ptr<uint8_t[]>(new uint8_t[4*size*size]);
 
-    for (size_t y=0; y<size; y++)
+    for (size_t i=0; i<size*size; i++)
     {
-        for (size_t x=0; x<size; x++)
-        {
-            data[4*size*y + 4*x + 0] = r;
-            data[4*size*y + 4*x + 1] = g;
-            data[4*size*y + 4*x + 2] = b;
-            data[4*size*y + 4*x + 3] = a;
-        }
+        data[4*i+0] = r;
+        data[4*i+1] = g;
+        data[4*i+2] = b;
+        data[4*i+3] = a;
     }
 
     return data;
-
-    // GLuint gl_id;
-
-    // idk::gl::genTextures(1, &gl_id);
-    // idk::gl::bindTexture(GL_TEXTURE_2D, gl_id);
-
-    // idk::gl::texParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    // idk::gl::texParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    // idk::gl::texParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    // idk::gl::texParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-    // idk::gl::texImage2D(GL_TEXTURE_2D, 0, GL_RGB8, size, size, 0, GL_RGB, GL_FLOAT, data.get());
-    // idk::gl::generateMipmap(GL_TEXTURE_2D);
-
-    // idk::gl::bindTexture(GL_TEXTURE_2D, 0);
-
-    // idk::glTexture texture(gl_id, glm::ivec2(32, 32), idk::glTextureConfig());
-
-    // delete[] data;
-    // return gl_id;
 }
 
 
@@ -110,9 +75,16 @@ idk::ModelSystem::init()
         .bindless       = GL_TRUE
     };
 
-    m_default_albedo = loadTexture("IDKGE/resources/default-albedo.png", m_default_albedo_config);
-    m_default_ao_r_m = loadTexture("IDKGE/resources/default-ao_r_m.png", m_default_lightmap_config);
-    m_default_normal = loadTexture("IDKGE/resources/default-normal.png", m_default_lightmap_config);
+
+    constexpr size_t IMG_W = 16;
+
+    auto data_albedo = texturegen::genRA<uint8_t>(IMG_W, IMG_W, 100, 255 );
+    auto data_ao_r_m = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 255, 180, 1, 0);
+    auto data_normal = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 125, 125, 255, 0);
+
+    m_default_albedo = loadTexture(IMG_W, IMG_W, data_albedo.get(), m_default_albedo_config);
+    m_default_ao_r_m = loadTexture(IMG_W, IMG_W, data_ao_r_m.get(), m_default_lightmap_config);
+    m_default_normal = loadTexture(IMG_W, IMG_W, data_normal.get(), m_default_lightmap_config);
 
     for (size_t i=0; i<=MAX_PLANE_LEVEL; i++)
     {
@@ -229,7 +201,7 @@ idk::ModelSystem::loadMaterial( const std::string &root,
         material.arm_id = loadTexture(root+ao_rough_metal, m_default_lightmap_config);
 
 
-    // Update SSBO handles and indirection
+    // Update SSBO image handles
     // -----------------------------------------------------------------------------------------
     m_texture_handles[3*material_id + 0] = getidkTexture(material.albedo_id).handle();
     m_texture_handles[3*material_id + 1] = getidkTexture(material.normal_id).handle();
@@ -444,7 +416,7 @@ idk::ModelSystem::copyModel( int id )
 int
 idk::ModelSystem::loadTerrainHeightmap( GLuint texture_id )
 {
-    int model_id  = copyModel(m_planes[7]);
+    int model_id  = copyModel(m_planes[MAX_PLANE_LEVEL]);
     auto &model   = getModel(model_id);
 
     model.render_flags |= ModelRenderFlag::HEIGHTMAPPED;
