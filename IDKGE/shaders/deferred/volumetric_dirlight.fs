@@ -9,11 +9,19 @@ uniform sampler2D un_texture_1;
 uniform sampler2D un_texture_2;
 uniform sampler2D un_texture_3;
 
-uniform sampler3D un_worley;
-uniform sampler3D un_whitenoise;
-uniform float un_increment_0;
-uniform float un_increment_1;
-uniform float un_increment_2;
+struct DirLight
+{
+    vec4 direction;
+    vec4 ambient;
+    vec4 diffuse;
+};
+
+layout (std140, binding = 5) uniform UBO_dirlights
+{
+    DirLight    un_dirlights[10];
+    mat4        un_cascade_matrices[4];
+};
+
 
 struct Camera
 {
@@ -32,65 +40,105 @@ layout (std140, binding = 2) uniform UBO_camera_data
     Camera un_camera;
 };
 
-// #include "deferred/UBO_lightsources.glsl"
-// #include "deferred/methods.glsl"
 
-
-// float PHG (float g, float cosTheta)
-// {
-//     const float Inv4Pi = 0.07957747154594766788;
+float PHG (float g, float cosTheta)
+{
+    const float Inv4Pi = 0.07957747154594766788;
     
-//     float gSq = g * g;
-//     float denomPreMul = 1 + gSq - (2.0 * g * cosTheta);
-//     return (1 - gSq) * Inv4Pi * inversesqrt(denomPreMul * denomPreMul * denomPreMul);
-// }
+    float gSq = g * g;
+    float denomPreMul = 1 + gSq - (2.0 * g * cosTheta);
+    return (1 - gSq) * Inv4Pi * inversesqrt(denomPreMul * denomPreMul * denomPreMul);
+}
 
 
-// float miePhase (float cosTheta)
-// {
-//     return mix (PHG (0.8, cosTheta), PHG (-0.5, cosTheta), 0.5);
-// }
+float miePhase (float cosTheta)
+{
+    return mix (PHG (0.8, cosTheta), PHG (-0.5, cosTheta), 0.5);
+}
+
+
+uniform sampler2DArrayShadow un_dirlight_depthmap;
+uniform vec4 un_cascade_depths;
+
+#define KERNEL_HW 2
+#define BLEND_DIST 1.0
+#define DIRLIGHT_BIAS 0.0
+
+float sampleDepthMap( int layer, vec3 uv, float bias )
+{
+    vec2 texelSize = 0.5 / textureSize(un_dirlight_depthmap, 0).xy;
+
+    float shadow = 0.0;
+
+    for(int x = -KERNEL_HW; x <= KERNEL_HW; ++x)
+    {
+        for(int y = -KERNEL_HW; y <= KERNEL_HW; ++y)
+        {
+            vec2 sample_uv    = uv.xy + vec2(x, y) * texelSize;
+            vec4 sample_coord = vec4(sample_uv, float(layer), uv.z - bias);
+
+            shadow += texture(un_dirlight_depthmap, sample_coord); 
+        }
+    }
+
+    return shadow / ((2*KERNEL_HW+1)*(2*KERNEL_HW+1));
+}
+
+
+float dirlight_shadow( int idx, vec3 position )
+{
+    vec3 L = normalize(-un_dirlights[idx].direction.xyz);
+
+    vec3  fragpos_viewspace = (un_view * vec4(position, 1.0)).xyz;
+    float frag_depth        = abs(fragpos_viewspace.z);
+
+    vec4 res   = step(un_cascade_depths, vec4(frag_depth));
+    int  layer = int(res.x + res.y + res.z + res.w);
+
+    vec4 fragpos_lightspace = un_cascade_matrices[layer] * vec4(position, 1.0);
+    vec3 projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+
+    // float bias = DIRLIGHT_BIAS * max(dot(N, L), 0.0);
+    float bias = DIRLIGHT_BIAS;
+    float shadow = sampleDepthMap(layer, projCoords, bias);
+
+    return shadow;
+}
 
 
 
-#define MAX_STEPS 16
-#define INTENSITY 0.25
-#define DENSITY_BIGNESS 0.35
+
+#define MAX_STEPS 32
+#define INTENSITY 0.01
+
 
 void main()
 {
-    // vec3  frag_pos = texture(un_texture_1, fsin_texcoords).xyz;
-    // float frag_dist = distance(un_viewpos, frag_pos) - 0.01;
-    // float step_size = frag_dist / MAX_STEPS;
-    // const float intensity = INTENSITY*step_size;
+    vec3  frag_pos   = texture(un_texture_1, fsin_texcoords).xyz;
+    float frag_dist  = distance(un_viewpos, frag_pos) - 0.0001;
 
-    // float ray_offset = 4.0 * step_size * texture(un_whitenoise, vec3(16.0*fsin_texcoords, un_increment_2)).r;
+    vec3  ray_pos    = un_viewpos;
+    vec3  ray_dir    = normalize(frag_pos - un_viewpos);
+    float ray_length = 0.0;
 
-    // vec3 ray_dir = normalize(frag_pos - un_viewpos);
-    // vec3 ray_pos = un_viewpos + ray_offset*ray_dir;
+    vec3  diffuse = un_dirlights[0].diffuse.xyz;
+    vec3  accum   = vec3(0.0);
 
-    // step_size = distance(ray_pos, frag_pos) / MAX_STEPS;
+    const float step_size = frag_dist / MAX_STEPS;
 
-    // vec3 accum  = vec3(0.0);
-    // vec3 offset = vec3(-un_increment_0, 0.0, un_increment_0);
+    for (int i=0; i<MAX_STEPS; i++)
+    {
+        accum += diffuse * dirlight_shadow(0, ray_pos);
 
-    // for (float i=0; i<MAX_STEPS; i++)
-    // {
-    //     float density = texture(un_worley, DENSITY_BIGNESS * (ray_pos + offset)).r;
+        ray_pos += step_size * ray_dir;
+        ray_length += step_size;
+    }
 
-    //     float shadow = dirlight_shadow(0, ray_pos);
-    //     vec3 diffuse = ubo_dirlights[0].diffuse.xyz;
-    //     accum += density * shadow * diffuse;
+    vec3 dirlight_dir = normalize(un_dirlights[0].direction.xyz);
+    float mie = miePhase(-dot(ray_dir, dirlight_dir));
+    accum *= mie * INTENSITY * step_size;
 
-    //     ray_pos += step_size * ray_dir;
-    // }
-
-    // vec3 dirlight_dir = normalize(ubo_dirlights[0].direction.xyz);
-    // float mie = miePhase(-dot(ray_dir, dirlight_dir));
-    // accum *= mie * INTENSITY * step_size;
-
-    // fsout_frag_color = vec4(accum, 1.0);
-
-    fsout_frag_color = vec4(0.0);
+    fsout_frag_color = vec4(accum, 1.0);
 }
 

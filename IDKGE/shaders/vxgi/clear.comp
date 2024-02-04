@@ -1,0 +1,13 @@
+#version 460 core
+
+layout (local_size_x=4, local_size_y=4, local_size_z=4) in;
+
+layout (binding=0, rgba16f) writeonly uniform image3D un_voxel_albedo;
+layout (binding=1, rgba16f) writeonly uniform image3D un_voxel_normal;
+
+void main()
+{
+    ivec3 texel = ivec3(gl_GlobalInvocationID.xyz);
+    imageStore(un_voxel_albedo, texel, vec4(0.0));
+    imageStore(un_voxel_normal, texel, vec4(0.0));
+}

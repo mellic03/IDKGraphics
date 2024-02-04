@@ -7,7 +7,7 @@
 using namespace idk::internal;
 
 
-SDL_GLEW_Initializer::SDL_GLEW_Initializer( const char *windowname, int w, int h,
+SDL2_WindowSystem::SDL2_WindowSystem( const char *windowname, int w, int h,
                                             int gl_major, int gl_minor, uint32_t flags )
 {
     if (SDL_Init(SDL_INIT_VIDEO) < 0)
@@ -21,15 +21,13 @@ SDL_GLEW_Initializer::SDL_GLEW_Initializer( const char *windowname, int w, int h
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
 
-    Uint32 sdl_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+    Uint32 sdl_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED;
     if (flags & idk::InitFlag::INIT_HEADLESS) sdl_flags |= SDL_WINDOW_HIDDEN;
 
-    SDL_window = SDL_CreateWindow(
+    m_window = SDL_CreateWindow(
         windowname,
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        w,
-        h,
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        w, h,
         sdl_flags
     );
 
@@ -38,9 +36,9 @@ SDL_GLEW_Initializer::SDL_GLEW_Initializer( const char *windowname, int w, int h
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, gl_minor);
 
 
-    SDL_GL_context = SDL_GL_CreateContext(SDL_window);
-    SDL_GL_MakeCurrent(SDL_window, SDL_GL_context);
-    SDL_GL_SetSwapInterval(0); // vsync
+    m_glcontext = SDL_GL_CreateContext(m_window);
+    SDL_GL_MakeCurrent(m_window, m_glcontext);
+    SDL_GL_SetSwapInterval(0);
     SDL_SetRelativeMouseMode(SDL_FALSE);
 
     if (glewInit() != GLEW_OK)
@@ -54,4 +52,29 @@ SDL_GLEW_Initializer::SDL_GLEW_Initializer( const char *windowname, int w, int h
         << gl_major << "." << gl_minor
         << "\n";
 
+}
+
+
+
+SDL_Window *
+SDL2_WindowSystem::createWindow( const char *name,
+                                 uint32_t flags  = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE,
+                                 int      width  = 512,
+                                 int      height = 512 )
+{ 
+    SDL_Window *window = SDL_CreateWindow(
+        name,
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        width, height,
+        flags
+    );
+
+    return window;
+}
+
+
+void
+SDL2_WindowSystem::destroyWindow( SDL_Window *window )
+{
+    SDL_DestroyWindow(window);
 }

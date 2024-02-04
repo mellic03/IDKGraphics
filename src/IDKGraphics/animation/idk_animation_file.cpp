@@ -1,5 +1,7 @@
 #include "idk_animation_file.hpp"
 
+#include <libidk/idk_assert.hpp>
+
 #include <iostream>
 #include <sstream>
 #include <array>
@@ -45,14 +47,16 @@ idk::filetools::readheader( const std::string &filepath )
         }
     }
 
-    if (tokens.size() % (TextureIndex::NUM_IDX + 2) != 0)
-    {
-        std::cout
-            << "[idk::filetools::readheader]"
-            << "tokens.size() % (TextureIndex::NUM_IDX + 2) != 0\n";
+    IDK_ASSERT("Ruh roh", tokens.size() % (TextureIndex::NUM_IDX + 2) == 0);
 
-        return header;
-    }
+    // if (tokens.size() % (TextureIndex::NUM_IDX + 2) != 0)
+    // {
+    //     std::cout
+    //         << "[idk::filetools::readheader]"
+    //         << "tokens.size() % (TextureIndex::NUM_IDX + 2) != 0\n";
+
+    //     return header;
+    // }
 
     header.num_meshes   = tokens.size() / (TextureIndex::NUM_IDX + 2);
 

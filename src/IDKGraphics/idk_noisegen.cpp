@@ -45,8 +45,8 @@ idk::noisegen3D::worley( int w )
 {
     GLuint texture;
 
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_3D, texture);
+    gl::genTextures(1, &texture);
+    gl::bindTexture(GL_TEXTURE_3D, texture);
 
 
     const int num_points = 25;

@@ -19,14 +19,6 @@ struct idk::RenderQueueConfig
     bool cull_face = true;
 };
 
-
-/*
-    Render order:
-        1. per shader
-        2. per model type
-
-*/
-
 using idk_drawmethod = std::function<void(idk::glShaderProgram &, int, const glm::mat4 &, idk::ModelSystem &)>;
 
 
@@ -59,6 +51,18 @@ public:
     void    push( int model_id, int animator_id, const glm::mat4 &transform );
     void    push( int model_id, const glm::mat4 &transform );
     void    clear();
+
+
+    size_t size() const
+    {
+        size_t s = 0;
+
+        for (size_t i=0; i<NUM_CASCADES; i++)
+            s += m_queue[i].size();
+
+        return s;
+    };
+
 
     void    drawMethod( glShaderProgram &, int, const glm::mat4 &, ModelSystem & );
 

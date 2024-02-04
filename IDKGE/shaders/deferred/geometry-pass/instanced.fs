@@ -40,9 +40,9 @@ void main()
 {
     vec2 texcoords = fsin_texcoords;
 
-    int albedo_idx = 3*un_material_id + 0;
-    int normal_idx = 3*un_material_id + 1;
-    int ao_r_m_idx = 3*un_material_id + 2;
+    int albedo_idx = 4*un_material_id + 0;
+    int normal_idx = 4*un_material_id + 1;
+    int ao_r_m_idx = 4*un_material_id + 2;
 
     vec4 albedo = texture(un_bindless_samplers[albedo_idx], texcoords).rgba;
     vec3 ao_r_m = texture(un_bindless_samplers[ao_r_m_idx], texcoords).rgb;
@@ -53,10 +53,7 @@ void main()
 
 
     float roughness = ao_r_m.g;
-          roughness = clamp(roughness, 0.05, 0.95);
-
-    float metallic = 0.0;
-          metallic = clamp(metallic, 0.0, 1.0);
+    float metallic  = 0.0;
 
     vec3 N = normalize(fsin_normal);
 

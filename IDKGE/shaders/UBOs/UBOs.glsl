@@ -1,3 +1,4 @@
+
 struct Camera
 {
     vec4 position;
@@ -13,4 +14,6 @@ layout (std140, binding = 2) uniform UBO_camera_data
     mat4 un_projection;
     vec3 un_viewpos;
     Camera un_camera;
+    vec3 un_cam_beg;
 };
+

@@ -2,6 +2,7 @@
 
 #include "render/idk_sdl_glew_init.hpp"
 #include "render/idk_renderqueue.hpp"
+
 #include "batching/idk_model_allocator.hpp"
 
 #include <libidk/GL/common.hpp>
@@ -19,19 +20,25 @@
 
 
 namespace idk { class RenderEngine; };
-namespace idk { class EngineAPI;    };
+
+
+
+
+class idk_RenderData
+{
+    
+};
+
+
 
 
 class IDK_VISIBLE idk::RenderEngine
 {
 private:
-    friend class EngineAPI;
-
-    internal::SDL_GLEW_Initializer      m_initializer;
+    internal::SDL2_WindowSystem         m_windowsys;
     glm::ivec2                          m_resolution;
 
     // idk::glFramebuffers ------------------------------------
-    /***/
     static const size_t                 NUM_SCRATCH_BUFFERS    = 8;
     static const size_t                 ATTACHMENTS_PER_BUFFER = 1;
 
@@ -42,15 +49,17 @@ private:
 
     glFramebuffer                       m_mainbuffer_0;
     glFramebuffer                       m_mainbuffer_1;
+    glFramebuffer                       m_finalbuffer;
 
-    glFramebuffer                       m_deferred_geom_buffer;
+    glFramebuffer                       m_geom_buffer;
     glFramebuffer                       m_volumetrics_buffer;
+
     // -----------------------------------------------------------------------------------------
 
     // Shaders
     // -----------------------------------------------------------------------------------------
-    std::map<std::string, glShaderProgram>  m_shaders;
-    std::vector<std::string>                m_shader_names;
+    idk::Allocator<glShaderProgram>         m_programs;
+    std::map<std::string, int>              m_program_ids;
     // -----------------------------------------------------------------------------------------
 
     // UBO
@@ -66,8 +75,6 @@ private:
     Allocator<Camera>                   m_camera_allocator;
     idk::ModelSystem                    m_modelsystem;
     idk::LightSystem                    m_lightsystem;
-
-
     idk::ModelAllocator                 m_model_allocator;
 
     // Render queues
@@ -75,18 +82,19 @@ private:
     idk::Allocator<idk::RenderQueue>    m_private_RQs;
     idk::Allocator<idk::RenderQueue>    m_public_RQs;
 
-    int                                 m_terrain_RQ;
+    int                                 m_RQ;
+    // int                                 m_shadow_RQ;
 
-    idk::RenderQueue                    m_render_queue;
-    idk::RenderQueue                    m_anim_render_queue;
-    idk::RenderQueue                    m_shadow_render_queue;
-    idk::RenderQueue                    m_shadow_anim_render_queue;
+    GLuint                              vxgi_texture;
+    GLuint                              vxgi_albedo, vxgi_normal, vxgi_radiance, vxgi_prev_radiance;
+    GLuint                              vxgi_bounce1;
+    glSSBO                              vxgi_SSBO;
+    idk::RenderQueue                    m_vxgi_RQ;
+    idk::RenderQueue                    m_shadow_render_queue; 
     // -----------------------------------------------------------------------------------------
 
     // Initialization
     // -----------------------------------------------------------------------------------------
-    /***/
-    // void                                init_SDL_OpenGL( std::string windowname, size_t w, size_t h, uint32_t flags );
     void                                init_screenquad();
     void                                init_framebuffers( int width, int height );
     void                                init_all( std::string name, int w, int h );
@@ -109,21 +117,41 @@ private:
 
     // Render stages    
     // ------------------------------------------------------------------------------------
-    void RenderStage_deferred_geometry( idk::Camera &, float dtime );
-    void RenderStage_deferred_lighting( idk::Camera &, float dtime );
+    void RenderStage_geometry( idk::Camera &, float dtime,
+                               glFramebuffer &buffer_out );
 
-    void PostProcess_bloom();
-    void PostProcess_chromatic_aberration( glFramebuffer *buffer_A, glFramebuffer *buffer_B );
-    void PostProcess_colorgrading( idk::Camera &, glFramebuffer *A, glFramebuffer *B );
 
-    void RenderStage_postprocessing( idk::Camera & );
+    void RenderStage_volumetrics( idk::Camera &,
+                                  glFramebuffer &buffer_in,
+                                  glFramebuffer &buffer_out );
+
+
+    void RenderStage_lighting( idk::Camera &, float dtime,
+                               glFramebuffer &buffer_in,
+                               glFramebuffer &buffer_out );
+
+
+    void PostProcess_bloom( glFramebuffer &buffer_in,
+                            glFramebuffer &buffer_out );
+
+    void PostProcess_chromatic_aberration( glFramebuffer &buffer_in,
+                                           glFramebuffer &buffer_out );
+
+    void PostProcess_colorgrading( idk::Camera &,
+                                   glFramebuffer &buffer_in,
+                                   glFramebuffer &buffer_out );
+
+
+    void RenderStage_postprocessing( idk::Camera &,
+                                     glFramebuffer &buffer_in,
+                                     glFramebuffer &buffer_out );
     // ------------------------------------------------------------------------------------
 
 
 
     /** Run a shader on the output textures of "in" and render the result to the default frame buffer.s
     */
-    static void    f_fbfb( glShaderProgram &, glFramebuffer &in );
+    static void    f_fbfb( glShaderProgram &, glFramebuffer &buffer_in );
 
     static void    tex2tex( glShaderProgram &, glFramebuffer &a,
                             glFramebuffer &b, glFramebuffer &out );
@@ -133,6 +161,8 @@ private:
 
 
 public:
+    bool                                m_vxgi_debug = true;
+    glFramebuffer                       m_vxgi_buffer;
 
     RenderEngine( const std::string &name, int w, int h,
                   int gl_major, int gl_minor,
@@ -157,13 +187,16 @@ public:
 
     void                                compileShaders();
 
-    SDL_Window *                        SDLWindow()    { return m_initializer.SDL_window;     };
-    SDL_GLContext                       SDLGLContext() { return m_initializer.SDL_GL_context; };
+    SDL_Window *                        getWindow()    { return m_windowsys.getMainWindow(); };
+    SDL_GLContext                       getGLContext() { return m_windowsys.getGlContext();  };
+
+
 
     int                                 createCamera();
     void                                useCamera( int cam_id ) { m_active_camera_id = cam_id; };
     idk::Camera &                       getCamera( int cam_id ) { return m_camera_allocator.get(cam_id); };
     idk::Camera &                       getCamera(            ) { return getCamera(m_active_camera_id);  };
+    int                                 activeCamera() { return m_active_camera_id; };
     idk::Allocator<Camera> &            getCameras() { return m_camera_allocator; };
 
 
@@ -178,35 +211,76 @@ public:
                                                            const RenderQueueConfig &,
                                                            const idk_drawmethod & );
 
+    int                                 createRenderQueue( int program,
+                                                           const RenderQueueConfig &,
+                                                           const idk_drawmethod & );
+
     idk::RenderQueue &                  getRenderQueue( int id );
 
     void                                drawModelRQ( int rq, int model, const glm::mat4 & );
-    void                                drawModelRQ( int rq, int model, int animator, const glm::mat4 & );
-
-    void                                drawModel( int model, int animator, const glm::mat4 & );
     void                                drawModel( int model, const glm::mat4 & );
-
-    void                                drawShadowCaster( int model, int animator, const glm::mat4 & );
     void                                drawShadowCaster( int model, const glm::mat4 & );
 
-    GLuint                              createProgram( const std::string &name,
+    /** Draw a model which will contribute to global illumination. */
+    void                                drawEnvironmental( int model, const glm::mat4 & );
+
+
+    int                                 createProgram( const std::string &name,
                                                        const std::string &root,
                                                        const std::string &vs,
                                                        const std::string &fs );
 
-    glShaderProgram &                          getProgram ( const std::string &name ) { return m_shaders[name]; };
-    std::map<std::string, glShaderProgram> &   getPrograms() { return m_shaders; };
+
+    int                                 createProgram( const std::string &name,
+                                                       const idk::glShaderProgram &program );
+
+    // template <typename ...Args>
+    // int                                 createProgram( const std::string &name,
+    //                                                    idk::glShaderStage first,
+    //                                                    Args... rest );
+
+
+    idk::glShaderProgram &getProgram( const std::string &name )
+    {
+        int id = m_program_ids[name];
+        return m_programs.get(id);
+    };
+
+    idk::glShaderProgram &getProgram( int id )
+    {
+        return m_programs.get(id);
+    };
+
+    const std::map<std::string, int> &getProgramIDs()
+    {
+        return m_program_ids;
+    }
+
 
     void                                beginFrame();
     void                                endFrame( float dt );
     void                                swapWindow();
     void                                resize( int w, int h );
-    // void                                blitFramebuffer( const idk::glFramebuffer &fb );
+
+    GLuint                              getFinalImage() { return m_finalbuffer.attachments[0]; };
 
     glm::ivec2                          resolution() const { return m_resolution;   };
     int                                 width()      const { return m_resolution.x; };
     int                                 height()     const { return m_resolution.y; };
 
 };
+
+
+
+
+// template <typename ...Args>
+// int
+// idk::RenderEngine::createProgram( const std::string &name, idk::glShaderStage first, Args... rest )
+// {
+//     int id = m_programs.create(idk::glShaderProgram(rest...));
+//     m_program_ids[name] = id;
+
+//     return id;
+// }
 
 

@@ -7,6 +7,7 @@ layout (location = 3) in vec2 vsin_texcoords;
 
 out vec3 fsin_fragpos;
 out vec3 fsin_normal;
+out vec3 fsin_tangent;
 out vec2 fsin_texcoords;
 
 out vec3 TBN_viewpos;
@@ -38,11 +39,9 @@ void main()
 {
     mat4 model = un_model;
 
-    vec4 worldpos = model * vec4(vsin_pos, 1.0);
-
-    fsin_fragpos = worldpos.xyz;
-    fsin_normal  = (model * vec4(vsin_normal, 0.0)).xyz;
-    fsin_texcoords = vsin_texcoords;
+    vec4 position = un_model * vec4(vsin_pos,     1.0);
+    vec4 normal   = un_model * vec4(vsin_normal,  0.0);
+    vec4 tangent  = un_model * vec4(vsin_tangent, 0.0);
 
 
     vec3 N = normalize(mat3(model) * normalize(vsin_normal));
@@ -51,10 +50,16 @@ void main()
     vec3 B = cross(N, T);
     B = normalize(B - dot(B, N) * N);
 
+
+    fsin_fragpos   = position.xyz;
+    fsin_normal    = N;
+    fsin_tangent   = T;
+    fsin_texcoords = vsin_texcoords;
+
     TBN  = mat3(T, B, N);
     TBNT = transpose(TBN);
     TBN_fragpos = TBNT * fsin_fragpos;
     TBN_viewpos = TBNT * un_viewpos;
 
-    gl_Position = un_projection * un_view * worldpos;
+    gl_Position = un_projection * un_view * position;
 }

@@ -69,11 +69,16 @@ vec3 aces(vec3 x)
 
 void main()
 {
-    float exposure = autoExposure();
+    float exposure = 1.0; // autoExposure();
+    float gamma    = 2.2;
 
     vec3 hdr   = textureLod(un_texture_0, fsin_texcoords, 0.0).rgb;
     vec3 sdr   = aces(exposure * hdr);
-    vec3 color = pow(sdr, vec3(1.0 / un_camera.beg.y));
-  
+    vec3 color = pow(sdr, vec3(1.0 / gamma));
+    // vec3 color = pow(sdr, vec3(1.0 / un_camera.beg.y));
+
+    // vec3 color = filmic(exposure*hdr, un_camera.beg.y);
+    // vec3 color = pow(hdr / (hdr + 1.0), vec3(1.0 / 2.2));
+
     fsout_frag_color = vec4(color, 1.0);
 }

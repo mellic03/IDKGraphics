@@ -6,6 +6,9 @@
 #include "model/IDKmodel.hpp"
 #include "animation/IDKanimation.hpp"
 
+#include <unordered_map>
+#include <array>
+
 
 namespace idk { class ModelSystem; };
 
@@ -27,6 +30,7 @@ private:
     Allocator<glTexture>                 m_textures;
     std::unordered_map<GLuint, int>      m_rtexture_IDs;
 
+    std::map<std::string, int>  m_filepaths;
     Allocator<Material>         m_materials;
     Allocator<Model>            m_models;
     Allocator<Animator>         m_animators;
@@ -34,6 +38,7 @@ private:
     GLuint                      m_default_albedo = 0;
     GLuint                      m_default_ao_r_m = 0;
     GLuint                      m_default_normal = 0;
+    GLuint                      m_default_emissv = 0;
     GLuint                      m_default_height = 0;
 
     glTextureConfig             m_default_albedo_config;
@@ -73,13 +78,14 @@ public:
     int                 loadMaterial( const std::string &root,
                                       const std::string &albedo = "",
                                       const std::string &normal = "",
-                                      const std::string &ao_rough_metal = "" );
+                                      const std::string &ao_rough_metal = "",
+                                      const std::string &emission = "" );
 
 
     /** Create an idk::Material from three image textures.
      *  Setting any parameter to -1 will load the default image texture/lightmap. 
     */
-    int                 createMaterial( int albedo, int normal, int ao_rough_metal );
+    int                 createMaterial( int albedo, int normal, int ao_rough_metal, int emissv );
 
     int                 loadModel( const std::string &root, const std::string &name );
 
@@ -95,8 +101,8 @@ public:
 
     /** Query the terrain heightmap for the corresponding y coordinate for a given x, z
     */
-    float               queryTerrainHeight( int terrain_id, const glm::mat4 &transform,
-                                            float x, float z );
+    // float               queryTerrainHeight( int terrain_id, const glm::mat4 &transform,
+    //                                         float x, float z );
 
 
     Allocator<Model> &  getModels() { return m_models; };

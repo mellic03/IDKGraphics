@@ -1,10 +1,13 @@
 #include "idk_renderengine.hpp"
 #include "render/idk_initflags.hpp"
+#include "render/idk_vxgi.hpp"
 
 #include <libidk/GL/idk_glShaderStage.hpp>
 
 
+
 static float delta_time = 1.0f;
+
 
 void
 idk::RenderEngine::init_screenquad()
@@ -36,46 +39,98 @@ idk::RenderEngine::init_screenquad()
     // ------------------------------------------------------------------------------------
 }
 
-
 void
 idk::RenderEngine::compileShaders()
 {
-    idk::glShaderStage VS_screenquad(GL_VERTEX_SHADER,   "IDKGE/shaders/screenquad.vs");
-    idk::glShaderStage FS_PBR       (GL_FRAGMENT_SHADER, "IDKGE/shaders/deferred/lighting-pass/pbr.fs");
+    createProgram("vxgi", "IDKGE/shaders/vxgi/", "vxgi.vs", "vxgi.fs");
+    createProgram("vxgi-shadow", "IDKGE/shaders/vxgi/", "shadow.vs", "shadow.fs");
+    createProgram("vxgi-trace",  "IDKGE/shaders/deferred/", "background.vs", "../vxgi/trace.fs");
 
-    idk::glShaderProgram program(VS_screenquad, FS_PBR);
+    createProgram("vxgi-inject",    glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/inject-radiance.comp")));
+    createProgram("vxgi-mipmap",    glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/mipmap.comp")));
+    createProgram("vxgi-clear",     glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/clear.comp")));
+    createProgram("vxgi-bounce-1",  glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/bounce-1.comp")));
+    // createProgram("vxgi-bounce-2",  glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/bounce-2.comp")));
+
+
+    createProgram("lum-hist",  glShaderProgram(glShaderStage("IDKGE/shaders/post/exposure-hist.comp")));
 
 
     createProgram("background",     "IDKGE/shaders/deferred/", "background.vs", "background.fs");
 
-    createProgram("gpass",           "IDKGE/shaders/deferred/geometry-pass/", "default.vs",   "default.fs");
-    createProgram("gpass-anim",      "IDKGE/shaders/deferred/geometry-pass/", "anim.vs",      "default.fs");
-    createProgram("gpass-instanced", "IDKGE/shaders/deferred/geometry-pass/", "instanced.vs", "instanced.fs");
-    createProgram("gpass-terrain",   "IDKGE/shaders/deferred/geometry-pass/", "terrain.vs",   "terrain.fs");
+    createProgram("gpass",          "IDKGE/shaders/deferred/", "gpass.vs",   "gpass.fs");
+    createProgram("lpass",          "IDKGE/shaders/", "screenquad.vs", "deferred/lpass.fs");
+    // createProgram("lpass",  glShaderProgram(glShaderStage("IDKGE/shaders/deferred/lpass.comp")));
 
-    createProgram("lpass", "IDKGE/shaders/", "screenquad.vs", "deferred/lighting-pass/pbr.fs");
+    createProgram("dir-volumetric", "IDKGE/shaders/", "screenquad.vs", "deferred/volumetric_dirlight.fs");
 
-    createProgram("dirvolumetrics", "IDKGE/shaders/", "screenquad.vs", "deferred/volumetric_dirlight.fs");
-
-    createProgram("bloom",          "IDKGE/shaders/", "screenquad.vs", "postprocess/bloom.fs");
-    createProgram("downsample",     "IDKGE/shaders/", "screenquad.vs", "postprocess/downsample.fs");
-    createProgram("upsample",       "IDKGE/shaders/", "screenquad.vs", "postprocess/upsample.fs");
-    createProgram("gaussian",       "IDKGE/shaders/", "screenquad.vs", "postprocess/gaussian.fs");
-    createProgram("additive",       "IDKGE/shaders/", "screenquad.vs", "postprocess/additive.fs");
-    createProgram("chromatic",      "IDKGE/shaders/", "screenquad.vs", "postprocess/c-abberation.fs");
-    createProgram("blit",           "IDKGE/shaders/", "screenquad.vs", "postprocess/blit.fs");
-    createProgram("fxaa",           "IDKGE/shaders/", "screenquad.vs", "postprocess/fxaa.fs");
-    createProgram("colorgrade",     "IDKGE/shaders/", "screenquad.vs", "postprocess/colorgrade.fs");
+    createProgram("bloom",          "IDKGE/shaders/", "screenquad.vs", "post/bloom.fs");
+    createProgram("downsample",     "IDKGE/shaders/", "screenquad.vs", "post/downsample.fs");
+    createProgram("upsample",       "IDKGE/shaders/", "screenquad.vs", "post/upsample.fs");
+    createProgram("gaussian",       "IDKGE/shaders/", "screenquad.vs", "post/gaussian.fs");
+    createProgram("additive",       "IDKGE/shaders/", "screenquad.vs", "post/additive.fs");
+    createProgram("chromatic",      "IDKGE/shaders/", "screenquad.vs", "post/c-abberation.fs");
+    createProgram("blit",           "IDKGE/shaders/", "screenquad.vs", "post/blit.fs");
+    createProgram("fxaa",           "IDKGE/shaders/", "screenquad.vs", "post/fxaa.fs");
+    createProgram("colorgrade",     "IDKGE/shaders/", "screenquad.vs", "post/colorgrade.fs");
     createProgram("dir_shadow",     "IDKGE/shaders/", "dirshadow.vs",  "dirshadow.fs");
     createProgram("dir_shadow-anim", "IDKGE/shaders/", "dirshadow-anim.vs",  "dirshadow.fs");
-    createProgram("solid",          "IDKGE/shaders/", "vsin_pos_only.vs", "solid.fs");
 
 }
+
+
+// void
+// idk::RenderEngine::compileShaders()
+// {
+//     idk::glShaderStage VS_vxgi("IDKGE/shaders/vxgi/vxgi.vs");
+//     idk::glShaderStage FS_vxgi("IDKGE/shaders/vxgi/vxgi.fs");
+//     createProgram("vxgi", VS_vxgi, FS_vxgi);
+
+
+//     idk::glShaderStage VS_screenquad("IDKGE/shaders/screenquad.vs");
+//     idk::glShaderStage FS_dirshadow("IDKGE/shaders/screenquad.vs");
+//     idk::glShaderStage FS_gpass_default("IDKGE/shaders/deferred/geometry-pass/default.fs");
+
+
+//     createProgram("background",      "IDKGE/shaders/deferred/background.vs", "IDKGE/shaders/deferred/background.fs");
+//     createProgram("gpass",           "IDKGE/shaders/deferred/geometry-pass/default.vs", FS_gpass_default);
+//     createProgram("gpass-anim",      "IDKGE/shaders/deferred/geometry-pass/anim.vs",      FS_gpass_default);
+//     createProgram("gpass-instanced", "IDKGE/shaders/deferred/geometry-pass/instanced.vs", "IDKGE/shaders/deferred/geometry-pass/instanced.fs");
+//     createProgram("gpass-terrain",   "IDKGE/shaders/deferred/geometry-pass/terrain.vs",   "IDKGE/shaders/deferred/geometry-pass/terrain.fs");
+
+//     createProgram("lpass", VS_screenquad, "IDKGE/shaders/deferred/lighting-pass/pbr.fs");
+//     createProgram("dirvolumetrics", VS_screenquad, "IDKGE/shaders/deferred/volumetric_dirlight.fs");
+
+
+//     createProgram("bloom",      VS_screenquad, "IDKGE/shaders/post/bloom.fs");
+//     createProgram("downsample", VS_screenquad, "IDKGE/shaders/post/downsample.fs");
+//     createProgram("upsample",   VS_screenquad, "IDKGE/shaders/post/upsample.fs");
+//     createProgram("gaussian",   VS_screenquad, "IDKGE/shaders/post/gaussian.fs");
+//     createProgram("additive",   VS_screenquad, "IDKGE/shaders/post/additive.fs");
+//     createProgram("chromatic",  VS_screenquad, "IDKGE/shaders/post/c-abberation.fs");
+//     createProgram("blit",       VS_screenquad, "IDKGE/shaders/post/blit.fs");
+//     createProgram("fxaa",       VS_screenquad, "IDKGE/shaders/post/fxaa.fs");
+//     createProgram("colorgrade", VS_screenquad, "IDKGE/shaders/post/colorgrade.fs");
+
+//     createProgram("dir_shadow",      "IDKGE/shaders/dirshadow.vs",      FS_dirshadow);
+//     createProgram("dir_shadow-anim", "IDKGE/shaders/dirshadow-anim.vs", FS_dirshadow);
+
+//     // createProgram(
+//     //     "solid",
+//     //     glShaderStage("IDKGE/shaders/vsin_pos_only.vs"),
+//     //     glShaderStage("IDKGE/shaders/solid.fs")
+//     // );
+
+// }
 
 
 void
 idk::RenderEngine::init_framebuffers( int w, int h )
 {
+    w = glm::clamp(w, 128, 4096);
+    h = glm::clamp(h, 128, 4096);
+
+
     idk::glTextureConfig config = {
         .internalformat = GL_RGBA16F,
         .minfilter      = GL_LINEAR,
@@ -114,11 +169,11 @@ idk::RenderEngine::init_framebuffers( int w, int h )
         }
     }
 
-    m_deferred_geom_buffer.reset(w, h, 4);
-    m_deferred_geom_buffer.colorAttachment(0, config);
-    m_deferred_geom_buffer.colorAttachment(1, config_highp);
-    m_deferred_geom_buffer.colorAttachment(2, config);
-    m_deferred_geom_buffer.colorAttachment(3, config);
+    m_geom_buffer.reset(w, h, 4);
+    m_geom_buffer.colorAttachment(0, config);
+    m_geom_buffer.colorAttachment(1, config_highp);
+    m_geom_buffer.colorAttachment(2, config);
+    m_geom_buffer.colorAttachment(3, config);
 
     m_volumetrics_buffer.reset(w/4, h/4, 1);
     m_volumetrics_buffer.colorAttachment(0, config);
@@ -127,6 +182,19 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     m_mainbuffer_0.colorAttachment(0, config);
     m_mainbuffer_0.colorAttachment(1, config);
 
+
+    m_finalbuffer.reset(w, h, 1);
+    m_finalbuffer.colorAttachment(0, config);
+
+
+    static const idk::DepthAttachmentConfig depth_config = {
+        .internalformat = GL_DEPTH_COMPONENT,
+        .datatype       = GL_FLOAT
+    };
+
+    m_vxgi_buffer.reset(VXGI_TEXTURE_SIZE, VXGI_TEXTURE_SIZE, 1);
+    m_vxgi_buffer.colorAttachment(0, config);
+    m_vxgi_buffer.depthAttachment(depth_config);
 
 
     config = {
@@ -138,6 +206,8 @@ idk::RenderEngine::init_framebuffers( int w, int h )
 
     m_mainbuffer_1.reset(w, h, 1);
     m_mainbuffer_1.colorAttachment(0, config);
+
+
 }
 
 
@@ -176,7 +246,7 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     glTextureConfig config = {
         .internalformat = GL_RGBA16,
         .format         = GL_RGBA,
-        .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
+        .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
         .wrap_s         = GL_CLAMP_TO_EDGE,
         .wrap_t         = GL_CLAMP_TO_EDGE,
@@ -190,6 +260,10 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
 
     loadSkybox("IDKGE/resources/skybox/");
 
+    vxgi_albedo   = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
+    vxgi_normal   = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
+    vxgi_radiance = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
+    vxgi_bounce1  = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
 
     // Default render queues
     // -----------------------------------------------------------------------------------------
@@ -197,9 +271,8 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
         .cull_face = GL_FALSE
     };
 
-    m_terrain_RQ = _createRenderQueue("gpass-terrain", drawmethods::draw_heightmapped);
+    m_RQ = _createRenderQueue("gpass", drawmethods::draw_textured);
     // -----------------------------------------------------------------------------------------
-
 }
 
 
@@ -207,12 +280,9 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
 idk::RenderEngine::RenderEngine( const std::string &name, int w, int h, int gl_major,
                                  int gl_minor, uint32_t flags )
 :
-  m_initializer               (name.c_str(), w, h, gl_major, gl_minor, flags),
-  m_render_queue              (drawmethods::draw_textured, "m_render_queue"),
-  m_anim_render_queue         ("m_anim_render_queue"),
-  m_shadow_render_queue       (drawmethods::draw_untextured, "m_shadow_render_queue"),
-  m_shadow_anim_render_queue  ("m_shadow_anim_render_queue")
-
+    m_windowsys(name.c_str(), w, h, gl_major, gl_minor, flags),
+    m_shadow_render_queue(drawmethods::draw_untextured, "dir_shadow"),
+    m_vxgi_RQ("vxgi")
 {
     m_resolution = glm::ivec2(w, h);
     gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
@@ -230,12 +300,24 @@ idk::RenderEngine::RenderEngine( const std::string &name, int w, int h, int gl_m
 }
 
 
-GLuint
+int
 idk::RenderEngine::createProgram( const std::string &name, const std::string &root,
                                   const std::string &vs, const std::string &fs )
 {
-    m_shader_names.push_back(name);
-    return m_shaders[name].loadFileC(root, vs, fs);
+    int id = m_programs.create();
+    m_programs.get(id).loadFileC(root, vs, fs);
+    m_program_ids[name] = id;
+
+    return id;
+}
+
+
+int
+idk::RenderEngine::createProgram( const std::string &name, const idk::glShaderProgram &program )
+{
+    int id = m_programs.create(program);
+    m_program_ids[name] = id;
+    return id;
 }
 
 
@@ -402,61 +484,14 @@ idk::RenderEngine::getRenderQueue( int id )
 void
 idk::RenderEngine::drawModelRQ( int rq, int model_id, const glm::mat4 &transform )
 {
-    idk::Model &model = modelSystem().getModel(model_id);
-
-    if (model.render_flags & ModelRenderFlag::CHUNKED)
-    {
-        idk::Camera &cam = getCamera();
-        idk::genDrawCommands(
-            model, transform, cam.nearPlane(), cam.farPlane(), cam.projection(), cam.view()
-        );
-    }
-
     getRenderQueue(rq).push(model_id, transform);
-}
-
-
-void
-idk::RenderEngine::drawModelRQ( int rq, int model, int animator, const glm::mat4 &transform )
-{
-    getRenderQueue(rq).push(model, animator, transform);
 }
 
 
 void
 idk::RenderEngine::drawModel( int model_id, const glm::mat4 &model_mat )
 {
-    idk::Model &model = modelSystem().getModel(model_id);
-
-    if (model.render_flags & ModelRenderFlag::ANIMATED)
-    {
-        drawModel(model_id, model.animator_id, model_mat);
-    }
-
-    else if (model.render_flags & ModelRenderFlag::HEIGHTMAPPED)
-    {
-        _getRenderQueue(m_terrain_RQ).push(model_id, model_mat);
-    }
-
-    else
-    {
-        m_render_queue.push(model_id, model_mat);
-    }
-}
-
-
-void
-idk::RenderEngine::drawModel( int model_id, int animator_id, const glm::mat4 &model_mat )
-{
-    if (animator_id == -1)
-    {
-        drawModel(model_id, model_mat);
-    }
-
-    else
-    {
-        m_anim_render_queue.push(model_id, animator_id, model_mat);
-    }
+    _getRenderQueue(m_RQ).push(model_id, model_mat);
 }
 
 
@@ -468,18 +503,11 @@ idk::RenderEngine::drawShadowCaster( int model_id, const glm::mat4 &model_mat )
 
 
 void
-idk::RenderEngine::drawShadowCaster( int model_id, int animator_id, const glm::mat4 &model_mat )
+idk::RenderEngine::drawEnvironmental( int model, const glm::mat4 &transform )
 {
-    if (animator_id == -1)
-    {
-        drawShadowCaster(model_id, model_mat);
-    }
-
-    else
-    {
-        m_shadow_anim_render_queue.push(model_id, animator_id, model_mat);
-    }
+    m_vxgi_RQ.push(model, transform);
 }
+
 
 
 void
@@ -522,29 +550,6 @@ idk::RenderEngine::shadowpass_dirlights()
             drawmethods::draw_untextured(
                 program,
                 model_id,
-                model_mat,
-                modelSystem()
-            );
-        }
-    }
-
-
-    idk::glShaderProgram &anim_program = getProgram("dir_shadow-anim");
-    anim_program.bind();
-
-    for (int i=0; i<glDepthCascade::NUM_CASCADES; i++)
-    {
-        depthcascade.setOutputAttachment(i);
-        anim_program.set_mat4("un_lightspacematrix", cascade_matrices[i]);
-
-        for (auto &[model_id, animator_id, model_mat]: m_shadow_anim_render_queue)
-        {
-            drawmethods::draw_animated(
-                0.0f,
-                m_UBO_armature,
-                animator_id,
-                model_id,
-                anim_program,
                 model_mat,
                 modelSystem()
             );
@@ -658,10 +663,9 @@ idk::RenderEngine::beginFrame()
         RQ.setViewParams(near, far, proj, view);
     }
 
-    m_render_queue.setViewParams(near, far, proj, view);
-    m_anim_render_queue.setViewParams(near, far, proj, view);
     m_shadow_render_queue.setViewParams(near, far, proj, view);
-    m_shadow_anim_render_queue.setViewParams(near, far, proj, view);
+
+    m_vxgi_RQ.setViewParams(near, far, proj, view);
 }
 
 
@@ -670,43 +674,129 @@ idk::RenderEngine::endFrame( float dt )
 {
     delta_time = dt;
 
-    // if (m_lightsystem.changed())
-    // {
-    //     static std::string vert_source = "";
-    //     static std::string frag_source = "";
-
-    //     glShaderProgram &lpass = getProgram("lpass");
-    //     m_lightsystem.genShaderString(vert_source, frag_source);
-    //     lpass.loadStringC(vert_source, frag_source);
-    // }
-
-    gl::cullFace(GL_FRONT);
+    gl::disable(GL_CULL_FACE);
     shadowpass_dirlights();
-    m_shadow_render_queue.clear();
-    m_shadow_anim_render_queue.clear();
-    gl::cullFace(GL_BACK);
+    gl::enable(GL_CULL_FACE);
 
 
     update_UBO_camera();
     update_UBO_dirlights();
     update_UBO_pointlights();
 
+    gl::bindVertexArray(m_quad_VAO);
 
     idk::Camera &camera = getCamera();
-    RenderStage_deferred_geometry(camera, dt);
-    RenderStage_deferred_lighting(camera, dt);
-    RenderStage_postprocessing(camera);
 
+    gl::bindImageTexture(0, vxgi_albedo,   0, GL_TRUE, 0, GL_READ_WRITE, VXGI_TEXTURE_FORMAT);
+    gl::bindImageTexture(1, vxgi_normal,   0, GL_TRUE, 0, GL_READ_WRITE, VXGI_TEXTURE_FORMAT);
+    gl::bindImageTexture(2, vxgi_radiance, 0, GL_TRUE, 0, GL_READ_WRITE, VXGI_TEXTURE_FORMAT);
+    gl::bindImageTexture(3, vxgi_bounce1,  0, GL_TRUE, 0, GL_READ_WRITE, VXGI_TEXTURE_FORMAT);
+
+    // static int count = 0;
+    // count += 1;
+
+    // if (count % 4 == 0)
+    {
+    //     auto &vxgi_clear = getProgram("vxgi-clear");
+    //     vxgi_clear.bind();
+        // vxgi_clear.dispatch(VXGI_TEXTURE_SIZE/4);
+        // gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+        IDK_GLCALL( glClearTexImage(vxgi_albedo, 0, GL_RGBA, GL_HALF_FLOAT, nullptr); )
+        IDK_GLCALL( glClearTexImage(vxgi_normal, 0, GL_RGBA, GL_HALF_FLOAT, nullptr); )
+        IDK_GLCALL( glClearTexImage(vxgi_radiance, 0, GL_RGBA, GL_HALF_FLOAT, nullptr); )
+        IDK_GLCALL( glClearTexImage(vxgi_bounce1, 0, GL_RGBA, GL_HALF_FLOAT, nullptr); )
+
+        gl::generateTextureMipmap(vxgi_albedo);
+        // gl::generateTextureMipmap(vxgi_normal);
+        // gl::generateTextureMipmap(vxgi_radiance);
+        // gl::generateTextureMipmap(vxgi_bounce1);
+
+
+        VXGI::shadowPass(
+            m_vxgi_buffer,
+            camera,
+            lightSystem().getDirlight(0).direction,
+            getProgram("vxgi-shadow"),
+            m_shadow_render_queue,
+            modelSystem()
+        );
+
+        gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+        VXGI::renderTexture(
+            m_vxgi_buffer,
+            camera,
+            getProgram("vxgi"),
+            m_vxgi_RQ,
+            vxgi_albedo,
+            vxgi_normal,
+            modelSystem(),
+            m_lightsystem.depthCascade()
+        );
+
+        gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    }
+
+    VXGI::injectRadiance(
+        getProgram("vxgi-inject"),
+        camera,
+        m_vxgi_buffer,
+        lightSystem().getDirlight(0).direction,
+        lightSystem().depthCascade()
+    );
+
+
+    // gl::generateTextureMipmap(vxgi_albedo);
+    // gl::generateTextureMipmap(vxgi_normal);
+    gl::generateTextureMipmap(vxgi_radiance);
+    gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+    // auto &bounce1 = getProgram("vxgi-bounce-1");
+    // bounce1.bind();
+
+    // bounce1.set_sampler3D("un_voxel_radiance", vxgi_radiance);
+    // bounce1.dispatch(VXGI_TEXTURE_SIZE / 4);
+    // gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    // gl::generateTextureMipmap(vxgi_bounce1);
+
+    // gl::bindImageTexture(3, vxgi_radiance, 0, GL_TRUE, 0, GL_READ_WRITE, VXGI_TEXTURE_FORMAT);
+    // bounce1.set_sampler3D("un_voxel_radiance", vxgi_bounce1);
+    // bounce1.dispatch(VXGI_TEXTURE_SIZE / 4);
+    // gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    // gl::generateTextureMipmap(vxgi_radiance);
+
+    // gl::bindImageTexture(3, vxgi_bounce1, 0, GL_TRUE, 0, GL_READ_WRITE, VXGI_TEXTURE_FORMAT);
+
+
+    gl::disable(GL_CULL_FACE);
+    RenderStage_geometry       (camera, dt, m_geom_buffer);
+    RenderStage_lighting       (camera, dt, m_geom_buffer,  m_mainbuffer_0);
+    RenderStage_postprocessing (camera,     m_mainbuffer_0, m_finalbuffer);
 
     gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
     gl::bindVertexArray(0);
+
+
+    for (idk::RenderQueue &RQ: m_private_RQs)
+    {
+        RQ.clear();
+    }
+
+    for (idk::RenderQueue &RQ: m_public_RQs)
+    {
+        RQ.clear();
+    }
+
+    m_shadow_render_queue.clear();
+    m_vxgi_RQ.clear();
 }
 
 
 void
 idk::RenderEngine::swapWindow()
 {
-    SDL_GL_SwapWindow(this->SDLWindow());
+    SDL_GL_SwapWindow(this->getWindow());
 }
 
 
@@ -717,14 +807,4 @@ idk::RenderEngine::resize( int w, int h )
     init_framebuffers(w, h);
     getCamera().aspect(w, h);
 }
-
-
-// /** Blit an idk::glFramebuffer onto the renderer's main framebuffer including depth.
-//  *  @note This is a mildly expensive operation, try to avoid.
-// */
-// void
-// idk::RenderEngine::blitFramebuffer( const idk::glFramebuffer &fb )
-// {
-//     m_blit_queue.push(fb);
-// }
 

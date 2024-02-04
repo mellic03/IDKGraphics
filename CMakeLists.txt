@@ -15,7 +15,6 @@ add_library(${PROJECT_NAME} SHARED ${SOURCES})
 set_target_properties(
     ${PROJECT_NAME} PROPERTIES
     POSITION_INDEPENDENT_CODE ON
-    CXX_STANDARD 17
 )
 
 # if(MSVC)
@@ -64,6 +63,7 @@ target_sources(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/idk_drawmethods.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/idk_initflags.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/idk_renderqueue.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/idk_vxgi.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/idk_sdl_glew_init.hpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/idk_model_manager.hpp

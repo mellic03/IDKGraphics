@@ -46,8 +46,8 @@ idk::ModelSystem::init()
 {
     m_texture_SSBO.init();
     m_texture_SSBO.bind(8);
-    m_texture_SSBO.bufferData(3*128*sizeof(GLuint64), nullptr);
-    m_texture_handles.resize(3*128);
+    m_texture_SSBO.bufferData(4*128*sizeof(GLuint64), nullptr);
+    m_texture_handles.resize(4*128);
 
     m_default_albedo_config = {
         .internalformat = GL_SRGB8_ALPHA8,
@@ -81,15 +81,17 @@ idk::ModelSystem::init()
     auto data_albedo = texturegen::genRA<uint8_t>(IMG_W, IMG_W, 100, 255 );
     auto data_ao_r_m = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 255, 180, 1, 0);
     auto data_normal = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 125, 125, 255, 0);
+    auto data_emissv = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 0, 0, 0, 0);
 
     m_default_albedo = loadTexture(IMG_W, IMG_W, data_albedo.get(), m_default_albedo_config);
     m_default_ao_r_m = loadTexture(IMG_W, IMG_W, data_ao_r_m.get(), m_default_lightmap_config);
     m_default_normal = loadTexture(IMG_W, IMG_W, data_normal.get(), m_default_lightmap_config);
+    m_default_emissv = loadTexture(IMG_W, IMG_W, data_emissv.get(), m_default_lightmap_config);
 
-    for (size_t i=0; i<=MAX_PLANE_LEVEL; i++)
-    {
-        m_planes[i] = loadModel("IDKGE/resources/planes/", "plane-" + std::to_string(i));
-    }
+    // for (size_t i=0; i<=MAX_PLANE_LEVEL; i++)
+    // {
+    //     m_planes[i] = loadModel("IDKGE/resources/planes/", "plane-" + std::to_string(i));
+    // }
 }
 
 
@@ -167,16 +169,17 @@ idk::ModelSystem::getTexture( const std::string &filepath )
 }
 
 int
-idk::ModelSystem::createMaterial( int albedo, int normal, int ao_r_m )
+idk::ModelSystem::createMaterial( int albedo, int normal, int ao_r_m, int emissv )
 {
     int material_id = m_materials.create();
     idk::Material &material = getMaterial(material_id);
 
     material.bindless_idx = material_id;
 
-    material.albedo_id = (albedo == -1) ? m_default_albedo : albedo;
-    material.normal_id = (normal == -1) ? m_default_normal : normal;
-    material.arm_id    = (ao_r_m == -1) ? m_default_ao_r_m : ao_r_m;
+    material.albedo_id   = (albedo == -1) ? m_default_albedo : albedo;
+    material.normal_id   = (normal == -1) ? m_default_normal : normal;
+    material.arm_id      = (ao_r_m == -1) ? m_default_ao_r_m : ao_r_m;
+    material.emission_id = (emissv == -1) ? m_default_emissv : emissv;
 
     return material_id;
 }
@@ -186,9 +189,10 @@ int
 idk::ModelSystem::loadMaterial( const std::string &root,
                                 const std::string &albedo,
                                 const std::string &normal,
-                                const std::string &ao_rough_metal )
+                                const std::string &ao_rough_metal,
+                                const std::string &emission )
 {
-    int material_id = createMaterial(-1, -1, -1);
+    int material_id = createMaterial(-1, -1, -1, -1);
     idk::Material &material = getMaterial(material_id);
 
     if (albedo != "")
@@ -200,12 +204,16 @@ idk::ModelSystem::loadMaterial( const std::string &root,
     if (ao_rough_metal != "")
         material.arm_id = loadTexture(root+ao_rough_metal, m_default_lightmap_config);
 
+    if (emission != "")
+        material.emission_id = loadTexture(root+emission, m_default_lightmap_config);
+
 
     // Update SSBO image handles
     // -----------------------------------------------------------------------------------------
-    m_texture_handles[3*material_id + 0] = getidkTexture(material.albedo_id).handle();
-    m_texture_handles[3*material_id + 1] = getidkTexture(material.normal_id).handle();
-    m_texture_handles[3*material_id + 2] = getidkTexture(material.arm_id).handle();
+    m_texture_handles[4*material_id + 0] = getidkTexture(material.albedo_id).handle();
+    m_texture_handles[4*material_id + 1] = getidkTexture(material.normal_id).handle();
+    m_texture_handles[4*material_id + 2] = getidkTexture(material.arm_id).handle();
+    m_texture_handles[4*material_id + 3] = getidkTexture(material.emission_id).handle();
 
     m_texture_SSBO.bufferSubData(
         0,
@@ -357,11 +365,19 @@ idk::ModelSystem::instanced_to_gpu( idk::Model &model, const std::vector<glm::ma
 int
 idk::ModelSystem::loadModel( const std::string &root, const std::string &name )
 {
+    if (m_filepaths[root + name] > 0)
+    {
+        return m_filepaths[root + name];
+    }
+
     idkvi_header_t header = filetools::readheader(root+name+".txt");
 
     int model_id = m_models.create();
     idk::Model &model = getModel(model_id);
+    model.id = model_id;
     model.name = name;
+    model.filepath = root;
+    model.filestem = name;
 
     std::ifstream stream(root+name+".idkvi", std::ios::binary);
 
@@ -396,11 +412,16 @@ idk::ModelSystem::loadModel( const std::string &root, const std::string &name )
         std::string albedo = (bitmask & ALBEDO_BIT) ? textures[ALBEDO_IDX] : "";
         std::string normal = (bitmask & NORMAL_BIT) ? textures[NORMAL_IDX] : "";
         std::string ao_r_m = (bitmask & RM_BIT)     ? textures[RM_IDX]     : "";
+        std::string emssve = (bitmask & EM_BIT)     ? textures[EM_IDX]     : "";
 
-        mesh.material_id = loadMaterial("", albedo, normal, ao_r_m);
+        idk_printvalue(emssve);
+
+        mesh.material_id = loadMaterial("", albedo, normal, ao_r_m, emssve);
     }
 
     model_to_gpu(model);
+
+    m_filepaths[root + name] = model_id;
 
     return model_id;
 }
@@ -416,19 +437,20 @@ idk::ModelSystem::copyModel( int id )
 int
 idk::ModelSystem::loadTerrainHeightmap( GLuint texture_id )
 {
-    int model_id  = copyModel(m_planes[MAX_PLANE_LEVEL]);
-    auto &model   = getModel(model_id);
+    // int model_id  = copyModel(m_planes[MAX_PLANE_LEVEL]);
+    // auto &model   = getModel(model_id);
 
-    model.render_flags |= ModelRenderFlag::HEIGHTMAPPED;
-    model.terrain_id = m_terrain_models.create();
-    auto &terrain    = m_terrain_models.get(model.terrain_id);
+    // model.render_flags |= ModelRenderFlag::HEIGHTMAPPED;
+    // model.terrain_id = m_terrain_models.create();
+    // auto &terrain    = m_terrain_models.get(model.terrain_id);
 
-    idk::glTexture &texture = getidkTexture(texture_id);
+    // idk::glTexture &texture = getidkTexture(texture_id);
 
-    terrain.heightmap_id     = texture.ID();
-    terrain.heightmap_handle = texture.handle();
+    // terrain.heightmap_id     = texture.ID();
+    // terrain.heightmap_handle = texture.handle();
 
-    return model_id;
+    // return model_id;
+    return 0;
 }
 
 
@@ -453,20 +475,20 @@ idk::ModelSystem::loadTerrainMaterials( int terrain_id, int a, int b )
 }
 
 
-float
-idk::ModelSystem::queryTerrainHeight( int terrain_id, const glm::mat4 &transform,
-                                      float x, float z )
-{
-    auto &model   = getModel(terrain_id);
-    auto &terrain = m_terrain_models.get(model.terrain_id);
-    auto &texture = getidkTexture(terrain.heightmap_id);
+// float
+// idk::ModelSystem::queryTerrainHeight( int terrain_id, const glm::mat4 &transform,
+//                                       float x, float z )
+// {
+//     auto &model   = getModel(terrain_id);
+//     auto &terrain = m_terrain_models.get(model.terrain_id);
+//     auto &texture = getidkTexture(terrain.heightmap_id);
 
-    float u = (x / terrain.world_scale) * 0.5 + 0.5;
-    float v = (z / terrain.world_scale) * 0.5 + 0.5;
+//     float u = (x / terrain.world_scale) * 0.5 + 0.5;
+//     float v = (z / terrain.world_scale) * 0.5 + 0.5;
 
-    return terrain.height_scale * texture.bisample4f(u, v, 4).r;
+//     return terrain.height_scale * texture.bisample4f(u, v, 4).r;
+// }
 
-}
 
 int
 idk::ModelSystem::createAnimator()

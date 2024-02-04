@@ -57,6 +57,7 @@ struct IDK_VISIBLE idk::Material
 
     GLuint      albedo_id        = 0;
     GLuint      arm_id           = 0;
+    GLuint      emission_id      = 0;
     GLuint      ao_id            = 0;
     GLuint      displacement_id  = 0;
     GLuint      normal_id        = 0;
@@ -111,7 +112,11 @@ struct IDK_VISIBLE idk::Model
 {
     uint32_t render_flags = ModelRenderFlag::NONE;
 
+    int                       id;
+
     std::string               name;
+    std::string               filepath;
+    std::string               filestem;
     std::vector<idk::Mesh>    meshes;
     idk::iBuffer             *m_vertices = nullptr;
     std::vector<uint32_t>     m_indices;

@@ -9,12 +9,13 @@ uniform int un_material_id;
 
 
 layout (location = 0) out vec4 fsout_albedo;
-layout (location = 1) out vec4 fsout_position_metallic;
-layout (location = 2) out vec4 fsout_normal_ao;
-layout (location = 3) out vec4 fsout_roughness_ref;
+layout (location = 1) out vec4 fsout_position;
+layout (location = 2) out vec4 fsout_normal;
+layout (location = 3) out vec4 fsout_pbr;
 
 in vec3 fsin_fragpos;
 in vec3 fsin_normal;
+in vec3 fsin_tangent;
 in vec2 fsin_texcoords;
 
 
@@ -118,33 +119,29 @@ void main()
         vec2 texcoords = fsin_texcoords;
     // #endif
 
-    int albedo_idx = 3*un_material_id + 0;
-    int normal_idx = 3*un_material_id + 1;
-    int ao_r_m_idx = 3*un_material_id + 2;
+    int albedo_idx = 4*un_material_id + 0;
+    int normal_idx = 4*un_material_id + 1;
+    int ao_r_m_idx = 4*un_material_id + 2;
+    int emission_idx = 4*un_material_id + 3;
 
-    vec4 albedo = texture(un_bindless_samplers[albedo_idx], texcoords).rgba;
-    vec3 ao_r_m = texture(un_bindless_samplers[ao_r_m_idx], texcoords).rgb;
-    vec3 normal = texture(un_bindless_samplers[normal_idx], texcoords).xyz * 2.0 - 1.0;
+    vec4  albedo   = texture(un_bindless_samplers[albedo_idx], texcoords).rgba;
+    vec3  ao_r_m   = texture(un_bindless_samplers[ao_r_m_idx], texcoords).rgb;
+    float emission = texture(un_bindless_samplers[emission_idx], texcoords).r;
+    vec3  normal   = texture(un_bindless_samplers[normal_idx], texcoords).xyz * 2.0 - 1.0;
 
-    if (albedo.a < 0.5)
+    if (albedo.a < 1.0)
         discard;
 
-    float ao = ao_r_m.r;
-          ao = clamp(ao, 0.0, 1.0);
-
+    float ao        = ao_r_m.r;
     float roughness = ao_r_m.g;
-          roughness = clamp(roughness, 0.0, 1.0);
+    float metallic  = ao_r_m.b;
 
-    float metallic = ao_r_m.b;
-          metallic = clamp(metallic, 0.0, 1.0);
+    float a = 0.5; // un_material.normal_strength;
+    vec3 N = normalize(TBN * normal);
+         N = normalize(a*N + (1.0 - a)*normalize(fsin_normal));
 
-    // float a = un_material.normal_strength;
-    // normal  = normalize(TBN * normal);
-    // normal  = normalize(a*normal + (1.0 - a)*normalize(fsin_normal));
-    normal = normalize(fsin_normal);
-
-    fsout_albedo            = vec4(albedo.rgb, 1.0);
-    fsout_position_metallic = vec4(fsin_fragpos, metallic);
-    fsout_normal_ao         = vec4(normal, ao);
-    fsout_roughness_ref     = vec4(roughness, 0.0, 0.0, 0.0);
+    fsout_albedo   = vec4(albedo.rgb, 1.0);
+    fsout_position = vec4(fsin_fragpos, 1.0);
+    fsout_normal   = vec4(N, 0.0);
+    fsout_pbr      = vec4(roughness, metallic, ao, emission.x);
 }

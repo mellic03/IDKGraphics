@@ -119,6 +119,21 @@ idk::drawmethods::draw_untextured( glShaderProgram &program, int model_id,
 
 
 void
+idk::drawmethods::draw_wireframe( glShaderProgram &program, int model_id,
+                                  const glm::mat4 &transform, ModelSystem &MS )
+{
+
+    IDK_GLCALL( glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); )
+    IDK_GLCALL( glLineWidth(5.0f); )
+
+    draw_untextured(program, model_id, transform, MS);
+    IDK_GLCALL( glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); )
+}
+
+
+
+
+void
 idk::drawmethods::draw_instanced( glShaderProgram &program, int model_id,
                                   const glm::mat4 &transform, ModelSystem &MS )
 {

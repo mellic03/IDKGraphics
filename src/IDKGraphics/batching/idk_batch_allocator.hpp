@@ -1,13 +1,10 @@
 #pragma once
 
 #include "idk_model_handle.hpp"
-
+#include <libidk/idk_memory.hpp>
 
 namespace idk
 {
-    static constexpr size_t KILO = 1024;
-    static constexpr size_t MEGA = 1024*1024;
-
     class BatchAllocator;
 };
 

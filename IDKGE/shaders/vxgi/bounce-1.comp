@@ -1,0 +1,76 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+#include "../UBOs/UBOs.glsl"
+#include "./vxgi.glsl"
+#include "../include/lightsource.glsl"
+
+layout ( local_size_x = 4, local_size_y = 4, local_size_z = 4 ) in;
+
+uniform sampler3D un_voxel_radiance;
+
+layout (binding=0, rgba16f) readonly  uniform image3D un_voxel_albedo;
+layout (binding=1, rgba16f) readonly  uniform image3D un_voxel_normal;
+layout (binding=3, rgba16f) writeonly uniform image3D un_voxel_bounce_1;
+
+
+uniform vec3 un_light_dir;
+uniform sampler2DShadow un_depthmap;
+uniform mat4 un_light_matrix;
+
+
+vec3 orthogonal( vec3 u )
+{
+	u = normalize(u);
+	vec3 v = vec3(0.99146, 0.11664, 0.05832);
+	return abs(dot(u, v)) > 0.99999 ? cross(u, vec3(0, 1, 0)) : cross(u, v);
+}
+
+
+vec3 indirect_diffuse( vec3 origin, vec3 N )
+{
+    float aperture     = radians(60.0);
+    vec3  VXGI_diffuse = vec3(0.0);
+
+    float alpha = 0.5;
+
+    vec3 T  = normalize(orthogonal(N));
+    vec3 B  = normalize(cross(N, T));
+    vec3 Tp = normalize(0.5 * (T + B));
+    vec3 Bp = normalize(0.5 * (T - B));
+
+
+    vec3 cone_directions[9] = vec3[](
+        N,
+        normalize(mix(N,  T, alpha)),
+        normalize(mix(N, -T, alpha)),
+        normalize(mix(N,  B, alpha)),
+        normalize(mix(N, -B, alpha)),
+
+        normalize(mix(N,  Tp, alpha)),
+        normalize(mix(N, -Tp, alpha)),
+        normalize(mix(N,  Bp, alpha)),
+        normalize(mix(N, -Bp, alpha))
+    );
+
+    for (int i=0; i<9; i++)
+    {
+        vec3 cone_dir = cone_directions[i];
+
+        VXGI_diffuse += VXGI_TraceCone(origin, cone_dir, aperture, un_viewpos, un_voxel_radiance);
+    }
+
+    return VXGI_diffuse;
+}
+
+void main()
+{
+    ivec3 texel  = ivec3(gl_GlobalInvocationID.xyz);
+    vec3  origin = VXGI_TexelToWorld(texel, un_viewpos);
+    vec3  normal = imageLoad(un_voxel_normal, texel).rgb;
+
+    vec4 result = imageLoad(un_voxel_albedo, texel);
+    result.rgb *= indirect_diffuse(origin, normal);
+
+    imageStore(un_voxel_bounce_1, texel, result);
+}

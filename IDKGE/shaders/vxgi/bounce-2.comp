@@ -1,0 +1,77 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+#include "../UBOs/UBOs.glsl"
+#include "./vxgi.glsl"
+#include "../include/lightsource.glsl"
+
+layout ( local_size_x = 4, local_size_y = 4, local_size_z = 4 ) in;
+
+layout (binding=0, rgba16f) uniform image3D un_voxel_albedo;
+layout (binding=1, rgba16f) readonly  uniform image3D un_voxel_normal;
+layout (binding=2, rgba16f) readonly  uniform image3D un_voxel_radiance_1;
+layout (binding=3, rgba16f) writeonly uniform image3D un_voxel_radiance_2;
+
+
+uniform vec3 un_light_dir;
+uniform sampler2DShadow un_depthmap;
+uniform mat4 un_light_matrix;
+
+#define ROLLING_AVG_FRAMES 60.0
+
+
+void main()
+{
+    ivec3 texel    = ivec3(gl_GlobalInvocationID.xyz);
+    vec3  position = VXGI_TexelToWorld(texel, un_viewpos);
+    vec3  normal   = imageLoad(un_voxel_normal, texel).rgb;
+    vec4  radiance = vec4(0.0);
+
+    const float aperture = radians(60.0);
+
+    const vec3 directions[] = vec3[]
+    (
+        vec3(0.0, 1.0, 0.0)
+    );
+
+    for (int i=0; i<5; i++)
+    {
+        vec3  dir   = directions[i];
+        vec4  color = vec4(0.0);
+        float dist  = 2.0 * VXGI_VOXEL_SIZE;
+
+        while (color.a < 1.0)
+        {
+            float diameter = 2.0 * dist * tan(aperture / 2.0);
+            float mipLevel = log2(diameter / VXGI_VOXEL_SIZE);
+
+            if (mipLevel > VXGI_MAX_MIPLEVEL)
+            {
+                break;
+            }
+
+            vec3 ray_pos = position + dist*dir;
+
+            if (VXGI_in_bounds(ray_pos, un_viewpos) == false)
+            {
+                break;
+            }
+
+            ivec3 tex = VXGI_WorldToTexel(ray_pos, un_viewpos);
+            vec4 voxel  = imageLoad(un_voxel_radiance_1, tex) * pow(2, mipLevel);
+        
+            color.rgb += (1.0 - color.a) * voxel.a * voxel.rgb;
+            color.a   += (1.0 - color.a) * voxel.a;
+            dist      += 1.0 * diameter;
+        }
+
+        radiance += color;
+    }
+    // const float a = (ROLLING_AVG_FRAMES - 1.0) / ROLLING_AVG_FRAMES;
+    // const float b = 1.0 / ROLLING_AVG_FRAMES;
+
+    // vec4 previous = imageLoad(un_voxel_prev_radiance, texel);
+    // radiance = a*previous + b*radiance;
+
+    imageStore(un_voxel_radiance_2, texel, radiance);
+}

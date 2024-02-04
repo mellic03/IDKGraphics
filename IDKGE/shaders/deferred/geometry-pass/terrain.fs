@@ -93,19 +93,13 @@ void main()
     //       alpha = clamp(alpha, 0.0, 1.0);
 
     float alpha = clamp(fsin_fragpos.y / 2.0, 0.0, 1.0);
-
     vec3 albedo = mix(color_B, color_A, alpha);
 
-    // vec3  ao_rough_metal = texture(un_material.rough_metal, texcoords).rgb;
-
-    float ao = 1.0; // ao_rough_metal.r;
+    float ao = 1.0;
           ao = clamp(ao, 0.0, 1.0);
 
-    float roughness = 0.99; // un_material.roughness_strength; // * ao_rough_metal.g;
-          roughness = clamp(roughness, 0.0, 1.0);
-
-    float metallic = 0.0; // un_material.metallic_strength; // * ao_rough_metal.b;
-          metallic = clamp(metallic, 0.0, 1.0);
+    float roughness = 0.90;
+    float metallic  = 0.0;
 
     vec3 N = normalize(fsin_normal);
 

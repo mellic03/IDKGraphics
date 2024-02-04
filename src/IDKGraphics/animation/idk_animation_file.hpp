@@ -11,8 +11,8 @@ namespace idk
     struct idkvi_header_t;
     struct idkvi_material_t;
 
-    enum TextureIndex { ALBEDO_IDX, NORMAL_IDX, RM_IDX, AO_IDX, NUM_IDX };
-    enum TextureBit   { ALBEDO_BIT=1<<0, NORMAL_BIT=1<<1, RM_BIT=1<<2, AO_BIT=1<<3 };
+    enum TextureIndex { ALBEDO_IDX, NORMAL_IDX, RM_IDX, AO_IDX, EM_IDX, NUM_IDX };
+    enum TextureBit   { ALBEDO_BIT=1<<0, NORMAL_BIT=1<<1, RM_BIT=1<<2, AO_BIT=1<<3, EM_BIT=1<<4 };
 };
 
 

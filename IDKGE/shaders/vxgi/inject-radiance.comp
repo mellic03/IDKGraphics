@@ -1,0 +1,47 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+#include "../UBOs/UBOs.glsl"
+#include "./vxgi.glsl"
+#include "../include/lightsource.glsl"
+
+layout ( local_size_x = 4, local_size_y = 4, local_size_z = 4 ) in;
+
+layout (binding=0, rgba16f) readonly  uniform image3D un_voxel_albedo;
+layout (binding=1, rgba16f) readonly  uniform image3D un_voxel_normal;
+layout (binding=2, rgba16f) uniform image3D un_voxel_radiance;
+
+
+uniform vec3 un_light_dir;
+uniform sampler2DShadow un_depthmap;
+uniform mat4 un_light_matrix;
+
+#define ROLLING_AVG_FRAMES 8.0
+
+
+void main()
+{
+    ivec3 texel = ivec3(gl_GlobalInvocationID.xyz);
+
+    DirLight light     = un_dirlights[0];
+    vec3     light_dir = light.direction.xyz;
+
+    vec3 P = VXGI_TexelToWorld(texel, un_viewpos);
+    vec3 N = normalize(imageLoad(un_voxel_normal, texel).rgb);
+    P += VXGI_VOXEL_SIZE * N;
+
+    vec4 albedo = imageLoad(un_voxel_albedo, texel);
+
+    vec4 radiance  = albedo;
+         radiance.rgb *= light.diffuse.rgb;
+         radiance.rgb *= dirlight_shadow_2(0, un_depthmap, un_view, un_light_matrix, P, N);
+
+
+    // const float a = (ROLLING_AVG_FRAMES - 1.0) / (ROLLING_AVG_FRAMES);
+    // const float b = 1.0 / ROLLING_AVG_FRAMES;
+    // vec4 result = a*imageLoad(un_voxel_radiance, texel) + b*radiance;
+    vec4 result = radiance;
+
+
+    imageStore(un_voxel_radiance, texel, result);
+}

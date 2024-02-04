@@ -1,0 +1,56 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+#include "../UBOs/UBOs.glsl"
+#include "./vxgi.glsl"
+
+layout ( local_size_x = 4, local_size_y = 4, local_size_z = 4 ) in;
+
+layout (binding=5, rgba16f) writeonly uniform image3D un_current_level;
+layout (binding=6, rgba16f) readonly  uniform image3D un_previous_level;
+
+
+void main()
+{
+    ivec3 texel  = ivec3(gl_GlobalInvocationID.xyz);
+    vec4  result = vec4(0.0);
+
+    const ivec3 offsets[] = ivec3[]
+    (
+        ivec3(-1, -1, -1),
+        ivec3(-1, +1, -1),
+        ivec3(-1, +1, +1),
+        ivec3(-1, -1, +1),
+
+        ivec3(+1, -1, -1),
+        ivec3(+1, +1, -1),
+        ivec3(+1, +1, +1),
+        ivec3(+1, -1, +1)
+    );
+
+
+
+    for (int z=-1; z<=1; z++)
+    {
+        for (int y=-1; y<=1; y++)
+        {
+            for (int x=-1; x<=1; x++)
+            {
+                ivec3 offset = ivec3(x, y, z);
+                vec4 color = imageLoad(un_previous_level, 2*texel + offset);
+                result += color;
+            }
+        }
+    }
+
+    // for (int i=0; i<8; i++)
+    // {
+    //     vec4 color = imageLoad(un_previous_level, 2*texel + offsets[i]);
+    //     result.rgb += color.rgb; // * color.a;
+    //     result.a += color.a;
+    // }
+
+    result /= 27.0;
+
+    imageStore(un_current_level, texel, result);
+}

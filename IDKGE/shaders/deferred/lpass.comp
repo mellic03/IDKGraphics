@@ -1,0 +1,258 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+#define DIRSHADOW_AMBIENT  1
+#define MIPLEVEL_SPECULAR  5.0
+
+layout ( local_size_x = 8, local_size_y = 8, local_size_z = 1 ) in;
+
+layout (binding=0, rgba16f) writeonly uniform image2D un_output;
+layout (binding=1, rgba16f) readonly  uniform image2D un_albedo;
+layout (binding=2, rgba16f) readonly  uniform image2D un_position;
+layout (binding=3, rgba16f) readonly  uniform image2D un_normal;
+layout (binding=4, rgba16f) readonly  uniform image2D un_pbr;
+
+
+#include "../UBOs/UBOs.glsl"
+#include "../include/lightsource.glsl"
+#include "../vxgi/vxgi.glsl"
+
+uniform samplerCube un_skybox_diffuse;
+uniform samplerCube un_skybox_specular;
+uniform sampler2D   un_BRDF_LUT;
+uniform vec2        un_resolution;
+#define VXGI_ON 1
+#define VXGI_DIFFUSE 1
+#define VXGI_DIFFUSE_APERTURE 60.0
+#define VXGI_DIFFUSE_OFFSET 0.15
+#define VXGI_DIFFUSE_2ND_BOUNCE 0
+
+#define VXGI_SPECULAR 1
+#define VXGI_SPECULAR_APERTURE 120.0
+#define VXGI_SPECULAR_OFFSET 0.15
+
+#define VXGI_AMBIENTAO 1
+#define VXGI_AMBIENTAO_ONLY 0
+#define VXGI_OFFSET 0.15
+
+
+
+vec3 orthogonal( vec3 u )
+{
+	u = normalize(u);
+	vec3 v = vec3(0.99146, 0.11664, 0.05832); // Pick any normalized vector.
+	return abs(dot(u, v)) > 0.99999 ? cross(u, vec3(0, 1, 0)) : cross(u, v);
+}
+
+
+// const vec3 diffuseConeDirections[] =
+// {
+//     vec3(0.0f, 1.0f, 0.0f),
+//     vec3(0.0f, 0.5f, 0.866025f),
+//     vec3(0.823639f, 0.5f, 0.267617f),
+//     vec3(0.509037f, 0.5f, -0.7006629f),
+//     vec3(-0.50937f, 0.5f, -0.7006629f),
+//     vec3(-0.823639f, 0.5f, 0.267617f)
+// };
+
+const float diffuseConeWeights[] =
+{
+    PI / 4.0,
+    3.0 * PI / 20.0,
+    3.0 * PI / 20.0,
+    3.0 * PI / 20.0,
+    3.0 * PI / 20.0,
+    3.0 * PI / 20.0,
+};
+
+
+vec3 indirect_diffuse( vec3 origin, vec3 N )
+{
+    float aperture     = radians(VXGI_DIFFUSE_APERTURE);
+    vec3  VXGI_diffuse = vec3(0.0);
+
+    float CONE_ANGLE = 0.5;
+    vec3 T = normalize(orthogonal(N));
+    vec3 B = normalize(cross(N, T));
+
+    vec3 cone_directions[5] = vec3[](
+
+        N,
+
+        normalize(mix(N,  T, CONE_ANGLE)),
+        normalize(mix(N, -T, CONE_ANGLE)),
+        normalize(mix(N,  B, CONE_ANGLE)),
+        normalize(mix(N, -B, CONE_ANGLE))
+
+        // mix(N, mix( B,  T, 0.5), CONE_ANGLE),
+        // mix(N, mix( B, -T, 0.5), CONE_ANGLE),
+        // mix(N, mix(-B,  T, 0.5), CONE_ANGLE),
+        // mix(N, mix(-B, -T, 0.5), CONE_ANGLE)
+    );
+
+    for (int i=0; i<5; i++)
+    {
+        vec3 cone_dir = cone_directions[i];
+
+        // #if VXGI_DIFFUSE_2ND_BOUNCE == 0
+            VXGI_diffuse += VXGI_TraceCone(
+                origin,
+                cone_dir,
+                aperture,
+                un_viewpos,
+                un_voxel_albedo
+            );
+        // #else
+        //     VXGI_diffuse.rgb += VXGI_TraceCone_2(
+        //         origin,
+        //         cone_dir,
+        //         aperture,
+        //         un_viewpos,
+        //         un_voxeldata,
+        //         un_voxel_normal
+        //     ) * diffuseConeWeights[i];
+        // #endif
+    }
+
+    return VXGI_diffuse;
+}
+
+
+vec3 trace_specular( vec3 origin, vec3 N, vec3 R, float roughness )
+{
+    float aperture = clamp(roughness * radians(VXGI_SPECULAR_APERTURE), 0.01, 6.0);
+
+    vec3  VXGI_specular = VXGI_TraceCone_2(origin + 2*VXGI_VOXEL_SIZE*N, R, aperture, un_viewpos, un_voxeldata);
+    return VXGI_specular.rgb;
+}
+
+
+float trace_ao( vec3 origin, vec3 N )
+{
+    float aperture = radians(VXGI_DIFFUSE_APERTURE);
+    float VXGI_AO  = 0.0;
+
+    float CONE_ANGLE = 0.5;
+    vec3 T = normalize(orthogonal(N));
+    vec3 B = normalize(cross(N, T));
+
+    vec3 cone_directions[5] = vec3[](
+        N,
+        normalize(mix(N,  T, CONE_ANGLE)),
+        normalize(mix(N, -T, CONE_ANGLE)),
+        normalize(mix(N,  B, CONE_ANGLE)),
+        normalize(mix(N, -B, CONE_ANGLE))
+    );
+
+    for (int i=0; i<5; i++)
+    {
+        vec3 cone_dir = cone_directions[i];
+        VXGI_AO += VXGI_TraceAO(origin + VXGI_OFFSET*N, cone_dir, aperture, un_viewpos, un_voxeldata);
+    }
+
+    return 1.0 - clamp(VXGI_AO/5.0, 0.0, 1.0);
+}
+
+
+
+void main()
+{
+    vec3 result = vec3(0.0);
+
+    ivec2 texel     = ivec2(gl_GlobalInvocationID.xy);
+    // vec2  texcoords = vec2(texel) / un_resolution;
+
+    vec4  albedo_alpha = imageLoad(un_albedo, texel);
+    vec3  albedo       = albedo_alpha.rgb;
+    float alpha        = albedo_alpha.a;
+
+    vec3  position = imageLoad(un_position, texel).xyz;
+    vec3  normal   = imageLoad(un_normal,   texel).xyz;
+
+    vec4  texture_pbr = imageLoad(un_pbr, texel);
+    float roughness   = clamp(texture_pbr.r, 0.01, 0.99);
+    float metallic    = clamp(texture_pbr.g, 0.01, 0.99);
+    float ao          = clamp(texture_pbr.b, 0.01, 0.99);
+    float emission    = clamp(texture_pbr.a, 0.01, 0.99);
+
+    if (alpha < 1.0)
+    {
+    //    fsout_frag_color = vec4(0.0);
+       return;
+    }
+
+    vec3  N     = normalize(normal);
+    vec3  V     = normalize(un_viewpos - position);
+    vec3  R     = reflect(-V, N); 
+    vec3  F0    = mix(vec3(0.04), albedo, metallic);
+    float NdotV = max(dot(N, V), 0.0);
+    vec3  F     = fresnelSchlick(NdotV, F0);
+    vec3  Ks    = F;
+    vec3  Kd    = (vec3(1.0) - Ks) * (1.0 - metallic);
+    vec2  brdf  = texture(un_BRDF_LUT, vec2(NdotV, roughness)).rg;
+
+
+    vec3  dir_lighting = dirlight_contribution(0, position, F0, N, V, R, albedo, metallic, roughness);
+    float dir_shadow = dirlight_shadow(0, un_view, position, N);
+    result += dir_lighting * dir_shadow;
+
+
+    // IBL
+    // -----------------------------------------------------------------------------------------
+    vec3 irradiance = textureLod(un_skybox_diffuse, N, roughness).rgb;
+    vec3 diffuse    = irradiance * albedo;
+
+    vec3 prefilter = textureLod(un_skybox_specular, R, roughness*MIPLEVEL_SPECULAR).rgb;
+    vec3 specular  = prefilter * (Ks * brdf.x + brdf.y);
+    vec3 ambient   = (Kd * diffuse + specular) * ao;
+
+    #if DIRSHADOW_AMBIENT == 1
+        ambient *= clamp(dir_shadow, un_dirlights[0].ambient.w, 1.0);
+    #endif
+
+    result += ambient;
+    // -----------------------------------------------------------------------------------------
+
+    // Cone Tracing
+    // -----------------------------------------------------------------------------------------
+    // #if VXGI_ON == 1
+        if (VXGI_in_bounds(position, un_viewpos))
+        {
+            vec3  VXGI_ambient  = vec3(0.0);
+            vec3  VXGI_diffuse  = vec3(0.0);
+            vec3  VXGI_specular = vec3(0.0);
+            float VXGI_AO       = 0.0;
+
+            // #if VXGI_DIFFUSE == 1
+                VXGI_diffuse = indirect_diffuse(position, N);
+                VXGI_diffuse = VXGI_diffuse * albedo;
+            // #endif
+
+            // #if VXGI_SPECULAR == 1
+                VXGI_specular = trace_specular(position, N, R, roughness);
+                VXGI_specular = VXGI_specular * (Ks * brdf.x + brdf.y);
+            // #endif
+
+            VXGI_ambient = (Kd * VXGI_diffuse.rgb + VXGI_specular);
+            VXGI_AO      = trace_ao(position, N);
+
+            result += VXGI_ambient;
+
+            // #if VXGI_AMBIENTAO == 1
+                result *= (VXGI_AO);
+            // #endif
+
+            // #if VXGI_AMBIENTAO_ONLY == 1
+            //     result = vec3(VXGI_AO);
+            // #endif
+        }
+    // #endif
+    // -----------------------------------------------------------------------------------------
+
+
+
+
+    // result += albedo * 2.0 * clamp(emission - 1.0, 0.0, 1.0);
+
+    imageStore(un_output, texel, vec4(result, 1.0));
+}
