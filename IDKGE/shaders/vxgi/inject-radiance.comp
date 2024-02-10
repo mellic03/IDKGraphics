@@ -7,41 +7,108 @@
 
 layout ( local_size_x = 4, local_size_y = 4, local_size_z = 4 ) in;
 
-layout (binding=0, rgba16f) readonly  uniform image3D un_voxel_albedo;
-layout (binding=1, rgba16f) readonly  uniform image3D un_voxel_normal;
-layout (binding=2, rgba16f) uniform image3D un_voxel_radiance;
+
+uniform sampler3D un_voxel_aniso;
+
+layout (binding=13, rgba16f) uniform image3D un_voxel_albedo;
+layout (binding=6,  rgba16f) uniform image3D un_voxel_radiance;
+layout (binding=12, rgba16f) readonly uniform image3D un_voxel_normal;
 
 
 uniform vec3 un_light_dir;
 uniform sampler2DShadow un_depthmap;
 uniform mat4 un_light_matrix;
 
-#define ROLLING_AVG_FRAMES 8.0
+
+#define INDIRECT_STRENGTH 2.0
+#define ROLLING_AVG_FRAMES 16.0
+
+
+
+vec3 orthogonal( vec3 u )
+{
+	u = normalize(u);
+	vec3 v = vec3(0.99146, 0.11664, 0.05832);
+	return abs(dot(u, v)) > 0.99999 ? cross(u, vec3(0, 1, 0)) : cross(u, v);
+}
+
+
+vec3 indirect_diffuse( vec3 origin, vec3 N, float roughness )
+{
+    vec3  result = vec3(0.0);
+    float alpha  = 0.25;
+
+    vec3 T  = normalize(orthogonal(N));
+    vec3 B  = normalize(cross(N, T));
+    vec3 Tp = normalize(mix(T,  B, 0.5));
+    vec3 Bp = normalize(mix(T, -B, 0.5));
+
+    vec3 cone_directions[] = vec3[]
+    (
+        N,
+    
+        normalize(mix(N,  T,  alpha)),
+        normalize(mix(N,  B,  alpha)),
+        normalize(mix(N, -T,  alpha)),
+        normalize(mix(N, -B,  alpha)),
+    
+        normalize(mix(N,  Tp, alpha)),
+        normalize(mix(N, -Tp, alpha)),
+        normalize(mix(N,  Bp, alpha)),
+        normalize(mix(N, -Bp, alpha))
+    );
+
+    for (int i=0; i<9; i++)
+    {
+        vec3  cone_dir = cone_directions[i];
+        float aperture = radians(60.0);
+
+        result += VXGI_TraceCone(
+            origin + 3.0 * VXGI_VOXEL_SIZE*N,
+            cone_dir,
+            aperture,
+            un_viewpos,
+            un_voxel_aniso
+        );
+    }
+
+    return INDIRECT_STRENGTH * result;
+}
+
 
 
 void main()
 {
     ivec3 texel = ivec3(gl_GlobalInvocationID.xyz);
 
-    DirLight light     = un_dirlights[0];
-    vec3     light_dir = light.direction.xyz;
+    DirLight light = un_dirlights[0];
 
     vec3 P = VXGI_TexelToWorld(texel, un_viewpos);
-    vec3 N = normalize(imageLoad(un_voxel_normal, texel).rgb);
-    P += VXGI_VOXEL_SIZE * N;
+    vec3 L = -light.direction.xyz;
+    vec3 N = normalize(imageLoad(un_voxel_normal, texel).xyz);
 
-    vec4 albedo = imageLoad(un_voxel_albedo, texel);
+    const float a = (ROLLING_AVG_FRAMES - 1.0) / ROLLING_AVG_FRAMES;
+    const float b = 1.0 / ROLLING_AVG_FRAMES;
 
-    vec4 radiance  = albedo;
-         radiance.rgb *= light.diffuse.rgb;
-         radiance.rgb *= dirlight_shadow_2(0, un_depthmap, un_view, un_light_matrix, P, N);
+    vec3 albedo = imageLoad(un_voxel_albedo, texel).rgb;
+
+    vec4 radiance  = texelFetch(un_voxel_aniso, texel, 0);
+         radiance.rgb += albedo * indirect_diffuse(P, N, 0.5);
+
+    vec4  prev = imageLoad(un_voxel_radiance, texel);
+    radiance = a*prev + b*radiance;
+
+    imageStore(un_voxel_radiance, texel, radiance);
 
 
-    // const float a = (ROLLING_AVG_FRAMES - 1.0) / (ROLLING_AVG_FRAMES);
-    // const float b = 1.0 / ROLLING_AVG_FRAMES;
-    // vec4 result = a*imageLoad(un_voxel_radiance, texel) + b*radiance;
-    vec4 result = radiance;
 
+    // for (int i=0; i<6; i++)
+    // {
+    //     vec4 previous = imageLoad(un_voxel_radiance[i], texel);
+    //     vec4 current  = imageLoad(un_voxel_albedo, texel);
+    //     vec4 radiance = a*previous + b*current;
 
-    imageStore(un_voxel_radiance, texel, result);
+    //     imageStore(un_voxel_radiance[i], texel, radiance);
+    // }
+
 }

@@ -1,0 +1,41 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+#include "../UBOs/UBOs.glsl"
+#include "./vxgi.glsl"
+
+layout ( local_size_x = 4, local_size_y = 4, local_size_z = 4 ) in;
+
+layout (binding=20, rgba16f) writeonly uniform image3D un_current;
+layout (binding=26, rgba16f) readonly  uniform image3D un_previous;
+
+
+void main()
+{
+    ivec3 texel  = ivec3(gl_GlobalInvocationID.xyz);
+
+    const ivec3 offsets[] = ivec3[]
+    (
+        ivec3(-1, -1, -1 ),
+        ivec3(-1, +1, -1 ),
+        ivec3(-1, +1, +1 ),
+        ivec3(-1, -1, +1 ),
+
+        ivec3(+1, -1, -1 ),
+        ivec3(+1, +1, -1 ),
+        ivec3(+1, +1, +1 ),
+        ivec3(+1, -1, +1 )
+    );
+
+
+    vec4 result = vec4(0.0);
+    for (int i=0; i<8; i++)
+    {
+        result += imageLoad(un_previous, 2*texel + offsets[i]);
+    }
+    result /= 8.0;
+
+    imageStore(un_current, texel, result);
+
+}
+

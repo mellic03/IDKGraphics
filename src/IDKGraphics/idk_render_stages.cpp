@@ -73,8 +73,14 @@ idk::RenderEngine::RenderStage_volumetrics( idk::Camera &camera,
         auto &program = getProgram("vxgi-trace");
 
         program.bind();
-        program.set_sampler3D("un_voxeldata", vxgi_radiance);
         program.set_mat4("un_model", modelmat);
+
+        program.set_sampler3D("un_voxel_radiance", vxgi_radiance[0]);
+        // for (int i=0; i<6; i++)
+        // {
+        //     program.set_sampler3D("un_voxel_radiance[" + std::to_string(i) + "]", vxgi_radiance[i]);
+        // }
+        program.set_sampler3D("un_voxel_normal", vxgi_normal);
 
         tex2tex(program, buffer_in, buffer_out);
     }
@@ -137,37 +143,19 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
     program.set_sampler2D("un_BRDF_LUT", BRDF_LUT);
 
 
-    // static const float     B = VXGI_WORLD_HALF_BOUNDS;
-    // static const glm::mat4 P = glm::ortho(-B, B, -B, B, -B, B);
-
-    // glm::mat4 light_matrix = P * glm::lookAt(
-    //     -glm::vec3(lightSystem().getDirlight(0).direction),
-    //     glm::vec3(0.0f),
-    //     glm::vec3(0.0f, 1.0f, 0.0f)
-    // );
-
-    program.set_sampler3D("un_voxel_radiance",  vxgi_radiance);
-    program.set_sampler3D("un_voxel_albedo",    vxgi_albedo);
-    // program.set_sampler2D("un_vxgi_depthmap",  m_vxgi_buffer.depth_attachment);
-    // program.set_mat4("un_vxgi_light_matrix",   light_matrix);
-
-
-    // gl::bindImageTexture(0, buffer_out.attachments[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-    // gl::bindImageTexture(1, buffer_in.attachments[0],  0, GL_FALSE, 0, GL_READ_ONLY,  GL_RGBA16F);
-    // gl::bindImageTexture(2, buffer_in.attachments[1],  0, GL_FALSE, 0, GL_READ_ONLY,  GL_RGBA32F);
-    // gl::bindImageTexture(3, buffer_in.attachments[2],  0, GL_FALSE, 0, GL_READ_ONLY,  GL_RGBA16F);
-    // gl::bindImageTexture(4, buffer_in.attachments[3],  0, GL_FALSE, 0, GL_READ_ONLY,  GL_RGBA16F);
+    program.set_sampler3D("un_voxel_radiance", vxgi_radiance[0]);
+    // for (int i=0; i<6; i++)
+    // {
+    //     program.set_sampler3D("un_voxel_radiance[" + std::to_string(i) + "]", vxgi_radiance[i]);
+    // }
+    program.set_sampler3D("un_voxel_normal", vxgi_normal);
 
 
     idk::glDepthCascade depthcascade = m_lightsystem.depthCascade();
     program.set_vec4("un_cascade_depths", depthcascade.getCascadeDepths(camera.farPlane()));
     program.set_sampler2DArray("un_dirlight_depthmap", depthcascade.getTextureArray());
-
     program.set_samplerCube("un_skybox_diffuse",  skyboxes_IBL[current_skybox].first);
     program.set_samplerCube("un_skybox_specular", skyboxes_IBL[current_skybox].second);
-
-    // gl::dispatchCompute(this->width()/8, this->height()/8, 1);
-    // IDK_GLCALL( glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT); )
 
     tex2tex(program, buffer_in, m_mainbuffer_0);
     program.popTextureUnits();

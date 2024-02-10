@@ -97,7 +97,7 @@ uniform vec4                   un_cascade_depths;
 
 #define KERNEL_HW 2
 #define BLEND_DIST 1.0
-#define DIRLIGHT_BIAS 0.0
+#define DIRLIGHT_BIAS 0.001
 
 
 float sampleDepthMap( int layer, vec3 uv, float bias )
@@ -183,7 +183,7 @@ float dirlight_shadow_2( int idx, sampler2DShadow depth_map, mat4 view_matrix, m
     vec3  projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
           projCoords = projCoords * 0.5 + 0.5;
 
-    float bias   = 0.0; // 0.005 * max(dot(N, L), 0.0);
+    float bias   = 0.02 * max(dot(N, L), 0.0001);
     float shadow = sampleDepthMap_2(depth_map, projCoords, bias);
 
     return clamp(shadow, 0.0, 1.0);

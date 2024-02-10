@@ -136,12 +136,13 @@ void main()
     float roughness = ao_r_m.g;
     float metallic  = ao_r_m.b;
 
-    float a = 0.5; // un_material.normal_strength;
+    float a = 0.25; // un_material.normal_strength;
     vec3 N = normalize(TBN * normal);
          N = normalize(a*N + (1.0 - a)*normalize(fsin_normal));
+        //  N = normalize(fsin_normal);
 
     fsout_albedo   = vec4(albedo.rgb, 1.0);
     fsout_position = vec4(fsin_fragpos, 1.0);
-    fsout_normal   = vec4(N, 0.0);
+    fsout_normal   = vec4(N, 1.0);
     fsout_pbr      = vec4(roughness, metallic, ao, emission.x);
 }

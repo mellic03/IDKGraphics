@@ -13,10 +13,11 @@ layout (location = 0) out vec4 fsout_frag_color;
 #include "../include/lightsource.glsl"
 
 
-uniform sampler3D       un_voxel_radiance;
-uniform sampler3D       un_voxel_albedo;
 uniform sampler2DShadow un_vxgi_depthmap;
 uniform mat4            un_vxgi_light_matrix;
+
+uniform sampler3D       un_voxel_normal;
+uniform sampler3D       un_voxel_radiance;
 
 
 
@@ -40,11 +41,12 @@ uniform sampler2D   un_BRDF_LUT;
 #define VXGI_ON 1
 #define VXGI_DIFFUSE 1
 #define VXGI_DIFFUSE_APERTURE 60.0
-#define VXGI_DIFFUSE_OFFSET 0.15
+#define VXGI_DIFFUSE_OFFSET   3.0
+#define VXGI_DIFFUSE_STRENGTH 0.25
 
-#define VXGI_SPECULAR 1
-#define VXGI_SPECULAR_APERTURE 120.0
-#define VXGI_SPECULAR_OFFSET 0.15
+#define VXGI_SPECULAR 0
+#define VXGI_SPECULAR_APERTURE 10.0
+#define VXGI_SPECULAR_STRENGTH 1.0
 
 #define VXGI_AMBIENTAO 1
 #define VXGI_AMBIENTAO_ONLY 0
@@ -93,38 +95,39 @@ vec3 orthogonal( vec3 u )
 }
 
 
-vec3 indirect_diffuse( vec3 origin, vec3 N )
+vec3 indirect_diffuse( vec3 origin, vec3 N, float roughness )
 {
-    float aperture     = radians(VXGI_DIFFUSE_APERTURE);
-    vec3  VXGI_diffuse = vec3(0.0);
-
-    float alpha = 0.5;
+    vec3  result = vec3(0.0);
+    float alpha  = 0.5;
 
     vec3 T  = normalize(orthogonal(N));
     vec3 B  = normalize(cross(N, T));
-    vec3 Tp = normalize(0.5 * (T + B));
-    vec3 Bp = normalize(0.5 * (T - B));
+    vec3 Tp = normalize(mix(T,  B, 0.5));
+    vec3 Bp = normalize(mix(T, -B, 0.5));
 
-
-    vec3 cone_directions[9] = vec3[](
+    vec3 cone_directions[] = vec3[]
+    (
         N,
-        normalize(mix(N,  T, alpha)),
-        normalize(mix(N, -T, alpha)),
-        normalize(mix(N,  B, alpha)),
-        normalize(mix(N, -B, alpha)),
-
+    
+        normalize(mix(N,  T,  alpha)),
+        normalize(mix(N,  B,  alpha)),
+        normalize(mix(N, -T,  alpha)),
+        normalize(mix(N, -B,  alpha)),
+    
         normalize(mix(N,  Tp, alpha)),
         normalize(mix(N, -Tp, alpha)),
         normalize(mix(N,  Bp, alpha)),
         normalize(mix(N, -Bp, alpha))
     );
 
+
     for (int i=0; i<9; i++)
     {
-        vec3 cone_dir = cone_directions[i];
+        float aperture = radians(VXGI_DIFFUSE_APERTURE);
+        vec3  cone_dir = cone_directions[i];
 
-        VXGI_diffuse += VXGI_TraceCone(
-            origin,
+        result += VXGI_TraceCone(
+            origin + VXGI_DIFFUSE_OFFSET * VXGI_VOXEL_SIZE * N,
             cone_dir,
             aperture,
             un_viewpos,
@@ -132,48 +135,52 @@ vec3 indirect_diffuse( vec3 origin, vec3 N )
         );
     }
 
-    return VXGI_diffuse;
+    return VXGI_DIFFUSE_STRENGTH * result;
 }
 
 
 vec3 trace_specular( vec3 origin, vec3 N, vec3 R, float roughness )
 {
-    float aperture = clamp(roughness * radians(VXGI_SPECULAR_APERTURE), 0.01, 6.0);
-    return VXGI_TraceCone(origin, R, aperture, un_viewpos, un_voxel_radiance);
-}
+    vec3  result = vec3(0.0);
+    float alpha  = 0.025;
+
+    vec3 T  = normalize(orthogonal(R));
+    vec3 B  = normalize(cross(R, T));
+    vec3 Tp = normalize(mix(T, B, 0.5));
+    vec3 Bp = normalize(mix(T, B, 0.5));
 
 
-float trace_ao( vec3 origin, vec3 N )
-{
-    float aperture = radians(VXGI_DIFFUSE_APERTURE);
-    float VXGI_AO  = 0.0;
-
-    float CONE_ANGLE = 0.5;
-    vec3 T = normalize(orthogonal(N));
-    vec3 B = normalize(cross(N, T));
-
-    vec3 cone_directions[5] = vec3[](
-        N,
-        normalize(mix(N,  T, CONE_ANGLE)),
-        normalize(mix(N, -T, CONE_ANGLE)),
-        normalize(mix(N,  B, CONE_ANGLE)),
-        normalize(mix(N, -B, CONE_ANGLE))
+    vec3 cone_directions[] = vec3[]
+    (
+        R,
+        normalize(mix(R,  T, alpha)),
+        normalize(mix(R, -T, alpha)),
+        normalize(mix(R,  B, alpha)),
+        normalize(mix(R, -B, alpha))
     );
 
     for (int i=0; i<1; i++)
     {
-        vec3 cone_dir = cone_directions[i];
-        VXGI_AO += VXGI_TraceAO(origin + VXGI_OFFSET*N, cone_dir, aperture, un_viewpos, un_voxel_albedo);
+        float aperture = radians(roughness * VXGI_SPECULAR_APERTURE + 0.001);
+        vec3  dir      = cone_directions[i];
+
+        result += VXGI_TraceCone(
+            origin + 3.0 * VXGI_VOXEL_SIZE*N,
+            dir,
+            aperture,
+            un_viewpos,
+            un_voxel_radiance
+        );
     }
 
-    return 1.0 - clamp(VXGI_AO/1.0, 0.0, 1.0);
+    return result;
 }
+
 
 
 void main()
 {
     vec3 result = vec3(0.0);
-
 
     vec4  albedo_a = texture(un_texture_0, fsin_texcoords);
     vec3  albedo   = albedo_a.rgb;
@@ -186,7 +193,7 @@ void main()
     float roughness   = clamp(texture_pbr.r, 0.01, 0.99);
     float metallic    = clamp(texture_pbr.g, 0.01, 0.99);
     float ao          = clamp(texture_pbr.b, 0.01, 0.99);
-    float emission    = clamp(texture_pbr.a, 0.01, 0.99);
+    float emission    = clamp(texture_pbr.a, 0.00, 1.00);
 
     if (alpha < 1.0)
     {
@@ -250,8 +257,8 @@ void main()
             float VXGI_AO       = 0.0;
 
             #if VXGI_DIFFUSE == 1
-                VXGI_diffuse = indirect_diffuse(position, N);
-                VXGI_diffuse = VXGI_diffuse * albedo;
+                VXGI_diffuse = indirect_diffuse(position, N, roughness);
+                VXGI_diffuse = VXGI_diffuse * (albedo);
             #endif
 
             #if VXGI_SPECULAR == 1
@@ -260,26 +267,26 @@ void main()
             #endif
 
             VXGI_ambient = (Kd * VXGI_diffuse.rgb + VXGI_specular);
-            VXGI_AO      = trace_ao(position, N);
+            // VXGI_AO      = trace_ao(position, N);
 
             result += VXGI_ambient;
+            // result = VXGI_diffuse / albedo;
 
-            #if VXGI_AMBIENTAO == 1
-                result *= (VXGI_AO);
-            #endif
+            // #if VXGI_AMBIENTAO == 1
+            //     result *= (VXGI_AO);
+            // #endif
 
-            #if VXGI_AMBIENTAO_ONLY == 1
-                result = vec3(VXGI_AO);
-            #endif
+            // #if VXGI_AMBIENTAO_ONLY == 1
+            //     result = vec3(VXGI_AO);
+            // #endif
 
         }
     #endif
     // -----------------------------------------------------------------------------------------
 
-    // result += albedo * 2.0 * clamp(emission - 1.0, 0.0, 1.0);
+    // fsout_frag_color = vec4(vec3(emission), 1.0);
 
+    result += emission*albedo;
 
-    // fsout_frag_color = vec4(vec3(roughness), 1.0);
     fsout_frag_color = vec4(result, 1.0);
-
 }

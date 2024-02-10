@@ -8,7 +8,8 @@ layout (location = 0) out vec4 fsout_frag_color;
 #include "./vxgi.glsl"
 
 
-uniform sampler3D un_voxeldata;
+uniform sampler3D un_voxel_radiance;
+uniform sampler3D un_voxel_normal;
 
 in vec4 fsin_fragpos;
 
@@ -18,6 +19,9 @@ in vec4 fsin_fragpos;
 
 #define APERTURE 1.0
 #define ZMIPLEVEL 0.0
+#define ZREE 0
+
+
 
 void main()
 {
@@ -35,7 +39,6 @@ void main()
     float ystep = vstep.y; // sign(dir.y);
     float zstep = vstep.z; // sign(dir.z);
 
-
     float tmx = tm.x;
     float tmy = tm.y;
     float tmz = tm.z;
@@ -46,22 +49,21 @@ void main()
 
 
     vec4  accum = vec4(0.0);
-    // accum = VXGI_TraceCone(pos, dir, radians(APERTURE), un_viewpos, un_voxeldata).rgb;
-
+    // accum.rgb = VXGI_TraceConeAniso(pos, dir, radians(APERTURE), un_viewpos, un_voxel_normal, un_voxel_radiance);
+    // accum.rgb = VXGI_TraceCone(pos, dir, radians(APERTURE), un_viewpos, un_voxel_radiance[ZREE]);
+    // accum.a   = 1.0;
 
     for (int i=0; i<MAX_STEPS; i++)
     {
         vec3 texcoord = VXGI_WorldToTexCoord(pos, un_viewpos);
-        accum += textureLod(un_voxeldata, texcoord, ZMIPLEVEL) * pow(2, ZMIPLEVEL);
+        accum += textureLod(un_voxel_radiance, texcoord, ZMIPLEVEL);
 
         if (accum.a > 0.0)
         {
-            // accum.rgb = accum.rgb * 0.5 + 0.5;
             break;
         }
 
         pos += STEP_SIZE * dir;
-
     }
 
 

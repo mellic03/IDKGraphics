@@ -42,11 +42,12 @@ idk::RenderEngine::init_screenquad()
 void
 idk::RenderEngine::compileShaders()
 {
-    createProgram("vxgi", "IDKGE/shaders/vxgi/", "vxgi.vs", "vxgi.fs");
-    createProgram("vxgi-shadow", "IDKGE/shaders/vxgi/", "shadow.vs", "shadow.fs");
-    createProgram("vxgi-trace",  "IDKGE/shaders/deferred/", "background.vs", "../vxgi/trace.fs");
-
+    createProgram("vxgi-voxelize", "IDKGE/shaders/vxgi/", "voxelize.vs", "voxelize.fs");
+    createProgram("vxgi-shadow",   "IDKGE/shaders/vxgi/", "shadow.vs", "shadow.fs");
+    createProgram("vxgi-trace",    "IDKGE/shaders/deferred/", "background.vs", "../vxgi/trace.fs");
     createProgram("vxgi-inject",    glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/inject-radiance.comp")));
+    createProgram("vxgi-mipmap-A",  glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/mipmap-A.comp")));
+    createProgram("vxgi-mipmap-B",  glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/mipmap-B.comp")));
     createProgram("vxgi-mipmap",    glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/mipmap.comp")));
     createProgram("vxgi-clear",     glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/clear.comp")));
     createProgram("vxgi-bounce-1",  glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/bounce-1.comp")));
@@ -260,10 +261,18 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
 
     loadSkybox("IDKGE/resources/skybox/");
 
-    vxgi_albedo   = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
-    vxgi_normal   = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
-    vxgi_radiance = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
-    vxgi_bounce1  = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
+
+
+    vxgi_albedo = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
+    vxgi_normal = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
+
+    for (int i=0; i<1; i++)
+    {
+        vxgi_radiance[i] = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
+        vxgi_propagation[i] = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
+    }
+
+
 
     // Default render queues
     // -----------------------------------------------------------------------------------------
@@ -282,7 +291,7 @@ idk::RenderEngine::RenderEngine( const std::string &name, int w, int h, int gl_m
 :
     m_windowsys(name.c_str(), w, h, gl_major, gl_minor, flags),
     m_shadow_render_queue(drawmethods::draw_untextured, "dir_shadow"),
-    m_vxgi_RQ("vxgi")
+    m_vxgi_RQ("vxgi-voxelize")
 {
     m_resolution = glm::ivec2(w, h);
     gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
@@ -687,89 +696,79 @@ idk::RenderEngine::endFrame( float dt )
 
     idk::Camera &camera = getCamera();
 
-    gl::bindImageTexture(0, vxgi_albedo,   0, GL_TRUE, 0, GL_READ_WRITE, VXGI_TEXTURE_FORMAT);
-    gl::bindImageTexture(1, vxgi_normal,   0, GL_TRUE, 0, GL_READ_WRITE, VXGI_TEXTURE_FORMAT);
-    gl::bindImageTexture(2, vxgi_radiance, 0, GL_TRUE, 0, GL_READ_WRITE, VXGI_TEXTURE_FORMAT);
-    gl::bindImageTexture(3, vxgi_bounce1,  0, GL_TRUE, 0, GL_READ_WRITE, VXGI_TEXTURE_FORMAT);
 
-    // static int count = 0;
-    // count += 1;
-
-    // if (count % 4 == 0)
+    for (int i=0; i<1; i++)
     {
-    //     auto &vxgi_clear = getProgram("vxgi-clear");
-    //     vxgi_clear.bind();
-        // vxgi_clear.dispatch(VXGI_TEXTURE_SIZE/4);
-        // gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+        gl::bindImageTexture(0+i, vxgi_propagation[i], 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+        gl::bindImageTexture(6+i, vxgi_radiance[i], 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
 
-        IDK_GLCALL( glClearTexImage(vxgi_albedo, 0, GL_RGBA, GL_HALF_FLOAT, nullptr); )
-        IDK_GLCALL( glClearTexImage(vxgi_normal, 0, GL_RGBA, GL_HALF_FLOAT, nullptr); )
-        IDK_GLCALL( glClearTexImage(vxgi_radiance, 0, GL_RGBA, GL_HALF_FLOAT, nullptr); )
-        IDK_GLCALL( glClearTexImage(vxgi_bounce1, 0, GL_RGBA, GL_HALF_FLOAT, nullptr); )
-
-        gl::generateTextureMipmap(vxgi_albedo);
-        // gl::generateTextureMipmap(vxgi_normal);
-        // gl::generateTextureMipmap(vxgi_radiance);
-        // gl::generateTextureMipmap(vxgi_bounce1);
+        // gl::clearTexImage(vxgi_radiance[i], 0, GL_RGBA, GL_FLOAT, nullptr);
+    }
 
 
-        VXGI::shadowPass(
-            m_vxgi_buffer,
-            camera,
-            lightSystem().getDirlight(0).direction,
-            getProgram("vxgi-shadow"),
-            m_shadow_render_queue,
-            modelSystem()
-        );
+    static int count = 0;
+    count += 1;
+    // if (count >= 256)
+    {
+        gl::clearTexImage(vxgi_propagation[0], 0, GL_RGBA, GL_FLOAT, nullptr);
+    }
 
-        gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
+    gl::bindImageTexture(13,  vxgi_albedo, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+    gl::bindImageTexture(12, vxgi_normal, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+
+    gl::clearTexImage(vxgi_albedo, 0, GL_RGBA, GL_FLOAT, nullptr);
+    gl::clearTexImage(vxgi_normal, 0, GL_RGBA, GL_FLOAT, nullptr);
+
+
+    VXGI::shadowPass(
+        m_vxgi_buffer,
+        camera,
+        lightSystem().getDirlight(0).direction,
+        getProgram("vxgi-shadow"),
+        m_shadow_render_queue,
+        modelSystem()
+    );
+
+    gl::memoryBarrier(GL_ALL_BARRIER_BITS);
+
+
+    // if (count >= 256)
+    {
         VXGI::renderTexture(
             m_vxgi_buffer,
             camera,
-            getProgram("vxgi"),
+            getProgram("vxgi-voxelize"),
             m_vxgi_RQ,
-            vxgi_albedo,
-            vxgi_normal,
             modelSystem(),
             m_lightsystem.depthCascade()
         );
 
-        gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+        gl::generateTextureMipmap(vxgi_albedo);
+        gl::generateTextureMipmap(vxgi_normal);
+        VXGI::generateMipmap(getProgram("vxgi-mipmap-A"), getProgram("vxgi-mipmap-B"), vxgi_propagation[0]);
+
+        count = 0;
     }
 
-    VXGI::injectRadiance(
-        getProgram("vxgi-inject"),
-        camera,
-        m_vxgi_buffer,
-        lightSystem().getDirlight(0).direction,
-        lightSystem().depthCascade()
-    );
+    {
+        auto &program = getProgram("vxgi-inject");
+        program.bind();
+    
+        program.set_sampler3D("un_voxel_aniso",  vxgi_propagation[0]);
+
+        VXGI::injectRadiance(
+            program,
+            camera,
+            m_vxgi_buffer,
+            lightSystem().getDirlight(0).direction,
+            lightSystem().depthCascade()
+        );
+    }
+
+    VXGI::generateMipmap(getProgram("vxgi-mipmap-A"), getProgram("vxgi-mipmap-B"), vxgi_radiance[0]);
 
 
-    // gl::generateTextureMipmap(vxgi_albedo);
-    // gl::generateTextureMipmap(vxgi_normal);
-    gl::generateTextureMipmap(vxgi_radiance);
-    gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-    // auto &bounce1 = getProgram("vxgi-bounce-1");
-    // bounce1.bind();
-
-    // bounce1.set_sampler3D("un_voxel_radiance", vxgi_radiance);
-    // bounce1.dispatch(VXGI_TEXTURE_SIZE / 4);
-    // gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-    // gl::generateTextureMipmap(vxgi_bounce1);
-
-    // gl::bindImageTexture(3, vxgi_radiance, 0, GL_TRUE, 0, GL_READ_WRITE, VXGI_TEXTURE_FORMAT);
-    // bounce1.set_sampler3D("un_voxel_radiance", vxgi_bounce1);
-    // bounce1.dispatch(VXGI_TEXTURE_SIZE / 4);
-    // gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-    // gl::generateTextureMipmap(vxgi_radiance);
-
-    // gl::bindImageTexture(3, vxgi_bounce1, 0, GL_TRUE, 0, GL_READ_WRITE, VXGI_TEXTURE_FORMAT);
-
-
-    gl::disable(GL_CULL_FACE);
     RenderStage_geometry       (camera, dt, m_geom_buffer);
     RenderStage_lighting       (camera, dt, m_geom_buffer,  m_mainbuffer_0);
     RenderStage_postprocessing (camera,     m_mainbuffer_0, m_finalbuffer);

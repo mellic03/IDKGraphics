@@ -15,23 +15,21 @@
 namespace idk::VXGI
 {
     GLuint  allocateTexture( size_t w );
-
-    GLuint  allocateRadianceTexture( size_t w );
-
+    GLuint  allocateNormalTexture( size_t w );
 
     void    shadowPass( idk::glFramebuffer &buffer_out, idk::Camera &camera, glm::vec3 light_dir,
                         idk::glShaderProgram &program, idk::RenderQueue &RQ,
                         idk::ModelSystem &MS );
 
     void    renderTexture( idk::glFramebuffer &buffer_out, idk::Camera &camera, idk::glShaderProgram &program,
-                           idk::RenderQueue &RQ, GLuint albedo, GLuint normal, idk::ModelSystem &MS,
-                           idk::glDepthCascade &depthcascade );
+                           idk::RenderQueue &RQ, idk::ModelSystem &MS, idk::glDepthCascade &depthcascade );
 
     void    injectRadiance( idk::glShaderProgram &program, idk::Camera &camera, idk::glFramebuffer &buffer_out,
                            glm::vec3 light_dir, idk::glDepthCascade &depthcascade );
 
 
-    void    generateMipmap( idk::glShaderProgram &program, GLuint texture );
+    void    generateMipmap( idk::glShaderProgram &program, GLuint textures[6] );
+    void    generateMipmap( idk::glShaderProgram &program1, idk::glShaderProgram &program2, GLuint texture );
 
 };
 

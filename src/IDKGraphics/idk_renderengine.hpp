@@ -83,11 +83,12 @@ private:
     idk::Allocator<idk::RenderQueue>    m_public_RQs;
 
     int                                 m_RQ;
-    // int                                 m_shadow_RQ;
 
-    GLuint                              vxgi_texture;
-    GLuint                              vxgi_albedo, vxgi_normal, vxgi_radiance, vxgi_prev_radiance;
-    GLuint                              vxgi_bounce1;
+    GLuint                              vxgi_normal;
+    GLuint                              vxgi_albedo;
+    GLuint                              vxgi_radiance[6];
+    GLuint                              vxgi_propagation[6];
+
     glSSBO                              vxgi_SSBO;
     idk::RenderQueue                    m_vxgi_RQ;
     idk::RenderQueue                    m_shadow_render_queue; 
@@ -161,7 +162,7 @@ private:
 
 
 public:
-    bool                                m_vxgi_debug = true;
+    bool                                m_vxgi_debug = false;
     glFramebuffer                       m_vxgi_buffer;
 
     RenderEngine( const std::string &name, int w, int h,

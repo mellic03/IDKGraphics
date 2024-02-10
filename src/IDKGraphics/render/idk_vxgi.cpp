@@ -36,37 +36,6 @@ VXGI_clearTexture( GLuint texture )
 GLuint
 idk::VXGI::allocateTexture( size_t w )
 {
-    #if VXGI_TEXTURE_FORMAT == GL_RGBA16F
-        static constexpr idk::glTextureConfig config = {
-            .target         = GL_TEXTURE_3D,
-            .internalformat = GL_RGBA16F,
-            .format         = GL_RGBA,
-            .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
-            .magfilter      = GL_NEAREST,
-            .datatype       = GL_HALF_FLOAT,
-            .genmipmap      = GL_TRUE,
-        };
-    #else
-        static constexpr idk::glTextureConfig config = {
-            .target         = GL_TEXTURE_3D,
-            .internalformat = GL_RGBA8,
-            .format         = GL_RGBA,
-            .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
-            .magfilter      = GL_NEAREST,
-            .datatype       = GL_UNSIGNED_INT,
-            .genmipmap      = GL_TRUE,
-        };
-    #endif
-
-    GLuint texture = gltools::genTexture3D(w, w, w, config);
-    IDK_GLCALL( glClearTexImage(texture, 0, GL_RGBA, GL_HALF_FLOAT, nullptr); )
-
-    return texture;
-}
-
-GLuint
-idk::VXGI::allocateRadianceTexture( size_t w )
-{
     static constexpr idk::glTextureConfig config = {
         .target         = GL_TEXTURE_3D,
         .internalformat = GL_RGBA16F,
@@ -77,20 +46,39 @@ idk::VXGI::allocateRadianceTexture( size_t w )
         .genmipmap      = GL_TRUE,
     };
 
-    return gltools::genTexture3D(w, w, w, config);
+    GLuint texture = gltools::genTexture3D(w, w, w, config);
+    gl::clearTexImage(texture, 0, GL_RGBA, GL_FLOAT, nullptr);
+
+    return texture;
+}
+
+GLuint
+idk::VXGI::allocateNormalTexture( size_t w )
+{
+    static constexpr idk::glTextureConfig config = {
+        .target         = GL_TEXTURE_3D,
+        .internalformat = GL_RGBA8,
+        .format         = GL_RGBA,
+        .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
+        .magfilter      = GL_NEAREST,
+        .datatype       = GL_UNSIGNED_BYTE,
+        .genmipmap      = GL_TRUE,
+    };
+
+    GLuint texture = gltools::genTexture3D(w, w, w, config);
+    gl::clearTexImage(texture, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    return texture;
 }
 
 
-
-static glm::mat4 ligh_matrix;
-
+static glm::mat4 light_matrix;
 
 void
 idk::VXGI::shadowPass( idk::glFramebuffer &buffer_out, idk::Camera &camera, glm::vec3 light_dir,
                        idk::glShaderProgram &program, idk::RenderQueue &RQ,
                        idk::ModelSystem &MS )
 {
-    // gl::enable(GL_DEPTH_TEST);
     gl::disable(GL_CULL_FACE);
 
     buffer_out.bind();
@@ -105,10 +93,10 @@ idk::VXGI::shadowPass( idk::glFramebuffer &buffer_out, idk::Camera &camera, glm:
         glm::vec3(0.0f, 1.0f, 0.0f)
     );
 
-    ligh_matrix = P * view;
+    light_matrix = P * view;
 
     program.bind();
-    program.set_mat4("un_P", ligh_matrix);
+    program.set_mat4("un_P", light_matrix);
 
     for (auto &[model, dummy, transform]: RQ)
     {
@@ -127,8 +115,7 @@ idk::VXGI::shadowPass( idk::glFramebuffer &buffer_out, idk::Camera &camera, glm:
 
 void
 idk::VXGI::renderTexture( idk::glFramebuffer &buffer_out, idk::Camera &camera, idk::glShaderProgram &program,
-                          idk::RenderQueue &RQ, GLuint albedo, GLuint normal, idk::ModelSystem &MS,
-                          idk::glDepthCascade &depthcascade )
+                          idk::RenderQueue &RQ, idk::ModelSystem &MS, idk::glDepthCascade &depthcascade )
 {
     static const float B     = VXGI_WORLD_HALF_BOUNDS;
     static const float theta = glm::radians(90.0f);
@@ -148,7 +135,7 @@ idk::VXGI::renderTexture( idk::glFramebuffer &buffer_out, idk::Camera &camera, i
     program.set_vec4("un_cascade_depths", depthcascade.getCascadeDepths(camera.farPlane()));
     program.set_sampler2DArray("un_dirlight_depthmap", depthcascade.getTextureArray());
     program.set_sampler2D("un_depthmap", buffer_out.depth_attachment);
-    program.set_mat4("un_light_matrix", ligh_matrix);
+    program.set_mat4("un_light_matrix", light_matrix);
 
     for (int i=0; i<3; i++)
     {
@@ -176,31 +163,33 @@ idk::VXGI::injectRadiance( idk::glShaderProgram &program, idk::Camera &camera, i
     program.set_vec4("un_cascade_depths", depthcascade.getCascadeDepths(camera.farPlane()));
     program.set_sampler2DArray("un_dirlight_depthmap", depthcascade.getTextureArray());
     program.set_sampler2D("un_depthmap", buffer_out.depth_attachment);
-    program.set_mat4("un_light_matrix", ligh_matrix);
+    program.set_mat4("un_light_matrix", light_matrix);
 
 
-    static constinit GLuint size = GLuint(VXGI_TEXTURE_SIZE);
-    gl::dispatchCompute(size/4, size/4, size/4);
+    program.dispatch(VXGI_TEXTURE_SIZE/4);
+
     gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-    program.unbind();
 }
 
 
 void
-idk::VXGI::generateMipmap( idk::glShaderProgram &program, GLuint texture )
+idk::VXGI::generateMipmap( idk::glShaderProgram &program, GLuint textures[6] )
 {
     program.bind();
 
     GLuint size  = GLuint(VXGI_TEXTURE_SIZE) / 2;
     GLuint level = 1;
 
-    while (size >= 4)
+    while (size >= 1)
     {
-        gl::bindImageTexture(5, texture, level,   GL_TRUE, 0, GL_WRITE_ONLY, VXGI_TEXTURE_FORMAT);
-        gl::bindImageTexture(6, texture, level-1, GL_TRUE, 0, GL_READ_ONLY,  VXGI_TEXTURE_FORMAT);
 
-        gl::dispatchCompute(size/4, size/4, size/4);
+        for (int i=0; i<6; i++)
+        {
+            gl::bindImageTexture(20+i, textures[i], level,   GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+            gl::bindImageTexture(26+i, textures[i], level-1, GL_TRUE, 0, GL_READ_ONLY,  GL_RGBA16F);
+        }
+
+        program.dispatch(size/1);
 
         size /= 2;
         level += 1;
@@ -208,4 +197,43 @@ idk::VXGI::generateMipmap( idk::glShaderProgram &program, GLuint texture )
         gl::memoryBarrier(GL_ALL_BARRIER_BITS);
     }
 
+}
+
+
+void
+idk::VXGI::generateMipmap( idk::glShaderProgram &program1, idk::glShaderProgram &program2, GLuint texture )
+{
+    program1.bind();
+
+    GLuint size  = GLuint(VXGI_TEXTURE_SIZE) / 2;
+    GLuint level = 1;
+
+    while (size >= 4)
+    {
+        gl::bindImageTexture(20, texture, level,   GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+        gl::bindImageTexture(26, texture, level-1, GL_TRUE, 0, GL_READ_ONLY,  GL_RGBA16F);
+
+        program1.dispatch(size/4);
+
+        size /= 2;
+        level += 1;
+
+        gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    }
+
+
+    // program2.bind();
+
+    // while (size >= 1)
+    // {
+    //     gl::bindImageTexture(20, texture, level,   GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+    //     gl::bindImageTexture(26, texture, level-1, GL_TRUE, 0, GL_READ_ONLY,  GL_RGBA16F);
+
+    //     program2.dispatch(size);
+
+    //     size /= 2;
+    //     level += 1;
+
+    //     gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    // }
 }
