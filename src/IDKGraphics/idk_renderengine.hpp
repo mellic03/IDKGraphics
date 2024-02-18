@@ -1,15 +1,15 @@
 #pragma once
 
 #include "render/idk_sdl_glew_init.hpp"
-#include "render/idk_renderqueue.hpp"
 
 #include "batching/idk_model_allocator.hpp"
 
-#include <libidk/GL/common.hpp>
+#include <libidk/idk_gl.hpp>
 #include <libidk/idk_allocator.hpp>
 
+#include "storage/idk_ubo_general.hpp"
+
 #include "camera/idk_camera.hpp"
-#include "idk_noisegen.hpp"
 #include "lighting/IDKlighting.hpp"
 
 #include <unordered_map>
@@ -54,6 +54,8 @@ private:
     glFramebuffer                       m_geom_buffer;
     glFramebuffer                       m_volumetrics_buffer;
 
+    GLuint                              m_velocitybuffer;
+    GLuint                              m_positionbuffer;
     // -----------------------------------------------------------------------------------------
 
     // Shaders
@@ -64,6 +66,12 @@ private:
 
     // UBO
     // -----------------------------------------------------------------------------------------
+    uint32_t                            m_SyncData_index = 2;
+    idk::glUBO                          m_UBO_SyncData;
+
+    idk::UBORenderData                  m_RenderData;
+    idk::StreamedUBO                    m_UBO_RenderData;
+
     glUBO                               m_UBO_pointlights;
     glUBO                               m_UBO_dirlights;
     glUBO                               m_UBO_camera;
@@ -73,25 +81,15 @@ private:
 
     int                                 m_active_camera_id;
     Allocator<Camera>                   m_camera_allocator;
-    idk::ModelSystem                    m_modelsystem;
     idk::LightSystem                    m_lightsystem;
     idk::ModelAllocator                 m_model_allocator;
 
-    // Render queues
+    // VXGI
     // -----------------------------------------------------------------------------------------
-    idk::Allocator<idk::RenderQueue>    m_private_RQs;
-    idk::Allocator<idk::RenderQueue>    m_public_RQs;
-
-    int                                 m_RQ;
-
-    GLuint                              vxgi_normal;
-    GLuint                              vxgi_albedo;
     GLuint                              vxgi_radiance[6];
-    GLuint                              vxgi_propagation[6];
-
-    glSSBO                              vxgi_SSBO;
-    idk::RenderQueue                    m_vxgi_RQ;
-    idk::RenderQueue                    m_shadow_render_queue; 
+    GLuint                              vxgi_radiance_2[6];
+    GLuint                              vxgi_albedo;
+    GLuint                              vxgi_normal;
     // -----------------------------------------------------------------------------------------
 
     // Initialization
@@ -106,14 +104,15 @@ private:
     void                                update_UBO_camera();
     void                                update_UBO_dirlights();
     void                                update_UBO_pointlights();
-    void                                shadowpass_dirlights();
+    void                                shadowpass_dirlights( GLuint VAO, GLuint draw_indirect_buffer, 
+                                         const std::vector<idk::glDrawElementsIndirectCommand> &commands );
     // -----------------------------------------------------------------------------------------
 
 
-    idk::RenderQueue &                  _getRenderQueue( int id );
+    // idk::RenderQueue &                  _getRenderQueue( int id );
 
-    int                                 _createRenderQueue( const std::string &program_name,
-                                                            const idk_drawmethod & );
+    // int                                 _createRenderQueue( const std::string &program_name,
+    //                                                         const idk_drawmethod & );
 
 
     // Render stages    
@@ -137,6 +136,8 @@ private:
 
     void PostProcess_chromatic_aberration( glFramebuffer &buffer_in,
                                            glFramebuffer &buffer_out );
+
+    void PostProcess_SSR();
 
     void PostProcess_colorgrading( idk::Camera &,
                                    glFramebuffer &buffer_in,
@@ -202,23 +203,38 @@ public:
 
 
     idk::LightSystem &                  lightSystem() { return m_lightsystem; };
-    ModelSystem &                       modelSystem() { return m_modelsystem; };
     ModelAllocator &                    modelAllocator() { return m_model_allocator; };
+
+
+    void getVertices( int model_id, size_t &num_vertices, std::unique_ptr<uint8_t[]> &vertices )
+    {
+        m_model_allocator.getVertices(model_id, num_vertices, vertices);
+    };
+
+
+    void getIndices( int model_id, size_t &num_indices, std::unique_ptr<uint32_t[]> &indices )
+    {
+        m_model_allocator.getIndices(model_id, num_indices, indices);
+    };
+
 
     int                                 loadSkybox( const std::string &filepath );
     void                                useSkybox( int skybox ) { current_skybox = skybox; };
 
-    int                                 createRenderQueue( const std::string &program_name,
-                                                           const RenderQueueConfig &,
-                                                           const idk_drawmethod & );
+    // int                                 createRenderQueue( const std::string &program_name,
+    //                                                        const RenderQueueConfig &,
+    //                                                        const idk_drawmethod & );
 
-    int                                 createRenderQueue( int program,
-                                                           const RenderQueueConfig &,
-                                                           const idk_drawmethod & );
+    // int                                 createRenderQueue( int program,
+    //                                                        const RenderQueueConfig &,
+    //                                                        const idk_drawmethod & );
 
-    idk::RenderQueue &                  getRenderQueue( int id );
+    // idk::RenderQueue &                  getRenderQueue( int id );
 
-    void                                drawModelRQ( int rq, int model, const glm::mat4 & );
+
+    int                                 loadModel( const std::string &filepath );
+
+    // void                                drawModelRQ( int rq, int model, const glm::mat4 & );
     void                                drawModel( int model, const glm::mat4 & );
     void                                drawShadowCaster( int model, const glm::mat4 & );
 
@@ -243,6 +259,8 @@ public:
 
     idk::glShaderProgram &getProgram( const std::string &name )
     {
+        IDK_ASSERT("No such program", m_program_ids.contains(name));
+
         int id = m_program_ids[name];
         return m_programs.get(id);
     };

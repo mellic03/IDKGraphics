@@ -3,7 +3,7 @@
 #include "render/idk_vxgi.hpp"
 
 #include <libidk/GL/idk_glShaderStage.hpp>
-
+#include <libidk/idk_image.hpp>
 
 
 static float delta_time = 1.0f;
@@ -45,25 +45,29 @@ idk::RenderEngine::compileShaders()
     createProgram("vxgi-voxelize", "IDKGE/shaders/vxgi/", "voxelize.vs", "voxelize.fs");
     createProgram("vxgi-shadow",   "IDKGE/shaders/vxgi/", "shadow.vs", "shadow.fs");
     createProgram("vxgi-trace",    "IDKGE/shaders/deferred/", "background.vs", "../vxgi/trace.fs");
-    createProgram("vxgi-inject",    glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/inject-radiance.comp")));
-    createProgram("vxgi-mipmap-A",  glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/mipmap-A.comp")));
-    createProgram("vxgi-mipmap-B",  glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/mipmap-B.comp")));
-    createProgram("vxgi-mipmap",    glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/mipmap.comp")));
-    createProgram("vxgi-clear",     glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/clear.comp")));
-    createProgram("vxgi-bounce-1",  glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/bounce-1.comp")));
-    // createProgram("vxgi-bounce-2",  glShaderProgram(glShaderStage("IDKGE/shaders/vxgi/bounce-2.comp")));
+    createProgram("vxgi-inject",    glShaderProgram("IDKGE/shaders/vxgi/inject-radiance.comp"));
+    createProgram("vxgi-propagate", glShaderProgram("IDKGE/shaders/vxgi/propagate-radiance.comp"));
 
-
-    createProgram("lum-hist",  glShaderProgram(glShaderStage("IDKGE/shaders/post/exposure-hist.comp")));
+    createProgram("vxgi-mipmap-1",  glShaderProgram("IDKGE/shaders/vxgi/mipmap-1.comp"));
+    createProgram("vxgi-mipmap-2",  glShaderProgram("IDKGE/shaders/vxgi/mipmap-2.comp"));
+    createProgram("vxgi-clear",     glShaderProgram("IDKGE/shaders/vxgi/clear.comp"));
+    createProgram("vxgi-copy",      glShaderProgram("IDKGE/shaders/vxgi/copy.comp"));
 
 
     createProgram("background",     "IDKGE/shaders/deferred/", "background.vs", "background.fs");
 
-    createProgram("gpass",          "IDKGE/shaders/deferred/", "gpass.vs",   "gpass.fs");
+
+    createProgram("gpass",     "IDKGE/shaders/deferred/", "gpass-indirect.vs", "gpass-indirect.fs");
+    createProgram("dirshadow-indirect", "IDKGE/shaders/", "dirshadow-indirect.vs", "dirshadow.fs");
+
     createProgram("lpass",          "IDKGE/shaders/", "screenquad.vs", "deferred/lpass.fs");
     // createProgram("lpass",  glShaderProgram(glShaderStage("IDKGE/shaders/deferred/lpass.comp")));
 
     createProgram("dir-volumetric", "IDKGE/shaders/", "screenquad.vs", "deferred/volumetric_dirlight.fs");
+
+    createProgram("SSR", glShaderProgram("IDKGE/shaders/post/SSR.comp"));
+    createProgram("motion-blur", glShaderProgram("IDKGE/shaders/post/motion-blur.comp"));
+
 
     createProgram("bloom",          "IDKGE/shaders/", "screenquad.vs", "post/bloom.fs");
     createProgram("downsample",     "IDKGE/shaders/", "screenquad.vs", "post/downsample.fs");
@@ -139,6 +143,14 @@ idk::RenderEngine::init_framebuffers( int w, int h )
         .datatype       = GL_FLOAT
     };
 
+    idk::glTextureConfig config2 = {
+        .internalformat = GL_RGBA16F,
+        .minfilter      = GL_LINEAR,
+        .magfilter      = GL_LINEAR,
+        .datatype       = GL_FLOAT,
+        .genmipmap      = GL_FALSE
+    };
+
     idk::glTextureConfig config_highp = {
         .internalformat = GL_RGBA32F,
         .minfilter      = GL_LINEAR,
@@ -173,15 +185,11 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     m_geom_buffer.reset(w, h, 4);
     m_geom_buffer.colorAttachment(0, config);
     m_geom_buffer.colorAttachment(1, config_highp);
-    m_geom_buffer.colorAttachment(2, config);
+    m_geom_buffer.colorAttachment(2, config2);
     m_geom_buffer.colorAttachment(3, config);
 
     m_volumetrics_buffer.reset(w/4, h/4, 1);
     m_volumetrics_buffer.colorAttachment(0, config);
-
-    m_mainbuffer_0.reset(w, h, 2);
-    m_mainbuffer_0.colorAttachment(0, config);
-    m_mainbuffer_0.colorAttachment(1, config);
 
 
     m_finalbuffer.reset(w, h, 1);
@@ -198,16 +206,27 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     m_vxgi_buffer.depthAttachment(depth_config);
 
 
-    config = {
+    m_mainbuffer_0.reset(w, h, 2);
+    m_mainbuffer_0.colorAttachment(0, config);
+    m_mainbuffer_0.colorAttachment(1, config);
+
+    m_mainbuffer_1.reset(w, h, 2);
+    m_mainbuffer_1.colorAttachment(0, config);
+    m_mainbuffer_1.colorAttachment(1, config);
+
+
+
+    config =
+    {
         .internalformat = GL_RGBA16F,
-        .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
-        .magfilter      = GL_LINEAR,
-        .datatype       = GL_FLOAT,
+        .format   = GL_RGBA,
+        .datatype = GL_FLOAT
     };
 
-    m_mainbuffer_1.reset(w, h, 1);
-    m_mainbuffer_1.colorAttachment(0, config);
-
+    gl::deleteTextures(1, &m_positionbuffer);
+    gl::deleteTextures(1, &m_velocitybuffer);
+    m_positionbuffer = gltools::loadTexture2D(w, h, nullptr, config);
+    m_velocitybuffer = gltools::loadTexture2D(w, h, nullptr, config);
 
 }
 
@@ -220,42 +239,55 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     init_screenquad();
     init_framebuffers(w, h);
 
-    m_modelsystem.init();
     m_lightsystem.init();
 
-    // m_UBO_camera      = glUBO(2, 2*sizeof(glm::mat4) + 6*sizeof(glm::vec4));
-    // m_UBO_pointlights = glUBO(3, 16 + IDK_MAX_POINTLIGHTS*sizeof(Pointlight));
-    // m_UBO_dirlights   = glUBO(5, IDK_MAX_DIRLIGHTS * (sizeof(Dirlight) + sizeof(glm::mat4)));
-    // m_UBO_armature    = glUBO(6, ARMATURE_MAX_BONES * sizeof(glm::mat4));
+
+    m_UBO_SyncData.init(0);
+    m_UBO_SyncData.bufferData(sizeof(uint32_t), &m_SyncData_index);
+
+    m_UBO_RenderData.init(3);
+
+
+
 
     m_UBO_camera.init();
-    m_UBO_pointlights.init();
     m_UBO_dirlights.init();
-    m_UBO_armature.init();
 
     m_UBO_camera.bind(2);
-    m_UBO_pointlights.bind(3);
     m_UBO_dirlights.bind(5);
-    m_UBO_armature.bind(6);
 
-    m_UBO_camera.bufferData(2*sizeof(glm::mat4) + 6*sizeof(glm::vec4), nullptr);
-    m_UBO_pointlights.bufferData(16 + IDK_MAX_POINTLIGHTS*sizeof(Pointlight), nullptr);
+    m_UBO_camera.bufferData(2*sizeof(glm::mat4) + 7*sizeof(glm::vec4), nullptr);
     m_UBO_dirlights.bufferData(IDK_MAX_DIRLIGHTS * (sizeof(Dirlight) + sizeof(glm::mat4)), nullptr);
-    m_UBO_armature.bufferData(ARMATURE_MAX_BONES * sizeof(glm::mat4), nullptr);
 
 
-    glTextureConfig config = {
-        .internalformat = GL_RGBA16,
-        .format         = GL_RGBA,
+
+    // Compute BRDF LUT
+    // -----------------------------------------------------------------------------------------
+    idk::glTextureConfig config = {
+        .internalformat = GL_RG16F,
+        .format         = GL_RG,
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
         .wrap_s         = GL_CLAMP_TO_EDGE,
         .wrap_t         = GL_CLAMP_TO_EDGE,
-        .datatype       = GL_UNSIGNED_BYTE,
+        .datatype       = GL_FLOAT,
         .genmipmap      = GL_FALSE
     };
 
-    BRDF_LUT = modelSystem().loadTexture("IDKGE/resources/IBL_BRDF_LUT.png", config);
+    static constexpr size_t LUT_TEXTURE_SIZE = 512;
+
+    BRDF_LUT = idk::gltools::loadTexture2D(LUT_TEXTURE_SIZE, LUT_TEXTURE_SIZE, nullptr, config);
+    idk::gl::bindImageTexture(0, BRDF_LUT, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG16F);
+
+    idk::glShaderProgram program("IDKGE/shaders/brdf-lut.comp");
+    program.bind();
+    program.dispatch(LUT_TEXTURE_SIZE/8, LUT_TEXTURE_SIZE/8, 1);
+    idk::gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    program.unbind();
+    // -----------------------------------------------------------------------------------------
+
+
+
 
     m_active_camera_id = createCamera();
 
@@ -266,22 +298,12 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     vxgi_albedo = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
     vxgi_normal = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
 
-    for (int i=0; i<1; i++)
+    for (int i=0; i<6; i++)
     {
         vxgi_radiance[i] = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
-        vxgi_propagation[i] = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
+        vxgi_radiance_2[i] = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
     }
 
-
-
-    // Default render queues
-    // -----------------------------------------------------------------------------------------
-    idk::RenderQueueConfig RQ_config = {
-        .cull_face = GL_FALSE
-    };
-
-    m_RQ = _createRenderQueue("gpass", drawmethods::draw_textured);
-    // -----------------------------------------------------------------------------------------
 }
 
 
@@ -289,9 +311,7 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
 idk::RenderEngine::RenderEngine( const std::string &name, int w, int h, int gl_major,
                                  int gl_minor, uint32_t flags )
 :
-    m_windowsys(name.c_str(), w, h, gl_major, gl_minor, flags),
-    m_shadow_render_queue(drawmethods::draw_untextured, "dir_shadow"),
-    m_vxgi_RQ("vxgi-voxelize")
+    m_windowsys(name.c_str(), w, h, gl_major, gl_minor, flags)
 {
     m_resolution = glm::ivec2(w, h);
     gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
@@ -452,75 +472,38 @@ idk::RenderEngine::createCamera()
 
 
 int
-idk::RenderEngine::_createRenderQueue( const std::string &program_name,
-                                       const idk_drawmethod &drawmethod )
+idk::RenderEngine::loadModel( const std::string &filepath )
 {
-    int id = m_private_RQs.create(
-        idk::RenderQueue(drawmethod, program_name)
-    );
-
-    return id;
-}
-
-
-int
-idk::RenderEngine::createRenderQueue( const std::string &program_name,
-                                      const RenderQueueConfig &config,
-                                      const idk_drawmethod &drawmethod )
-{
-    int id = m_public_RQs.create(
-        idk::RenderQueue(drawmethod, program_name, config)
-    );
-
-    return id;
-}
-
-
-idk::RenderQueue &
-idk::RenderEngine::_getRenderQueue( int id )
-{
-    return m_private_RQs.get(id);
-}
-
-
-idk::RenderQueue &
-idk::RenderEngine::getRenderQueue( int id )
-{
-    return m_public_RQs.get(id);
+    return m_model_allocator.loadModel(filepath);
 }
 
 
 void
-idk::RenderEngine::drawModelRQ( int rq, int model_id, const glm::mat4 &transform )
+idk::RenderEngine::drawModel( int model_id, const glm::mat4 &transform )
 {
-    getRenderQueue(rq).push(model_id, transform);
-}
-
-
-void
-idk::RenderEngine::drawModel( int model_id, const glm::mat4 &model_mat )
-{
-    _getRenderQueue(m_RQ).push(model_id, model_mat);
+    modelAllocator().pushModelDraw(model_id, transform);
+    // _getRenderQueue(m_RQ).push(model_id, model_mat);
 }
 
 
 void
 idk::RenderEngine::drawShadowCaster( int model_id, const glm::mat4 &model_mat )
 {
-    m_shadow_render_queue.push(model_id, model_mat);
+    // m_shadow_render_queue.push(model_id, model_mat);
 }
 
 
 void
 idk::RenderEngine::drawEnvironmental( int model, const glm::mat4 &transform )
 {
-    m_vxgi_RQ.push(model, transform);
+    // m_vxgi_RQ.push(model, transform);
 }
 
 
 
 void
-idk::RenderEngine::shadowpass_dirlights()
+idk::RenderEngine::shadowpass_dirlights( GLuint VAO, GLuint draw_indirect_buffer, 
+                                         const std::vector<idk::glDrawElementsIndirectCommand> &commands )
 {
     idk::Camera &cam = getCamera();
 
@@ -544,8 +527,20 @@ idk::RenderEngine::shadowpass_dirlights()
     depthcascade.bind();
 
 
-    idk::glShaderProgram &program = getProgram("dir_shadow");
+    auto &program = getProgram("dirshadow-indirect");
     program.bind();
+
+    gl::bindVertexArray(VAO);
+
+    gl::namedBufferSubData(
+        draw_indirect_buffer,
+        0,
+        commands.size() * sizeof(idk::glDrawElementsIndirectCommand),
+        reinterpret_cast<const void *>(commands.data())
+    );
+
+    gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_indirect_buffer);
+
 
     for (int i=0; i<glDepthCascade::NUM_CASCADES; i++)
     {
@@ -554,18 +549,17 @@ idk::RenderEngine::shadowpass_dirlights()
 
         program.set_mat4("un_lightspacematrix", cascade_matrices[i]);
 
-        for (auto &[model_id, dummy, model_mat]: m_shadow_render_queue)
-        {
-            drawmethods::draw_untextured(
-                program,
-                model_id,
-                model_mat,
-                modelSystem()
-            );
-        }
+        gl::multiDrawElementsIndirect(
+            GL_TRIANGLES,
+            GL_UNSIGNED_INT,
+            nullptr,
+            commands.size(),
+            sizeof(idk::glDrawElementsIndirectCommand)
+        );
     }
 
-    glShaderProgram::unbind();
+
+    program.unbind();
 }
 
 
@@ -594,8 +588,29 @@ idk::RenderEngine::update_UBO_camera()
     m_UBO_camera.add<glm::vec4>(glm::value_ptr(b));
     m_UBO_camera.add<glm::vec4>(glm::value_ptr(c));
     m_UBO_camera.add<glm::vec4>(glm::value_ptr(camera.m_exposure));
+    m_UBO_camera.add<glm::vec4>(glm::value_ptr(glm::vec4(m_resolution, 0.0f, 0.0f)));
 
     m_UBO_camera.unbind();
+
+    static glm::mat4 prev_v, prev_p, prev_pv;
+    static glm::vec3 prev_position;
+
+    m_RenderData.cameras[0].position = glm::vec4(pos0, 1.0f);
+    m_RenderData.cameras[0].V  = camera.view();
+    m_RenderData.cameras[0].P  = camera.projection();
+    m_RenderData.cameras[0].PV = camera.view() * camera.projection();
+    m_RenderData.cameras[0].image_size = glm::vec4(width(), height(), 0.0f, 0.0f);
+
+    m_RenderData.cameras[0].prev_position = glm::vec4(prev_position, 1.0f);
+    m_RenderData.cameras[0].prev_V  = prev_v;
+    m_RenderData.cameras[0].prev_P  = prev_p;
+    m_RenderData.cameras[0].prev_PV = prev_pv;
+
+    prev_position = camera.position();
+    prev_v  = camera.view();
+    prev_p  = camera.projection();
+    prev_pv = prev_p * prev_v;
+    
 }
 
 
@@ -626,25 +641,6 @@ idk::RenderEngine::update_UBO_dirlights()
 }
 
 
-void
-idk::RenderEngine::update_UBO_pointlights()
-{
-    idk::Camera &cam = getCamera();
-
-    std::vector<Pointlight> &pointlights = m_lightsystem.pointlights();
-    std::vector<Pointlight>  lights(IDK_MAX_POINTLIGHTS);
-
-    for (int i=0; i<pointlights.size(); i++)
-    {
-        lights[i] = pointlights[i];
-    }
-
-    m_UBO_pointlights.bind();
-    m_UBO_pointlights.add(IDK_MAX_DIRLIGHTS * sizeof(Pointlight),  lights.data());
-    m_UBO_pointlights.unbind();
-}
-
-
 
 void
 idk::RenderEngine::beginFrame()
@@ -662,20 +658,36 @@ idk::RenderEngine::beginFrame()
     glm::mat4 proj = camera.projection();
 
 
-    for (idk::RenderQueue &RQ: m_private_RQs)
-    {
-        RQ.setViewParams(near, far, proj, view);
-    }
-
-    for (idk::RenderQueue &RQ: m_public_RQs)
-    {
-        RQ.setViewParams(near, far, proj, view);
-    }
-
-    m_shadow_render_queue.setViewParams(near, far, proj, view);
-
-    m_vxgi_RQ.setViewParams(near, far, proj, view);
 }
+
+
+
+
+
+
+static void MultiDrawTest( idk::glShaderProgram &program, GLuint VAO, GLuint draw_indirect_buffer, 
+                           const std::vector<idk::glDrawElementsIndirectCommand> &commands )
+{
+    using namespace idk;
+
+    program.bind();
+
+    gl::bindVertexArray(VAO);
+    gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_indirect_buffer);
+
+    gl::multiDrawElementsIndirect(
+        GL_TRIANGLES,
+        GL_UNSIGNED_INT,
+        nullptr,
+        commands.size(),
+        sizeof(idk::glDrawElementsIndirectCommand)
+    );
+
+    program.unbind();
+};
+
+
+
 
 
 void
@@ -683,42 +695,46 @@ idk::RenderEngine::endFrame( float dt )
 {
     delta_time = dt;
 
+    const auto &commands = modelAllocator().genDrawCommands();
+    gl::bindVertexArray(modelAllocator().getVAO());
+
     gl::disable(GL_CULL_FACE);
-    shadowpass_dirlights();
+
+    shadowpass_dirlights(
+        modelAllocator().getVAO(),
+        modelAllocator().getDrawIndirectBuffer(),
+        commands
+    );
+
     gl::enable(GL_CULL_FACE);
 
 
     update_UBO_camera();
     update_UBO_dirlights();
-    update_UBO_pointlights();
 
-    gl::bindVertexArray(m_quad_VAO);
+
+    uint32_t index = m_SyncData_index;
+    m_SyncData_index = m_UBO_RenderData.update(m_SyncData_index, m_RenderData);
+    m_UBO_SyncData.bufferSubData(0, sizeof(uint32_t), &index);
+
 
     idk::Camera &camera = getCamera();
 
+    gl::bindImageTextures(0, 6, &vxgi_radiance_2[0]);
+    gl::bindImageTextures(8, 6, &vxgi_radiance[0]);
+    gl::bindImageTexture(6, vxgi_albedo, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
+    gl::bindImageTexture(7, vxgi_normal, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
 
-    for (int i=0; i<1; i++)
+
+    // Clear volume textures
+    // -----------------------------------------------------------------------------------------
     {
-        gl::bindImageTexture(0+i, vxgi_propagation[i], 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
-        gl::bindImageTexture(6+i, vxgi_radiance[i], 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
-
-        // gl::clearTexImage(vxgi_radiance[i], 0, GL_RGBA, GL_FLOAT, nullptr);
+        auto &program = getProgram("vxgi-clear");
+        program.bind();
+        program.dispatch(VXGI_TEXTURE_SIZE / 4);
+        gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
     }
-
-
-    static int count = 0;
-    count += 1;
-    // if (count >= 256)
-    {
-        gl::clearTexImage(vxgi_propagation[0], 0, GL_RGBA, GL_FLOAT, nullptr);
-    }
-
-
-    gl::bindImageTexture(13,  vxgi_albedo, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
-    gl::bindImageTexture(12, vxgi_normal, 0, GL_TRUE, 0, GL_READ_WRITE, GL_RGBA16F);
-
-    gl::clearTexImage(vxgi_albedo, 0, GL_RGBA, GL_FLOAT, nullptr);
-    gl::clearTexImage(vxgi_normal, 0, GL_RGBA, GL_FLOAT, nullptr);
+    // -----------------------------------------------------------------------------------------
 
 
     VXGI::shadowPass(
@@ -726,36 +742,32 @@ idk::RenderEngine::endFrame( float dt )
         camera,
         lightSystem().getDirlight(0).direction,
         getProgram("vxgi-shadow"),
-        m_shadow_render_queue,
-        modelSystem()
+        modelAllocator().getDrawIndirectBuffer(),
+        commands
     );
 
-    gl::memoryBarrier(GL_ALL_BARRIER_BITS);
+
+    VXGI::renderTexture(
+        m_vxgi_buffer,
+        camera,
+        getProgram("vxgi-voxelize"),
+        modelAllocator().getDrawIndirectBuffer(),
+        commands,
+        m_lightsystem.depthCascade()
+    );
 
 
-    // if (count >= 256)
-    {
-        VXGI::renderTexture(
-            m_vxgi_buffer,
-            camera,
-            getProgram("vxgi-voxelize"),
-            m_vxgi_RQ,
-            modelSystem(),
-            m_lightsystem.depthCascade()
-        );
+    static int vxgi_face   = 0;
+    static int vxgi_offset = 0;
 
-        gl::generateTextureMipmap(vxgi_albedo);
-        gl::generateTextureMipmap(vxgi_normal);
-        VXGI::generateMipmap(getProgram("vxgi-mipmap-A"), getProgram("vxgi-mipmap-B"), vxgi_propagation[0]);
-
-        count = 0;
-    }
+    vxgi_face = (vxgi_face + 1) % 6;
+    vxgi_offset = (vxgi_offset + 1) % 4;
 
     {
         auto &program = getProgram("vxgi-inject");
         program.bind();
-    
-        program.set_sampler3D("un_voxel_aniso",  vxgi_propagation[0]);
+        program.set_int("un_face", vxgi_face);
+        program.set_int("un_offset", vxgi_offset);
 
         VXGI::injectRadiance(
             program,
@@ -765,30 +777,59 @@ idk::RenderEngine::endFrame( float dt )
             lightSystem().depthCascade()
         );
     }
+    VXGI::generateMipmap(getProgram("vxgi-mipmap-1"), getProgram("vxgi-mipmap-2"), vxgi_radiance_2);
 
-    VXGI::generateMipmap(getProgram("vxgi-mipmap-A"), getProgram("vxgi-mipmap-B"), vxgi_radiance[0]);
+    {
+        auto &program = getProgram("vxgi-propagate");
+        program.bind();
+        program.set_int("un_face", vxgi_face);
+        program.set_int("un_offset", vxgi_offset);
+
+        for (int i=0; i<6; i++)
+        {
+            program.set_sampler2D("un_input_radiance[" + std::to_string(i) + "]", vxgi_radiance_2[i]);
+        }
+        program.dispatch(VXGI_TEXTURE_SIZE/4);
+        gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    }
+    VXGI::generateMipmap(getProgram("vxgi-mipmap-1"), getProgram("vxgi-mipmap-2"), vxgi_radiance);
 
 
-    RenderStage_geometry       (camera, dt, m_geom_buffer);
-    RenderStage_lighting       (camera, dt, m_geom_buffer,  m_mainbuffer_0);
-    RenderStage_postprocessing (camera,     m_mainbuffer_0, m_finalbuffer);
+    m_geom_buffer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    m_geom_buffer.bind();
+
+    MultiDrawTest(
+        getProgram("gpass"),
+        modelAllocator().getVAO(),
+        modelAllocator().getDrawIndirectBuffer(),
+        commands
+    );
+
+
+    gl::bindImageTexture(30, m_positionbuffer, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+    gl::bindImageTexture(31, m_velocitybuffer, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+
+    RenderStage_geometry(camera, dt, m_geom_buffer);
+    RenderStage_lighting(camera, dt, m_geom_buffer,  m_mainbuffer_0);
+
+    // {
+    //     gl::bindImageTexture(0, m_mainbuffer_0.attachments[0], 0, GL_FALSE, 0, GL_READ_ONLY,  GL_RGBA16F);
+    //     gl::bindImageTexture(1, m_mainbuffer_1.attachments[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+    //     gl::memoryBarrier(GL_ALL_BARRIER_BITS);
+
+    //     auto &program = getProgram("motion-blur");
+    //     program.bind();
+    //     program.dispatch(width()/8, height()/8, 1);
+
+    //     gl::memoryBarrier(GL_ALL_BARRIER_BITS);
+    // }
+
+
+    RenderStage_postprocessing(camera, m_mainbuffer_0, m_finalbuffer);
 
     gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
     gl::bindVertexArray(0);
-
-
-    for (idk::RenderQueue &RQ: m_private_RQs)
-    {
-        RQ.clear();
-    }
-
-    for (idk::RenderQueue &RQ: m_public_RQs)
-    {
-        RQ.clear();
-    }
-
-    m_shadow_render_queue.clear();
-    m_vxgi_RQ.clear();
 }
 
 

@@ -8,8 +8,9 @@ layout (location = 0) out vec4 fsout_frag_color;
 #include "./vxgi.glsl"
 
 
-uniform sampler3D un_voxel_radiance;
+uniform sampler3D un_voxel_radiance[6];
 uniform sampler3D un_voxel_normal;
+uniform sampler3D un_voxel_albedo;
 
 in vec4 fsin_fragpos;
 
@@ -49,22 +50,22 @@ void main()
 
 
     vec4  accum = vec4(0.0);
-    // accum.rgb = VXGI_TraceConeAniso(pos, dir, radians(APERTURE), un_viewpos, un_voxel_normal, un_voxel_radiance);
+    accum.rgb = VXGI_TraceCone(pos, dir, radians(APERTURE), un_viewpos, un_voxel_radiance);
     // accum.rgb = VXGI_TraceCone(pos, dir, radians(APERTURE), un_viewpos, un_voxel_radiance[ZREE]);
-    // accum.a   = 1.0;
+    accum.a   = 1.0;
 
-    for (int i=0; i<MAX_STEPS; i++)
-    {
-        vec3 texcoord = VXGI_WorldToTexCoord(pos, un_viewpos);
-        accum += textureLod(un_voxel_radiance, texcoord, ZMIPLEVEL);
+    // for (int i=0; i<MAX_STEPS; i++)
+    // {
+    //     vec3 texcoord = VXGI_WorldToTexCoord(pos, un_viewpos);
+    //     accum += textureLod(un_voxel_normal, texcoord, ZMIPLEVEL);
 
-        if (accum.a > 0.0)
-        {
-            break;
-        }
+    //     if (dot(accum, accum) > 0.0)
+    //     {
+    //         break;
+    //     }
 
-        pos += STEP_SIZE * dir;
-    }
+    //     pos += STEP_SIZE * dir;
+    // }
 
 
     // vec3 texel = VXGI_WorldToTexel(pos, un_viewpos);

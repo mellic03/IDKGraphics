@@ -41,7 +41,7 @@ void main()
     float specular   = albedospec.a;
     vec3  position   = texture(un_texture_1, fsin_texcoords).xyz;
     vec3  normal     = texture(un_texture_2, fsin_texcoords).xyz;
-    float  reflection = texture(un_texture_3, fsin_texcoords).r;
+    float reflection = texture(un_texture_3, fsin_texcoords).r;
 
     if (reflection < 0.1)
     {

@@ -1,7 +1,9 @@
 #pragma once
 
-#include "../model/idk_vertex.hpp"
+// #include "../model/idk_vertex.hpp"
 #include <libidk/GL/common.hpp>
+
+#define GLM_ENABLE_EXPERIMENTAL
 
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
@@ -13,7 +15,6 @@ namespace idk
     class Animation;
     class Animator;
 };
-
 
 
 

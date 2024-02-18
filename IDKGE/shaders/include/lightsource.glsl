@@ -85,9 +85,6 @@ struct DirLight
 
 layout (std140, binding = 5) uniform UBO_dirlights
 {
-    // Dirlight    un_main_dirlight;
-    // mat4        un_main_cascade_matrices[4];
-
     DirLight    un_dirlights[MAX_DIRLIGHTS];
     mat4        un_cascade_matrices[4];
 };
@@ -102,7 +99,7 @@ uniform vec4                   un_cascade_depths;
 
 float sampleDepthMap( int layer, vec3 uv, float bias )
 {
-    vec2 texelSize = 1.0 / textureSize(un_dirlight_depthmap, 0).xy;
+    vec2 texelSize = 0.5 / textureSize(un_dirlight_depthmap, 0).xy;
 
     float shadow = 0.0;
 
@@ -136,7 +133,8 @@ float dirlight_shadow( int idx, mat4 view_matrix, vec3 position, vec3 N )
     vec3 projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
     projCoords = projCoords * 0.5 + 0.5;
 
-    float bias = DIRLIGHT_BIAS * max(dot(N, L), 0.0);
+    float bias   = 0.001 * max(dot(N, L), 0.0001);
+    // float bias = DIRLIGHT_BIAS * max(dot(N, L), 0.0);
     float shadow = sampleDepthMap(layer, projCoords, bias);
 
     return shadow;
@@ -152,20 +150,20 @@ float sampleDepthMap_2( sampler2DShadow depth_map, vec3 uv, float bias )
 
     float shadow = 0.0;
 
-    // for(int x = -KERNEL_HW; x <= KERNEL_HW; ++x)
-    // {
-    //     for(int y = -KERNEL_HW; y <= KERNEL_HW; ++y)
-    //     {
-            // vec2 sample_uv    = uv.xy + vec2(x, y) * texelSize;
-            vec2 sample_uv    = uv.xy;
+    for(int x = -KERNEL_HW; x <= KERNEL_HW; ++x)
+    {
+        for(int y = -KERNEL_HW; y <= KERNEL_HW; ++y)
+        {
+            vec2 sample_uv    = uv.xy + vec2(x, y) * texelSize;
+            // vec2 sample_uv    = uv.xy;
             vec3 sample_coord = vec3(sample_uv, uv.z - bias);
 
             shadow += texture(depth_map, sample_coord); 
-    //     }
-    // }
+        }
+    }
 
-    return shadow;
-    // return shadow / ((2*KERNEL_HW+1)*(2*KERNEL_HW+1));
+    // return shadow;
+    return shadow / ((2*KERNEL_HW+1)*(2*KERNEL_HW+1));
 }
 
 
@@ -196,7 +194,7 @@ vec3 dirlight_contribution( int idx, vec3 position, vec3 F0, vec3 N, vec3 V, vec
     DirLight light       = un_dirlights[idx];
     vec3  light_dir      = normalize(light.direction.xyz);
     vec3  light_diffuse  = light.diffuse.xyz;
-    float light_strength = 1.0; // light.diffuse.w;
+    float light_strength = light.diffuse.w;
 
     const vec3 L = normalize(-light.direction.xyz);
     const vec3 H = normalize(V + L);
@@ -222,7 +220,7 @@ vec3 dirlight_contribution_no_pbr( int idx, vec3 position, vec3 N, vec3 V, vec3 
     DirLight light       = un_dirlights[idx];
     vec3  light_dir      = normalize(light.direction.xyz);
     vec3  light_diffuse  = light.diffuse.xyz;
-    float light_strength = 1.0; // light.diffuse.w;
+    float light_strength = light.diffuse.w;
 
     const vec3 L = normalize(-light.direction.xyz);
     const vec3 H = normalize(V + L);

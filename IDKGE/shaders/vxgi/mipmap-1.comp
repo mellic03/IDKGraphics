@@ -4,96 +4,112 @@
 #include "../UBOs/UBOs.glsl"
 #include "./vxgi.glsl"
 
-layout ( local_size_x = 4, local_size_y = 4, local_size_z = 4 ) in;
+layout ( local_size_x = 8, local_size_y = 8, local_size_z = 8 ) in;
 
 layout (binding=20, rgba16f) writeonly uniform image3D un_current_aniso[6];
 layout (binding=26, rgba16f) readonly  uniform image3D un_previous_aniso[6];
-
 
 #define KSIZE 1
 #define KSTEP 2
 #define KVOLUME 4.0
 
 
+const ivec3 anisoOffsets[] = ivec3[8]
+(
+	ivec3(1, 1, 1),
+	ivec3(1, 1, 0),
+	ivec3(1, 0, 1),
+	ivec3(1, 0, 0),
+	ivec3(0, 1, 1),
+	ivec3(0, 1, 0),
+	ivec3(0, 0, 1),
+	ivec3(0, 0, 0)
+);
+
+
+void FetchTexels(ivec3 pos, int dir, inout vec4 val[8]) 
+{
+	for(int i = 0; i < 8; i++)
+	{
+		val[i] = imageLoad(un_previous_aniso[dir], pos + anisoOffsets[i]);
+	}
+}
+
+
 void main()
 {
     ivec3 texel  = ivec3(gl_GlobalInvocationID.xyz);
 
-    const ivec3 offsets[] = ivec3[]
-    (
-        ivec3( 0, -1, -1 ),
-        ivec3( 0, +1, -1 ),
-        ivec3( 0, +1, +1 ),
-        ivec3( 0, -1, +1 ),
-    
-        ivec3(-1, -1, -1 ),
-        ivec3(-1, +1, -1 ),
-        ivec3(-1, +1, +1 ),
-        ivec3(-1, -1, +1 )
+
+	vec4 values[8];
+
+
+	// x -
+
+	FetchTexels(2*texel, 0, values);
+
+
+	// vec4 result = vec4(0.0);
+
+	// for (int i=0; i<4; i++)
+	// {
+	// 	result += values[i] + values[i+4] * (1.0 - values[i].a);
+	// }
+
+	// result /= 4.0;
+
+	imageStore(un_current_aniso[0], texel, 
+	(
+		values[0] + values[4] * (1 - values[0].a) + 
+		values[1] + values[5] * (1 - values[1].a) +
+		values[2] + values[6] * (1 - values[2].a) +
+		values[3] + values[7] * (1 - values[3].a)) * 0.25f
+	);
+
+	// x +
+	FetchTexels(2*texel, 1, values);
+    imageStore(un_current_aniso[1], texel, 
+	(
+		values[4] + values[0] * (1 - values[4].a) +
+    	values[5] + values[1] * (1 - values[5].a) +
+    	values[6] + values[2] * (1 - values[6].a) +
+    	values[7] + values[3] * (1 - values[7].a)) * 0.25f
     );
-
-
-    // X-axis
-    // -----------------------------------------------------------------------------------------
-    for (int x = 0;  x <= 1;  x++)
-    {
-        vec4 result = vec4(0.0);
-
-        for (int z = -KSIZE;  z <= +KSIZE;  z+=KSTEP)
-        {
-            for (int y = -KSIZE;  y <= +KSIZE;  y+=KSTEP)
-            {
-                ivec3 offset = ivec3(2*x-1, y, z);
-                result += imageLoad(un_previous_aniso[0+x], 2*texel + offset);
-            }
-        }
-
-        result /= KVOLUME;
-        imageStore(un_current_aniso[0+x], texel, result);
-    }
-    // -----------------------------------------------------------------------------------------
-
-
-    // Y-axis
-    // -----------------------------------------------------------------------------------------
-    for (int y = 0;  y <= 1;  y++)
-    {
-        vec4 result = vec4(0.0);
-
-        for (int z = -KSIZE;  z <= +KSIZE;  z+=KSTEP)
-        {
-            for (int x = -KSIZE;  x <= +KSIZE;  x+=KSTEP)
-            {
-                ivec3 offset = ivec3(x, 2*y-1, z);
-                result += imageLoad(un_previous_aniso[2+y], 2*texel + offset);
-            }
-        }
-
-        result /= KVOLUME;
-        imageStore(un_current_aniso[2+y], texel, result);
-    }
-    // -----------------------------------------------------------------------------------------
-
-
-    // Z-axis
-    // -----------------------------------------------------------------------------------------
-    for (int z = 0;  z <= 1;  z++)
-    {
-        vec4 result = vec4(0.0);
-
-        for (int x = -KSIZE;  x <= +KSIZE;  x+=KSTEP)
-        {
-            for (int y = -KSIZE;  y <= +KSIZE;  y+=KSTEP)
-            {
-                ivec3 offset = ivec3(x, y, 2*z-1);
-                result += imageLoad(un_previous_aniso[4+z], 2*texel + offset);
-            }
-        }
-
-        result /= KVOLUME;
-        imageStore(un_current_aniso[4+z], texel, result);
-    }
-    // -----------------------------------------------------------------------------------------
-
+	// y -	
+	FetchTexels(2*texel, 2, values);
+    imageStore(un_current_aniso[2], texel, 
+	(
+		values[0] + values[2] * (1 - values[0].a) +
+    	values[1] + values[3] * (1 - values[1].a) +
+    	values[5] + values[7] * (1 - values[5].a) +
+    	values[4] + values[6] * (1 - values[4].a)) * 0.25f
+    );
+	// y +
+	FetchTexels(2*texel, 3, values);
+    imageStore(un_current_aniso[3], texel, 
+	(
+		values[2] + values[0] * (1 - values[2].a) +
+    	values[3] + values[1] * (1 - values[3].a) +
+    	values[7] + values[5] * (1 - values[7].a) +
+    	values[6] + values[4] * (1 - values[6].a)) * 0.25f
+    );
+	// z -
+	FetchTexels(2*texel, 4, values);
+    imageStore(un_current_aniso[4], texel, 
+	(
+		values[0] + values[1] * (1 - values[0].a) +
+    	values[2] + values[3] * (1 - values[2].a) +
+    	values[4] + values[5] * (1 - values[4].a) +
+    	values[6] + values[7] * (1 - values[6].a)) * 0.25f
+    );
+	// z +
+	FetchTexels(2*texel, 5, values);
+    imageStore(un_current_aniso[5], texel, 
+	(
+		values[1] + values[0] * (1 - values[1].a) +
+    	values[3] + values[2] * (1 - values[3].a) +
+    	values[5] + values[4] * (1 - values[5].a) +
+    	values[7] + values[6] * (1 - values[7].a)) * 0.25f
+    );
 }
 

@@ -1,113 +1,113 @@
-#pragma once
+// #pragma once
 
-#include <libidk/GL/idk_glShaderProgram.hpp>
+// #include <libidk/GL/idk_glShaderProgram.hpp>
 
-#include "../idk_model_manager.hpp"
-#include "../model/idk_OBB.hpp"
-#include "idk_drawmethods.hpp"
-
-
-#include <tuple>
-#include <functional>
+// #include "../idk_model_manager.hpp"
+// #include "../model/idk_OBB.hpp"
+// #include "idk_drawmethods.hpp"
 
 
-namespace idk { struct RenderQueueConfig; class RenderQueue; };
+// #include <tuple>
+// #include <functional>
 
 
-struct idk::RenderQueueConfig
-{
-    bool cull_face = true;
-};
-
-using idk_drawmethod = std::function<void(idk::glShaderProgram &, int, const glm::mat4 &, idk::ModelSystem &)>;
+// namespace idk { struct RenderQueueConfig; class RenderQueue; };
 
 
-class idk::RenderQueue
-{
-private:
-    static const size_t NUM_CASCADES = 10;
+// struct idk::RenderQueueConfig
+// {
+//     bool cull_face = true;
+// };
 
-    std::string             m_name;
-    float                   m_cam_near;
-    float                   m_cam_far;
-    glm::mat4               m_cam_view;
-    glm::mat4               m_cam_proj;
-    RenderQueueConfig       m_config;
-    idk_drawmethod          m_drawmethod;
-
-    using subqueue_t = std::vector<std::tuple<int, int, glm::mat4>>;
-    std::vector<subqueue_t> m_queue;
+// using idk_drawmethod = std::function<void(idk::glShaderProgram &, int, const glm::mat4 &, idk::ModelSystem &)>;
 
 
-public:
-            RenderQueue( const std::string &name );
-            RenderQueue( const idk_drawmethod &, const std::string & );
-            RenderQueue( const idk_drawmethod &, const std::string &, const RenderQueueConfig & );
+// class idk::RenderQueue
+// {
+// private:
+//     static const size_t NUM_CASCADES = 10;
 
-    constexpr const std::string         &name()   const { return m_name;   };
-    constexpr const RenderQueueConfig   &config() const { return m_config; };
+//     std::string             m_name;
+//     float                   m_cam_near;
+//     float                   m_cam_far;
+//     glm::mat4               m_cam_view;
+//     glm::mat4               m_cam_proj;
+//     RenderQueueConfig       m_config;
+//     idk_drawmethod          m_drawmethod;
 
-    void    setViewParams( float cam_near, float cam_far, const glm::mat4 &P, const glm::mat4 &V );
-    void    push( int model_id, int animator_id, const glm::mat4 &transform );
-    void    push( int model_id, const glm::mat4 &transform );
-    void    clear();
-
-
-    size_t size() const
-    {
-        size_t s = 0;
-
-        for (size_t i=0; i<NUM_CASCADES; i++)
-            s += m_queue[i].size();
-
-        return s;
-    };
+//     using subqueue_t = std::vector<std::tuple<int, int, glm::mat4>>;
+//     std::vector<subqueue_t> m_queue;
 
 
-    void    drawMethod( glShaderProgram &, int, const glm::mat4 &, ModelSystem & );
+// public:
+//             RenderQueue( const std::string &name );
+//             RenderQueue( const idk_drawmethod &, const std::string & );
+//             RenderQueue( const idk_drawmethod &, const std::string &, const RenderQueueConfig & );
+
+//     constexpr const std::string         &name()   const { return m_name;   };
+//     constexpr const RenderQueueConfig   &config() const { return m_config; };
+
+//     void    setViewParams( float cam_near, float cam_far, const glm::mat4 &P, const glm::mat4 &V );
+//     void    push( int model_id, int animator_id, const glm::mat4 &transform );
+//     void    push( int model_id, const glm::mat4 &transform );
+//     void    clear();
 
 
-    struct iterator
-    {
-        RenderQueue *m_RQ    = nullptr;
-        int          cascade = 0;
-        int          idx     = 0;
+//     size_t size() const
+//     {
+//         size_t s = 0;
 
-                    iterator( RenderQueue *rq );
-                    iterator( const iterator &other );
-        void        increment( iterator &it );
+//         for (size_t i=0; i<NUM_CASCADES; i++)
+//             s += m_queue[i].size();
 
-        iterator &operator ++ ()
-        {
-            increment(*this);
-            return *this;
-        }
+//         return s;
+//     };
 
-        iterator operator ++ (int)
-        {
-            iterator temp = *this;
-            increment(temp);
-            return temp;
-        }
 
-        bool operator == ( const iterator &rhs )
-        {
-            return m_RQ == rhs.m_RQ && cascade == rhs.cascade && idx == rhs.idx;
-        }
+//     void    drawMethod( glShaderProgram &, int, const glm::mat4 &, ModelSystem & );
+
+
+//     struct iterator
+//     {
+//         RenderQueue *m_RQ    = nullptr;
+//         int          cascade = 0;
+//         int          idx     = 0;
+
+//                     iterator( RenderQueue *rq );
+//                     iterator( const iterator &other );
+//         void        increment( iterator &it );
+
+//         iterator &operator ++ ()
+//         {
+//             increment(*this);
+//             return *this;
+//         }
+
+//         iterator operator ++ (int)
+//         {
+//             iterator temp = *this;
+//             increment(temp);
+//             return temp;
+//         }
+
+//         bool operator == ( const iterator &rhs )
+//         {
+//             return m_RQ == rhs.m_RQ && cascade == rhs.cascade && idx == rhs.idx;
+//         }
     
-        bool operator != ( const iterator &rhs )
-        {
-            return m_RQ != rhs.m_RQ && cascade != rhs.cascade && idx != rhs.idx;
-        }
+//         bool operator != ( const iterator &rhs )
+//         {
+//             return m_RQ != rhs.m_RQ && cascade != rhs.cascade && idx != rhs.idx;
+//         }
 
-        std::tuple<int, int, glm::mat4> &operator * ()
-        {
-            return m_RQ->m_queue[cascade][idx];
-        }
-    };
+//         std::tuple<int, int, glm::mat4> &operator * ()
+//         {
+//             return m_RQ->m_queue[cascade][idx];
+//         }
+//     };
 
-    iterator begin() { return iterator(this);    }
-    iterator end()   { return iterator(nullptr); }
+//     iterator begin() { return iterator(this);    }
+//     iterator end()   { return iterator(nullptr); }
 
-};
+// };
 

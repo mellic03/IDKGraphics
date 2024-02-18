@@ -1,5 +1,10 @@
 #version 460 core
 
+#extension GL_GOOGLE_include_directive: require
+#extension GL_ARB_bindless_texture: require
+
+#include "../include/SSBO_material.glsl"
+
 layout (location = 0) in vec3 vsin_pos;
 layout (location = 1) in vec3 vsin_normal;
 layout (location = 2) in vec3 vsin_tangent;
@@ -9,13 +14,12 @@ out vec3 fsin_fragpos;
 out vec3 fsin_normal;
 out vec3 fsin_tangent;
 out vec2 fsin_texcoords;
+flat out int material_id;
 
 out vec3 TBN_viewpos;
 out vec3 TBN_fragpos;
 out mat3 TBN;
 out mat3 TBNT;
-
-uniform mat4 un_model;
 
 struct Camera
 {
@@ -37,11 +41,12 @@ layout (std140, binding = 2) uniform UBO_camera_data
 
 void main()
 {
-    mat4 model = un_model;
+    material_id = gl_DrawID;
+    const mat4 model = un_ModelData.transforms[gl_DrawID];
 
-    vec4 position = un_model * vec4(vsin_pos,     1.0);
-    vec4 normal   = un_model * vec4(vsin_normal,  0.0);
-    vec4 tangent  = un_model * vec4(vsin_tangent, 0.0);
+    vec4 position = model * vec4(vsin_pos,     1.0);
+    vec4 normal   = model * vec4(vsin_normal,  0.0);
+    vec4 tangent  = model * vec4(vsin_tangent, 0.0);
 
 
     vec3 N = normalize(mat3(model) * normalize(vsin_normal));

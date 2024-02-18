@@ -1,0 +1,55 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+#include "../UBOs/UBOs.glsl"
+#include "../include/util.glsl"
+#include "../include/lightsource.glsl"
+
+layout(
+    local_size_x = 8,
+    local_size_y = 8,
+    local_size_z = 1
+) in;
+
+
+
+layout (binding=0,  rgba16f) readonly  uniform image2D un_input;
+layout (binding=1,  rgba16f) writeonly uniform image2D un_output;
+layout (binding=30, rgba16f) readonly uniform image2D un_position;
+layout (binding=31, rgba16f) readonly uniform image2D un_velocity;
+
+
+#define NUM_SAMPLES 4
+
+
+void main()
+{
+    vec2  size = IDK_RenderData_GetCamera().image_size.xy;
+
+    ivec2 texel    = ivec2(gl_GlobalInvocationID.xy);
+    vec2  texcoord = texel / IDK_RenderData_GetCamera().image_size.xy;
+    float strength = 1.0; // 0.25 + distance(texcoord, vec2(0.5));
+
+
+    vec2  velocity   = imageLoad(un_velocity, texel).xy;
+    vec2  ray_dir    = normalize(velocity);
+
+    vec2  ray_start  = texcoord + (velocity / 2.0);
+    vec2  ray_end    = texcoord - (velocity / 2.0);
+
+    vec3  result  = imageLoad(un_input, texel).rgb;
+    vec3  blurred = vec3(0.0);
+
+    for (int i=0; i<NUM_SAMPLES; i++)
+    {
+        vec2  ray_texcoord = mix(ray_start, ray_end, float(i) / float(NUM_SAMPLES));
+        ivec2 ray_texel    = ivec2(ray_texcoord * size);
+
+        blurred += strength * imageLoad(un_input, ray_texel).rgb;
+    }
+
+    blurred /= NUM_SAMPLES;
+    result += blurred;
+
+    imageStore(un_output, texel, vec4(result, 1.0));
+}

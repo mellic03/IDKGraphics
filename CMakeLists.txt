@@ -40,9 +40,9 @@ target_sources(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/animation/idk_animation.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/animation/IDKanimation.hpp
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/batching/idk_batch_allocator.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/batching/idk_mesh_allocator.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/batching/idk_model_allocator.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/batching/idk_model_handle.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/batching/idk_model.hpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/camera/idk_camera.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/camera/idk_frustum.hpp
@@ -54,19 +54,12 @@ target_sources(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/lighting/idk_shadowcascade.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/lighting/IDKlighting.hpp
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/model/filetypes/idk_idkvi.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/model/idk_model.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/model/idk_OBB.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/model/idk_vertex.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/model/IDKmodel.hpp
-
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/idk_drawmethods.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/idk_initflags.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/idk_renderqueue.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/idk_vxgi.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/idk_sdl_glew_init.hpp
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/idk_model_manager.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/idk_noisegen.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/idk_renderengine.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/idk_texture_manager.hpp

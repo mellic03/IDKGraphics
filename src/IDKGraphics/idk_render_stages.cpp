@@ -2,58 +2,60 @@
 #include "render/idk_drawmethods.hpp"
 #include "render/idk_vxgi.hpp"
 
+#include <libidk/idk_noisegen.hpp>
+
 void
 idk::RenderEngine::RenderStage_geometry( idk::Camera &camera, float dtime,
-                                                  glFramebuffer &buffer_out )
+                                         glFramebuffer &buffer_out )
 {
-    buffer_out.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    buffer_out.bind();
+    // buffer_out.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // buffer_out.bind();
 
-    // Internal render queues
-    // -----------------------------------------------------------------------------------------
-    for (idk::RenderQueue &rq: m_private_RQs)
-    {
-        glShaderProgram &rq_program = getProgram(rq.name());
-        rq_program.bind();
+    // // Internal render queues
+    // // -----------------------------------------------------------------------------------------
+    // for (idk::RenderQueue &rq: m_private_RQs)
+    // {
+    //     glShaderProgram &rq_program = getProgram(rq.name());
+    //     rq_program.bind();
 
-        for (auto &[model_id, animator_id, transform]: rq)
-        {
-            rq.drawMethod(
-                rq_program,
-                model_id,
-                transform,
-                modelSystem()
-            );
-        }
-    }
-    // -----------------------------------------------------------------------------------------
+    //     for (auto &[model_id, animator_id, transform]: rq)
+    //     {
+    //         rq.drawMethod(
+    //             rq_program,
+    //             model_id,
+    //             transform,
+    //             modelSystem()
+    //         );
+    //     }
+    // }
+    // // -----------------------------------------------------------------------------------------
 
 
-    // User-created render queues
-    // -----------------------------------------------------------------------------------------
-    for (idk::RenderQueue &rq: m_public_RQs)
-    {
-        const auto &config = rq.config();
+    // // User-created render queues
+    // // -----------------------------------------------------------------------------------------
+    // for (idk::RenderQueue &rq: m_public_RQs)
+    // {
+    //     const auto &config = rq.config();
 
-        bool nocull = config.cull_face == false;
-        if (nocull) gl::disable(GL_CULL_FACE);
+    //     bool nocull = config.cull_face == false;
+    //     if (nocull) gl::disable(GL_CULL_FACE);
 
-        glShaderProgram &rq_program = getProgram(rq.name());
-        rq_program.bind();
+    //     glShaderProgram &rq_program = getProgram(rq.name());
+    //     rq_program.bind();
 
-        for (auto &[model_id, animator_id, transform]: rq)
-        {
-            rq.drawMethod(
-                rq_program,
-                model_id,
-                transform,
-                modelSystem()
-            );
-        }
+    //     for (auto &[model_id, animator_id, transform]: rq)
+    //     {
+    //         rq.drawMethod(
+    //             rq_program,
+    //             model_id,
+    //             transform,
+    //             modelSystem()
+    //         );
+    //     }
 
-        if (nocull) gl::enable(GL_CULL_FACE);
-    }
-    // -----------------------------------------------------------------------------------------
+    //     if (nocull) gl::enable(GL_CULL_FACE);
+    // }
+    // // -----------------------------------------------------------------------------------------
 
 }
 
@@ -75,12 +77,11 @@ idk::RenderEngine::RenderStage_volumetrics( idk::Camera &camera,
         program.bind();
         program.set_mat4("un_model", modelmat);
 
-        program.set_sampler3D("un_voxel_radiance", vxgi_radiance[0]);
-        // for (int i=0; i<6; i++)
-        // {
-        //     program.set_sampler3D("un_voxel_radiance[" + std::to_string(i) + "]", vxgi_radiance[i]);
-        // }
-        program.set_sampler3D("un_voxel_normal", vxgi_normal);
+        for (int i=0; i<6; i++)
+        {
+            program.set_sampler3D("un_voxel_radiance[" + std::to_string(i) + "]", vxgi_radiance[i]);
+        }
+        program.set_sampler3D("un_voxel_albedo", vxgi_albedo);
 
         tex2tex(program, buffer_in, buffer_out);
     }
@@ -143,12 +144,45 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
     program.set_sampler2D("un_BRDF_LUT", BRDF_LUT);
 
 
-    program.set_sampler3D("un_voxel_radiance", vxgi_radiance[0]);
-    // for (int i=0; i<6; i++)
-    // {
-    //     program.set_sampler3D("un_voxel_radiance[" + std::to_string(i) + "]", vxgi_radiance[i]);
-    // }
-    program.set_sampler3D("un_voxel_normal", vxgi_normal);
+
+    static GLuint vxgi_noise;
+    static float  increment = 0.0f;
+    increment += 0.001f;
+
+    static bool first = true;
+    if (first)
+    {
+        first = false;
+
+        auto noise_data = idk::noisegen3D::white(64, 64, 64);
+
+        glTextureConfig config = {
+            .target         = GL_TEXTURE_3D,
+            .internalformat = GL_RGBA8,
+            .format         = GL_RGBA,
+            .minfilter      = GL_NEAREST,
+            .magfilter      = GL_NEAREST,
+            .wrap_s         = GL_REPEAT,
+            .wrap_t         = GL_REPEAT,
+            .wrap_r         = GL_REPEAT,
+            .datatype       = GL_UNSIGNED_BYTE
+        };
+
+        vxgi_noise = gltools::loadTexture3D(
+            64, 64, 64,
+            noise_data.get(),
+            config
+        );
+
+    }
+
+    program.set_sampler3D("un_voxel_noise", vxgi_noise);
+    program.set_float("un_increment", increment);
+
+    for (int i=0; i<6; i++)
+    {
+        program.set_sampler3D("un_voxel_radiance[" + std::to_string(i) + "]", vxgi_radiance[i]);
+    }
 
 
     idk::glDepthCascade depthcascade = m_lightsystem.depthCascade();
@@ -156,6 +190,24 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
     program.set_sampler2DArray("un_dirlight_depthmap", depthcascade.getTextureArray());
     program.set_samplerCube("un_skybox_diffuse",  skyboxes_IBL[current_skybox].first);
     program.set_samplerCube("un_skybox_specular", skyboxes_IBL[current_skybox].second);
+
+
+
+    static const float     B = VXGI_WORLD_HALF_BOUNDS;
+    static const glm::mat4 P = glm::ortho(-B, B, -B, B, -B, B);
+
+    glm::mat4 view = glm::lookAt(
+        -glm::vec3(lightSystem().getDirlight(0).direction),
+        glm::vec3(0.0f),
+        glm::vec3(0.0f, 1.0f, 0.0f)
+    );
+
+    glm::mat4 light_matrix = P * view;
+
+    program.set_sampler2D("un_vxgi_depthmap", m_vxgi_buffer.depth_attachment);
+    program.set_mat4("un_vxgi_light_matrix", light_matrix);
+
+
 
     tex2tex(program, buffer_in, m_mainbuffer_0);
     program.popTextureUnits();
@@ -230,6 +282,12 @@ idk::RenderEngine::PostProcess_chromatic_aberration( glFramebuffer &buffer_in,
     chromatic.bind();
     tex2tex(chromatic, buffer_in, buffer_out);
     glShaderProgram::unbind();
+}
+
+
+void
+idk::RenderEngine::PostProcess_SSR()
+{
 }
 
 
@@ -336,12 +394,6 @@ idk::RenderEngine::RenderStage_postprocessing( idk::Camera &camera,
     PostProcess_chromatic_aberration(buffer_in, m_mainbuffer_0);
     // PostProcess_bloom();
 
-    auto &hist = getProgram("lum-hist");
-    hist.bind();
-    hist.dispatch(width()/16, height()/16, 1);
-
-
-    // m_mainbuffer_0.generateMipmap(0);
     PostProcess_colorgrading(camera, m_mainbuffer_0, buffer_out);
 
 

@@ -1,11 +1,12 @@
 #version 460 core
 #extension GL_GOOGLE_include_directive: require
 
-#define DIRSHADOW_AMBIENT  1
-#define MIPLEVEL_SPECULAR  5.0
+#define DIRSHADOW_AMBIENT  0
+#define MIPLEVEL_SPECULAR  4.0
 
 layout (location = 0) out vec4 fsout_frag_color;
-
+layout (binding = 30, rgba16f) uniform image2D un_position;
+layout (binding = 31, rgba16f) uniform image2D un_velocity;
 
 
 #include "../UBOs/UBOs.glsl"
@@ -16,9 +17,10 @@ layout (location = 0) out vec4 fsout_frag_color;
 uniform sampler2DShadow un_vxgi_depthmap;
 uniform mat4            un_vxgi_light_matrix;
 
-uniform sampler3D       un_voxel_normal;
-uniform sampler3D       un_voxel_radiance;
 
+uniform sampler3D       un_voxel_radiance[6];
+uniform sampler3D       un_voxel_noise;
+uniform float           un_increment;
 
 
 
@@ -37,20 +39,22 @@ uniform sampler2D   un_BRDF_LUT;
 #define PBR_ON 1
 
 #define SKYBOX_IBL 0
+#define SKYBOX_IBL_STRENGTH 1
+
 
 #define VXGI_ON 1
 #define VXGI_DIFFUSE 1
-#define VXGI_DIFFUSE_APERTURE 60.0
-#define VXGI_DIFFUSE_OFFSET   3.0
-#define VXGI_DIFFUSE_STRENGTH 0.25
+#define VXGI_DIFFUSE_APERTURE 40.0
+#define VXGI_DIFFUSE_OFFSET   1.0
+#define VXGI_DIFFUSE_STRENGTH 1.0
 
 #define VXGI_SPECULAR 0
-#define VXGI_SPECULAR_APERTURE 10.0
+#define VXGI_SPECULAR_APERTURE 120.0
+#define VXGI_SPECULAR_OFFSET   1.5
 #define VXGI_SPECULAR_STRENGTH 1.0
 
 #define VXGI_AMBIENTAO 1
 #define VXGI_AMBIENTAO_ONLY 0
-#define VXGI_OFFSET 0.15
 
 
 
@@ -98,7 +102,12 @@ vec3 orthogonal( vec3 u )
 vec3 indirect_diffuse( vec3 origin, vec3 N, float roughness )
 {
     vec3  result = vec3(0.0);
-    float alpha  = 0.5;
+
+    vec4 noiseA = textureLod(un_voxel_noise, (origin), 0.0);
+    vec4 noiseB = textureLod(un_voxel_noise, origin + noiseA.rgb * un_increment * N, 0.0);
+
+    vec4  alphaA = vec4(0.5); // + vec4(0.25) * (noiseB);
+    vec4  alphaB = vec4(0.5); // + vec4(0.25) * (noiseB);
 
     vec3 T  = normalize(orthogonal(N));
     vec3 B  = normalize(cross(N, T));
@@ -109,15 +118,15 @@ vec3 indirect_diffuse( vec3 origin, vec3 N, float roughness )
     (
         N,
     
-        normalize(mix(N,  T,  alpha)),
-        normalize(mix(N,  B,  alpha)),
-        normalize(mix(N, -T,  alpha)),
-        normalize(mix(N, -B,  alpha)),
+        normalize(mix(N,  T,  alphaA[0])),
+        normalize(mix(N,  B,  alphaA[1])),
+        normalize(mix(N, -T,  alphaA[2])),
+        normalize(mix(N, -B,  alphaA[3])),
     
-        normalize(mix(N,  Tp, alpha)),
-        normalize(mix(N, -Tp, alpha)),
-        normalize(mix(N,  Bp, alpha)),
-        normalize(mix(N, -Bp, alpha))
+        normalize(mix(N,  Tp, alphaB[0])),
+        normalize(mix(N, -Tp, alphaB[1])),
+        normalize(mix(N,  Bp, alphaB[2])),
+        normalize(mix(N, -Bp, alphaB[3]))
     );
 
 
@@ -125,12 +134,13 @@ vec3 indirect_diffuse( vec3 origin, vec3 N, float roughness )
     {
         float aperture = radians(VXGI_DIFFUSE_APERTURE);
         vec3  cone_dir = cone_directions[i];
+        float weight   = dot(N, cone_dir);
 
-        result += VXGI_TraceCone(
+        result += weight * VXGI_TraceCone(
             origin + VXGI_DIFFUSE_OFFSET * VXGI_VOXEL_SIZE * N,
             cone_dir,
             aperture,
-            un_viewpos,
+            un_RenderData[un_SyncData_index].cameras[0].position.xyz,
             un_voxel_radiance
         );
     }
@@ -141,40 +151,26 @@ vec3 indirect_diffuse( vec3 origin, vec3 N, float roughness )
 
 vec3 trace_specular( vec3 origin, vec3 N, vec3 R, float roughness )
 {
-    vec3  result = vec3(0.0);
-    float alpha  = 0.025;
+    float aperture = radians(roughness * VXGI_SPECULAR_APERTURE) + 0.01;
 
-    vec3 T  = normalize(orthogonal(R));
-    vec3 B  = normalize(cross(R, T));
-    vec3 Tp = normalize(mix(T, B, 0.5));
-    vec3 Bp = normalize(mix(T, B, 0.5));
+    vec4 noiseA = textureLod(un_voxel_noise, (origin), 0.0);
+    vec4 noiseB = textureLod(un_voxel_noise, origin + noiseA.rgb * un_increment * N, 0.0);
 
+    vec4  alphaA = vec4(0.5) + vec4(0.15) * (noiseB);
+    vec4  alphaB = vec4(0.5) + vec4(0.15) * (noiseB);
 
-    vec3 cone_directions[] = vec3[]
-    (
+    origin = origin + 0.02 * noiseB[0] * N;
+    R = normalize(R + 0.1*noiseB.xyz); 
+
+    return VXGI_SPECULAR_STRENGTH * VXGI_TraceCone(
+        origin + VXGI_SPECULAR_OFFSET * VXGI_VOXEL_SIZE * N,
         R,
-        normalize(mix(R,  T, alpha)),
-        normalize(mix(R, -T, alpha)),
-        normalize(mix(R,  B, alpha)),
-        normalize(mix(R, -B, alpha))
+        aperture,
+        un_RenderData[un_SyncData_index].cameras[0].position.xyz,
+        un_voxel_radiance
     );
-
-    for (int i=0; i<1; i++)
-    {
-        float aperture = radians(roughness * VXGI_SPECULAR_APERTURE + 0.001);
-        vec3  dir      = cone_directions[i];
-
-        result += VXGI_TraceCone(
-            origin + 3.0 * VXGI_VOXEL_SIZE*N,
-            dir,
-            aperture,
-            un_viewpos,
-            un_voxel_radiance
-        );
-    }
-
-    return result;
 }
+
 
 
 
@@ -188,12 +184,16 @@ void main()
 
     vec3  position = texture(un_texture_1, fsin_texcoords).xyz;
     vec3  normal   = texture(un_texture_2, fsin_texcoords).xyz;
+    // vec2  encoded  = texture(un_texture_2, fsin_texcoords).xy;
+    // vec3  normal;
+        //   normal.z = length(encoded.xy) * 2.0 - 1.0;
+        //   normal.xy = normalize(encoded.xy) * sqrt(1.0 - normal.z * normal.z);
 
     vec4  texture_pbr = texture( un_texture_3, fsin_texcoords);
-    float roughness   = clamp(texture_pbr.r, 0.01, 0.99);
-    float metallic    = clamp(texture_pbr.g, 0.01, 0.99);
-    float ao          = clamp(texture_pbr.b, 0.01, 0.99);
-    float emission    = clamp(texture_pbr.a, 0.00, 1.00);
+    float roughness   = clamp(texture_pbr.r, 0.0, 1.0);
+    float metallic    = clamp(texture_pbr.g, 0.0, 1.0);
+    float ao          = clamp(texture_pbr.b, 0.0, 1.0);
+    float emission    = clamp(texture_pbr.a, 0.0, 1.0);
 
     if (alpha < 1.0)
     {
@@ -201,12 +201,27 @@ void main()
        return;
     }
 
+    {
+        ivec2 texel = ivec2(fsin_texcoords * IDK_RenderData_GetCamera().image_size.xy);
+
+        vec4 lpos = IDK_RenderData_GetCamera().P * IDK_RenderData_GetCamera().prev_V * vec4(position, 1.0);
+             lpos = (lpos / lpos.w) * 0.5 + 0.5;
+
+        vec4 npos = IDK_RenderData_GetCamera().P * IDK_RenderData_GetCamera().V * vec4(position, 1.0);
+             npos = (npos / npos.w) * 0.5 + 0.5;
+
+        vec2 velocity = (npos.xy - lpos.xy); 
+
+        imageStore(un_velocity, texel, vec4(velocity.xy, 0.0, 1.0));
+        imageStore(un_position, texel, vec4(position, 1.0));
+    }
+
     vec3  N     = normalize(normal);
-    vec3  V     = normalize(un_viewpos - position);
+    vec3  V     = normalize(un_RenderData[un_SyncData_index].cameras[0].position.xyz - position);
     vec3  R     = reflect(-V, N); 
     vec3  F0    = mix(vec3(0.04), albedo, metallic);
     float NdotV = max(dot(N, V), 0.0);
-    vec3  F     = fresnelSchlick(NdotV, F0);
+    vec3  F     = fresnelSchlickR(NdotV, F0, roughness);
     vec3  Ks    = F;
     vec3  Kd    = (vec3(1.0) - Ks) * (1.0 - metallic);
     vec2  brdf  = texture(un_BRDF_LUT, vec2(NdotV, roughness)).rg;
@@ -223,12 +238,13 @@ void main()
     vec3  dir_lighting = dirlight_contribution(0, position, F0, N, V, R, albedo, metallic, roughness);
     float dir_shadow = dirlight_shadow(0, un_view, position, N);
     // float dir_shadow = dirlight_shadow_2(0, un_vxgi_depthmap, un_view, un_vxgi_light_matrix, position, N);
-
     result += dir_lighting * dir_shadow;
 
 
     // IBL
     // -----------------------------------------------------------------------------------------
+    vec3 IBL_contribution = vec3(0.0);
+
     #if SKYBOX_IBL == 1
         vec3 irradiance = textureLod(un_skybox_diffuse, N, roughness).rgb;
         vec3 diffuse    = irradiance * albedo;
@@ -241,15 +257,17 @@ void main()
             ambient *= clamp(dir_shadow, un_dirlights[0].ambient.w, 1.0);
         #endif
 
-        result += ambient;
+        IBL_contribution = SKYBOX_IBL_STRENGTH * ambient;
     #endif
+
+    result += IBL_contribution;
     // -----------------------------------------------------------------------------------------
 
 
     // Cone Tracing
     // -----------------------------------------------------------------------------------------
     #if VXGI_ON == 1
-        if (VXGI_in_bounds(position, un_viewpos))
+        if (VXGI_in_bounds(position, un_RenderData[un_SyncData_index].cameras[0].position.xyz))
         {
             vec3  VXGI_ambient  = vec3(0.0);
             vec3  VXGI_diffuse  = vec3(0.0);
@@ -258,7 +276,7 @@ void main()
 
             #if VXGI_DIFFUSE == 1
                 VXGI_diffuse = indirect_diffuse(position, N, roughness);
-                VXGI_diffuse = VXGI_diffuse * (albedo);
+                VXGI_diffuse = VXGI_diffuse * albedo;
             #endif
 
             #if VXGI_SPECULAR == 1
@@ -270,6 +288,7 @@ void main()
             // VXGI_AO      = trace_ao(position, N);
 
             result += VXGI_ambient;
+
             // result = VXGI_diffuse / albedo;
 
             // #if VXGI_AMBIENTAO == 1
@@ -283,10 +302,6 @@ void main()
         }
     #endif
     // -----------------------------------------------------------------------------------------
-
-    // fsout_frag_color = vec4(vec3(emission), 1.0);
-
-    result += emission*albedo;
 
     fsout_frag_color = vec4(result, 1.0);
 }
