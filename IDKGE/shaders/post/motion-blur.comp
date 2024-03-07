@@ -15,8 +15,7 @@ layout(
 
 layout (binding=0,  rgba16f) readonly  uniform image2D un_input;
 layout (binding=1,  rgba16f) writeonly uniform image2D un_output;
-layout (binding=30, rgba16f) readonly uniform image2D un_position;
-layout (binding=31, rgba16f) readonly uniform image2D un_velocity;
+layout (binding=30, rg8i) readonly uniform iimage2D un_velocity;
 
 
 #define NUM_SAMPLES 4
@@ -31,7 +30,7 @@ void main()
     float strength = 1.0; // 0.25 + distance(texcoord, vec2(0.5));
 
 
-    vec2  velocity   = imageLoad(un_velocity, texel).xy;
+    vec2  velocity   = imageLoad(un_velocity, texel).xy / 255.0;
     vec2  ray_dir    = normalize(velocity);
 
     vec2  ray_start  = texcoord + (velocity / 2.0);

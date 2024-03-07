@@ -4,38 +4,6 @@
 #include <libidk/GL/idk_gltools.hpp>
 
 
-// static void
-// drawmethod( idk::glShaderProgram &program, int model_id,
-//             const glm::mat4 &transform, idk::ModelSystem &MS )
-// {
-//     idk::Model &model = MS.getModel(model_id);
-//     program.set_mat4("un_model", transform);
-
-//     idk::gl::bindVertexArray(model.VAO);
-//     uint64_t start_idx = 0;
-
-//     for (idk::Mesh &mesh: model.meshes)
-//     {
-//         auto &material = MS.getMaterial(mesh.material_id);
-//         program.set_int("un_material_id", material.bindless_idx);
-
-//         idk::gl::drawElements(
-//             GL_TRIANGLES, mesh.num_indices, GL_UNSIGNED_INT,
-//             (void *)(start_idx)
-//         );
-
-//         start_idx += mesh.num_indices * sizeof(GLuint);
-//     }
-// }
-
-
-static void
-VXGI_clearTexture( GLuint texture )
-{
-    IDK_GLCALL( glClearTexImage(texture, 0, GL_RGBA, GL_UNSIGNED_INT, nullptr); )
-}
-
-
 GLuint
 idk::VXGI::allocateTexture( size_t w )
 {
@@ -55,6 +23,27 @@ idk::VXGI::allocateTexture( size_t w )
     return texture;
 }
 
+
+GLuint
+idk::VXGI::allocateAlbedoTexture( size_t w )
+{
+    static constexpr idk::glTextureConfig config = {
+        .target         = GL_TEXTURE_3D,
+        .internalformat = GL_RGBA8,
+        .format         = GL_RGBA,
+        .minfilter      = GL_NEAREST,
+        .magfilter      = GL_NEAREST,
+        .datatype       = GL_UNSIGNED_BYTE,
+        .genmipmap      = GL_FALSE
+    };
+
+    GLuint texture = gltools::loadTexture3D(w, w, w, nullptr, config);
+    gl::clearTexImage(texture, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    return texture;
+}
+
+
 GLuint
 idk::VXGI::allocateNormalTexture( size_t w )
 {
@@ -62,10 +51,10 @@ idk::VXGI::allocateNormalTexture( size_t w )
         .target         = GL_TEXTURE_3D,
         .internalformat = GL_RGBA8,
         .format         = GL_RGBA,
-        .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
+        .minfilter      = GL_NEAREST,
         .magfilter      = GL_NEAREST,
         .datatype       = GL_UNSIGNED_BYTE,
-        .genmipmap      = GL_TRUE,
+        .genmipmap      = GL_FALSE
     };
 
     GLuint texture = gltools::loadTexture3D(w, w, w, nullptr, config);
@@ -80,7 +69,7 @@ static glm::mat4 light_matrix;
 void
 idk::VXGI::shadowPass( idk::glFramebuffer &buffer_out, idk::Camera &camera, glm::vec3 light_dir,
                        idk::glShaderProgram &program, GLuint draw_indirect_buffer,
-                       const std::vector<idk::glDrawElementsIndirectCommand> &commands )
+                       const std::vector<idk::glDrawCmd> &commands )
 {
     gl::disable(GL_CULL_FACE);
 
@@ -106,7 +95,7 @@ idk::VXGI::shadowPass( idk::glFramebuffer &buffer_out, idk::Camera &camera, glm:
         GL_UNSIGNED_INT,
         nullptr,
         commands.size(),
-        sizeof(idk::glDrawElementsIndirectCommand)
+        sizeof(idk::glDrawCmd)
     );
 
     gl::enable(GL_CULL_FACE);
@@ -116,7 +105,7 @@ idk::VXGI::shadowPass( idk::glFramebuffer &buffer_out, idk::Camera &camera, glm:
 
 void
 idk::VXGI::renderTexture( idk::glFramebuffer &buffer_out, idk::Camera &camera, idk::glShaderProgram &program,
-                           GLuint draw_indirect_buffer, const std::vector<idk::glDrawElementsIndirectCommand> &commands,
+                           GLuint draw_indirect_buffer, const std::vector<idk::glDrawCmd> &commands,
                            idk::glDepthCascade &depthcascade )
 {
     static const float B     = VXGI_WORLD_HALF_BOUNDS;
@@ -144,7 +133,7 @@ idk::VXGI::renderTexture( idk::glFramebuffer &buffer_out, idk::Camera &camera, i
             GL_UNSIGNED_INT,
             nullptr,
             commands.size(),
-            sizeof(idk::glDrawElementsIndirectCommand)
+            sizeof(idk::glDrawCmd)
         );
     }
 
@@ -158,7 +147,7 @@ idk::VXGI::injectRadiance( idk::glShaderProgram &program, idk::Camera &camera, i
 {
     program.bind();
 
-    program.set_vec4("un_cascade_depths", depthcascade.getCascadeDepths(camera.farPlane()));
+    program.set_vec4("un_cascade_depths", depthcascade.getCascadeDepths(camera.far));
     program.set_sampler2DArray("un_dirlight_depthmap", depthcascade.getTextureArray());
     program.set_sampler2D("un_depthmap", buffer_out.depth_attachment);
     program.set_mat4("un_light_matrix", light_matrix);

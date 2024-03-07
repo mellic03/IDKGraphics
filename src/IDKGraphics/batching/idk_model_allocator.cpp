@@ -4,6 +4,9 @@
 #include <libidk/GL/idk_gltools.hpp>
 
 #include <cstring>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 
 idk::ModelAllocator::ModelAllocator()
@@ -41,7 +44,7 @@ idk::ModelAllocator::ModelAllocator()
     auto data_albedo = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 200, 200, 200, 255 );
     auto data_normal = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 125, 125, 255, 0);
     auto data_ao_r_m = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 255, 180, 1, 0);
-    auto data_emissv = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 0, 0, 0, 0);
+    auto data_emissv = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 0, 0, 0, 255);
 
     GLuint textures[5];
 
@@ -64,14 +67,6 @@ idk::ModelAllocator::ModelAllocator()
 
     m_ModelData_SSBO.init(1);
 
-    gl::createBuffers(1, &m_draw_indirect_buffer);
-
-    gl::namedBufferData(
-        m_draw_indirect_buffer,
-        512 * sizeof(idk::glDrawElementsIndirectCommand),
-        nullptr,
-        GL_DYNAMIC_COPY
-    );
 }
 
 
@@ -120,10 +115,19 @@ idk::ModelAllocator::loadMaterial( uint32_t bitmask, std::string textures[IDK_TE
 int
 idk::ModelAllocator::loadModel( const std::string &filepath )
 {
+    if (fs::exists(filepath) == false)
+    {
+        std::cout << "Cannot open \"" << filepath << "\"\n";
+        IDK_ASSERT("File does not exist", fs::exists(filepath));
+    }
+
     if (m_loaded_model_IDs.contains(filepath))
     {
+        std::cout << "Model already cached: \"" << filepath << "\"\n";
         return m_loaded_model_IDs[filepath];
     }
+
+    std::cout << "Loading model from file: \"" << filepath << "\"\n";
 
     idk::ModelFileHeader header;
     std::vector<idk::MeshFileHeader> meshes;
@@ -145,14 +149,54 @@ idk::ModelAllocator::loadModel( const std::string &filepath )
         );
 
         desc.material_id = loadMaterial(mesh.bitmask, mesh.textures);
+        desc.bounding_radius = meshes[i].bounding_radius;
+
         model_desc.mesh_ids.push_back(createMesh(desc));
     }
 
     int model_id = createModel(model_desc);
     m_loaded_model_IDs[filepath] = model_id;
 
+    for (auto &data: vertices) { std::free(data); };
+    for (auto &data: indices)  { std::free(data); };
+
     return model_id;
 }
+
+
+int
+idk::ModelAllocator::createMaterial( int albedo, int normal, int ao_r_m )
+{
+    int id = createMaterial();
+
+    getMaterial(id).textures[0] = albedo;
+    getMaterial(id).textures[1] = normal;
+    getMaterial(id).textures[2] = ao_r_m;
+
+    return id;
+}
+
+
+int
+idk::ModelAllocator::createMaterial( const std::string &albedo, const std::string &normal,
+                                     const std::string &ao_r_m)
+{
+    int id = createMaterial();
+
+    getMaterial(id).textures[0] = loadTexture(albedo, m_albedo_config);
+    getMaterial(id).textures[1] = loadTexture(normal, m_lightmap_config);
+    getMaterial(id).textures[2] = loadTexture(ao_r_m, m_lightmap_config);
+
+    return id;
+}
+
+
+void
+idk::ModelAllocator::addUserMaterial( int model, int material, int idx )
+{
+    getModel(model).user_materials[idx] = material;
+}
+
 
 
 
@@ -169,37 +213,30 @@ idk::ModelAllocator::clear()
 
 
 void
-idk::ModelAllocator::getVertices( int model_id, size_t &num_vertices, std::unique_ptr<uint8_t[]> &vertices )
+idk::ModelAllocator::getVertices( int model_id, size_t &num_vertices, std::unique_ptr<idk::Vertex_P_N_T_UV[]> &vertices )
 {
     num_vertices = 0;
 
     for (int mesh_id: getModel(model_id).mesh_ids)
     {
-        MeshDescriptor &mesh = getMesh(mesh_id); 
-        num_vertices += mesh.numVertices;
+        num_vertices += getMesh(mesh_id).numVertices;
     }
 
+    vertices = std::make_unique<Vertex_P_N_T_UV[]>(num_vertices);
+    Vertex_P_N_T_UV *buffer = (Vertex_P_N_T_UV *)gl::mapNamedBuffer(m_mesh_allocator.VBO, GL_READ_ONLY);
 
-    vertices = std::make_unique<uint8_t[]>(num_vertices * sizeof(Vertex_P_N_T_UV));
     size_t offset = 0;
-
-    uint8_t *buffer = reinterpret_cast<uint8_t *>(
-        gl::mapNamedBuffer(m_mesh_allocator.VBO, GL_READ_ONLY)
-    );
-
-
     for (int mesh_id: getModel(model_id).mesh_ids)
     {
-        MeshDescriptor &mesh = getMesh(mesh_id);
-
-        void  *start  = reinterpret_cast<void *>(buffer + mesh.baseVertex);
-        size_t nbytes = mesh.numVertices * sizeof(Vertex_P_N_T_UV);
+        auto &mesh = getMesh(mesh_id);
 
         std::memcpy(
             vertices.get() + offset,
-            buffer + mesh.baseVertex * sizeof(Vertex_P_N_T_UV),
-            nbytes
+            buffer + mesh.baseVertex,
+            mesh.numVertices * sizeof(Vertex_P_N_T_UV)
         );
+
+        offset += mesh.numVertices;
     }
 
     gl::unmapNamedBuffer(m_mesh_allocator.VBO);
@@ -217,122 +254,24 @@ idk::ModelAllocator::getIndices( int model_id, size_t &num_indices, std::unique_
         num_indices += mesh.numIndices;
     }
 
-
     indices = std::make_unique<uint32_t[]>(num_indices);
+    uint32_t *buffer = (uint32_t *)gl::mapNamedBuffer(m_mesh_allocator.IBO, GL_READ_ONLY);
+
     size_t offset = 0;
-
-    uint32_t *buffer = reinterpret_cast<uint32_t *>(
-        gl::mapNamedBuffer(m_mesh_allocator.IBO, GL_READ_ONLY)
-    );
-
-
     for (int mesh_id: getModel(model_id).mesh_ids)
     {
-        MeshDescriptor &mesh = getMesh(mesh_id);
-
-        void  *start  = reinterpret_cast<void *>(buffer + mesh.baseIndex);
-        size_t nbytes = mesh.numIndices * sizeof(uint32_t);
+        auto &mesh = getMesh(mesh_id);
 
         std::memcpy(
             indices.get() + offset,
-            buffer + mesh.baseIndex,
-            nbytes
+            buffer + mesh.firstIndex,
+            mesh.numIndices * sizeof(uint32_t)
         );
+
+        offset += mesh.numIndices;
     }
 
     gl::unmapNamedBuffer(m_mesh_allocator.IBO);
-}
-
-
-
-
-
-idk::glDrawElementsIndirectCommand
-idk::ModelAllocator::genDrawCommand( int mesh_id )
-{
-    idk::MeshDescriptor &mesh = getMesh(mesh_id);
-
-    idk::glDrawElementsIndirectCommand cmd = {
-        .count           = mesh.numIndices,
-        .instanceCount   = 1,
-        .firstIndex      = mesh.baseIndex,
-        .baseVertex      = mesh.baseVertex,
-        .baseInstance    = 0
-    };
-
-    return cmd;
-}
-
-
-
-const std::vector<idk::glDrawElementsIndirectCommand> &
-idk::ModelAllocator::genDrawCommands()
-{
-    static std::vector<idk::glDrawElementsIndirectCommand> commands;
-    commands.resize(0);
-
-    static std::unordered_set<GLuint64> handle_set;
-    for (GLuint64 handle: handle_set)
-    {
-        gl::makeTextureHandleNonResidentARB(handle);
-    }
-    handle_set.clear();
-
-
-    uint32_t draw_ID = 0;
-
-    for (auto &[model_id, transform]: m_drawlist)
-    {
-        auto &mesh_ids = getModel(model_id).mesh_ids;
-
-        for (int mesh_id: mesh_ids)
-        {
-            MeshDescriptor     &mesh = getMesh(mesh_id);
-            MaterialDescriptor &material = getMaterial(mesh.material_id);
-
-
-            uint32_t texture_idx = 0;
-
-            for (auto &texture_id: material.textures)
-            {
-                TextureDescriptor &texture = getTexture(texture_id);
-                IDK_ASSERT("This shouldn't happen!", texture_id != -1);
-
-                m_ModelData.materials[draw_ID][texture_idx] = texture.handle;
-                texture_idx += 1;
-
-                handle_set.insert(texture.handle);
-            }
-
-
-            m_ModelData.transforms[draw_ID] = transform;
-            draw_ID += 1;
-
-
-            commands.push_back(genDrawCommand(mesh_id));
-        }
-    }
-
-    m_ModelData_SSBO.update(m_ModelData);
-
-
-    for (GLuint64 handle: handle_set)
-    {
-        gl::makeTextureHandleResidentARB(handle);
-    }
-
-
-    gl::namedBufferSubData(
-        m_draw_indirect_buffer,
-        0,
-        commands.size() * sizeof(idk::glDrawElementsIndirectCommand),
-        reinterpret_cast<const void *>(commands.data())
-    );
-
-    m_drawlist.resize(0);
-
-
-    return commands;
 }
 
 

@@ -3,7 +3,7 @@
 
 #include "../UBOs/UBOs.glsl"
 #include "../include/util.glsl"
-#include "../include/lightsource.glsl"
+#include "../include/pbr.glsl"
 
 layout(
     local_size_x = 8,
@@ -12,57 +12,66 @@ layout(
 ) in;
 
 
-layout (binding=0, rgba16f) readonly uniform image2D un_input;
+layout (binding=0, rgba16f) readonly  uniform image2D un_input;
 layout (binding=1, rgba16f) writeonly uniform image2D un_output;
-layout (binding=2, rgba16f) uniform image2D un_albedo;
-layout (binding=3, rgba32f) uniform image2D un_position;
-layout (binding=4, rgba16f) uniform image2D un_normal;
-layout (binding=5, rgba16f) uniform image2D un_pbr;
 
-uniform vec2 un_size;
+uniform sampler2D un_albedo;
+uniform sampler2D un_normal;
+uniform sampler2D un_pbr;
+
+uniform sampler2D un_fragdepth;
+uniform sampler2D un_BRDF_LUT;
+
 
 #define RAY_OFFSET 0.02
 #define RAY_STEP_SIZE 1.0
 #define RAY_MAX_STEPS 128
 
+
 void main()
 {
-    ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+    IDK_Camera camera = IDK_RenderData_GetCamera();
+    vec3 viewpos = camera.position.xyz;
 
-    vec4  albedo_a = imageLoad(un_albedo, texel);
-    vec3  albedo   = albedo_a.rgb;
-    float alpha    = albedo_a.a;
+    ivec2 texel    = ivec2(gl_GlobalInvocationID.xy);
+    vec2  texcoord = vec2(texel) / camera.image_size.xy;
+    vec3  position = IDK_WorldFromDepth(un_fragdepth, texcoord, camera.P, camera.V);
 
-    vec3  position = imageLoad(un_position, texel).xyz;
-    vec3  N        = normalize(imageLoad(un_normal, texel).xyz);
-    vec3  V        = normalize(un_viewpos - position);
-    vec3  R        = normalize(reflect(-V, N));
+    IDK_PBRSurfaceData surface = IDK_PBRSurfaceData_load(
+        camera,
+        texcoord,
+        un_fragdepth,
+        un_albedo,
+        un_normal,
+        un_pbr,
+        un_BRDF_LUT
+    );
 
-    if (dot(R, V) > 0.0)
+
+    if (surface.roughness > 0.4)
     {
         vec4 current = imageLoad(un_input, texel);
         imageStore(un_output, texel, current);
         return;
     }
 
-    vec4  texture_pbr = imageLoad(un_pbr, texel);
-    float roughness   = clamp(texture_pbr.r, 0.0, 1.0);
-    float metallic    = clamp(texture_pbr.g, 0.0, 1.0);
-    float ao          = clamp(texture_pbr.b, 0.0, 1.0);
-    float emission    = clamp(texture_pbr.a, 0.0, 1.0);
+    if (dot(surface.R, surface.V) > 0.0)
+    {
+        vec4 current = imageLoad(un_input, texel);
+        imageStore(un_output, texel, current);
+        return;
+    }
 
-    vec3  F0    = mix(vec3(0.04), albedo, metallic);
-    float NdotV = max(dot(N, V), 0.0);
 
-    vec3 ray_pos = position + RAY_OFFSET*N;
-    vec3 cam_to_frag = normalize(ray_pos - un_viewpos);
-    vec3 ray_dir = R;
+    vec3 ray_pos = position + RAY_OFFSET*surface.N;
+    vec3 cam_to_frag = normalize(ray_pos - viewpos);
+    vec3 ray_dir = surface.R;
 
     vec3 result = vec3(0.0);
     int count = 0;
     float cumdist = 0.0;
 
-    const mat4 PV = un_projection * un_view;
+    const mat4 PV = camera.PV;
 
 
     for (float i=0; i<RAY_MAX_STEPS; i++)
@@ -73,10 +82,17 @@ void main()
         projected.xy /= projected.w;
         projected.xy = projected.xy * 0.5 + 0.5;
 
-        ivec2 t = ivec2(projected.xy * un_size);
-        vec2  uv = t / un_size;
-        float frag_depth = (PV * imageLoad(un_position, t)).z;
+        ivec2 tx = ivec2(projected.xy * camera.image_size.xy);
+        vec2  uv = projected.xy;
+
+
+
+        // float frag_depth = (PV * imageLoad(un_position, tx)).z;
+        vec3 pos = IDK_WorldFromDepth(un_fragdepth, uv, camera.P, camera.V);
+
+        float frag_depth = (PV * vec4(pos, 1.0)).z;
         float ray_depth  = IDK_WorldToUV(ray_pos, PV).z;
+        // float ray_depth  = (PV * vec4(ray_pos, 1.0)).z;
         // ---------------------------------------------------------------------------
 
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
@@ -86,7 +102,8 @@ void main()
 
         if (ray_depth >= frag_depth)
         {
-            result = imageLoad(un_input, t).rgb;
+            result = imageLoad(un_input, tx).rgb;
+            // result = textureLod(un_input, uv, 0.0).rgb;
             break;
         }
 
@@ -94,10 +111,113 @@ void main()
         cumdist += RAY_STEP_SIZE;
     }
 
-    result *= fresnelSchlickR(NdotV, F0, roughness);
+    result *= fresnelSchlickR(surface.NdotV, surface.F0, surface.roughness);
 
     vec4 current = imageLoad(un_input, texel);
-    imageStore(un_output, texel, vec4(result+current.rgb, 1.0));
-
+    imageStore(un_output, texel, vec4(current.rgb + result, 1.0));
 
 }
+
+
+
+
+
+// #version 460 core
+// #extension GL_GOOGLE_include_directive: require
+
+// layout(
+//     local_size_x = 8,
+//     local_size_y = 8,
+//     local_size_z = 1
+// ) in;
+
+
+// layout (binding=0, rgba16f) readonly uniform image2D un_input;
+// layout (binding=1, rgba16f) writeonly uniform image2D un_output;
+// layout (binding=2, rgba16f) uniform image2D un_albedo;
+// layout (binding=3, rgba32f) uniform image2D un_position;
+// layout (binding=4, rgba16f) uniform image2D un_normal;
+// layout (binding=5, rgba16f) uniform image2D un_pbr;
+
+// uniform vec2 un_size;
+
+// #define RAY_OFFSET 0.02
+// #define RAY_STEP_SIZE 1.0
+// #define RAY_MAX_STEPS 128
+
+// void main()
+// {
+//     ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+
+//     vec4  albedo_a = imageLoad(un_albedo, texel);
+//     vec3  albedo   = albedo_a.rgb;
+//     float alpha    = albedo_a.a;
+
+//     vec3  position = imageLoad(un_position, texel).xyz;
+//     vec3  N        = normalize(imageLoad(un_normal, texel).xyz);
+//     vec3  V        = normalize(un_viewpos - position);
+//     vec3  R        = normalize(reflect(-V, N));
+
+//     if (dot(R, V) > 0.0)
+//     {
+//         vec4 current = imageLoad(un_input, texel);
+//         imageStore(un_output, texel, current);
+//         return;
+//     }
+
+//     vec4  texture_pbr = imageLoad(un_pbr, texel);
+//     float roughness   = clamp(texture_pbr.r, 0.0, 1.0);
+//     float metallic    = clamp(texture_pbr.g, 0.0, 1.0);
+//     float ao          = clamp(texture_pbr.b, 0.0, 1.0);
+//     float emission    = clamp(texture_pbr.a, 0.0, 1.0);
+
+//     vec3  F0    = mix(vec3(0.04), albedo, metallic);
+//     float NdotV = max(dot(N, V), 0.0);
+
+//     vec3 ray_pos = position + RAY_OFFSET*N;
+//     vec3 cam_to_frag = normalize(ray_pos - un_viewpos);
+//     vec3 ray_dir = R;
+
+//     vec3 result = vec3(0.0);
+//     int count = 0;
+//     float cumdist = 0.0;
+
+//     const mat4 PV = un_projection * un_view;
+
+
+//     for (float i=0; i<RAY_MAX_STEPS; i++)
+//     {
+//         // Project ray into UV space
+//         // ---------------------------------------------------------------------------
+//         vec4 projected = PV * vec4(ray_pos, 1.0);
+//         projected.xy /= projected.w;
+//         projected.xy = projected.xy * 0.5 + 0.5;
+
+//         ivec2 t = ivec2(projected.xy * un_size);
+//         vec2  uv = t / un_size;
+//         float frag_depth = (PV * imageLoad(un_position, t)).z;
+//         float ray_depth  = IDK_WorldToUV(ray_pos, PV).z;
+//         // ---------------------------------------------------------------------------
+
+//         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
+//         {
+//             break;
+//         }
+
+//         if (ray_depth >= frag_depth)
+//         {
+//             result = imageLoad(un_input, t).rgb;
+//             break;
+//         }
+
+//         ray_pos += RAY_STEP_SIZE * ray_dir;
+//         cumdist += RAY_STEP_SIZE;
+//     }
+
+//     result *= fresnelSchlickR(NdotV, F0, roughness);
+
+//     vec4 current = imageLoad(un_input, texel);
+//     imageStore(un_output, texel, vec4(result+current.rgb, 1.0));
+
+
+// }

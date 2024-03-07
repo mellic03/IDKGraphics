@@ -10,48 +10,48 @@
 #define PI  3.14159265359
 
 
-vec3 fresnelSchlick( float cosTheta, vec3 F0 )
-{
-    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
+// vec3 fresnelSchlick( float cosTheta, vec3 F0 )
+// {
+//     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+// }
 
-vec3 fresnelSchlickR( float cosTheta, vec3 F0, float roughness )
-{
-    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
+// vec3 fresnelSchlickR( float cosTheta, vec3 F0, float roughness )
+// {
+//     return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+// }
 
-float NDF( float roughness, vec3 N, vec3 H )
-{
-    float a = roughness*roughness;
-    float a2 = a*a;
-    float NdotH = max(dot(N, H), 0.0);
-    float NdotH2 = NdotH*NdotH;
+// float NDF( float roughness, vec3 N, vec3 H )
+// {
+//     float a = roughness*roughness;
+//     float a2 = a*a;
+//     float NdotH = max(dot(N, H), 0.0);
+//     float NdotH2 = NdotH*NdotH;
 
-    float nom   = a2;
-    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = PI * denom * denom;
+//     float nom   = a2;
+//     float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+//     denom = PI * denom * denom;
 
-    return nom / denom;
-}
+//     return nom / denom;
+// }
 
-float GeometrySchlickGGX(float NdotV, float roughness)
-{
-    float r = (roughness + 1.0);
-    float k = (r*r) / 8.0;
-    float nom   = NdotV;
-    float denom = NdotV * (1.0 - k) + k;
-    return nom / denom;
-}
+// float GeometrySchlickGGX(float NdotV, float roughness)
+// {
+//     float r = (roughness + 1.0);
+//     float k = (r*r) / 8.0;
+//     float nom   = NdotV;
+//     float denom = NdotV * (1.0 - k) + k;
+//     return nom / denom;
+// }
 
-float GSF( float roughness, vec3 N, vec3 V, vec3 L )
-{
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
-    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+// float GSF( float roughness, vec3 N, vec3 V, vec3 L )
+// {
+//     float NdotV = max(dot(N, V), 0.0);
+//     float NdotL = max(dot(N, L), 0.0);
+//     float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+//     float ggx1 = GeometrySchlickGGX(NdotL, roughness);
 
-    return ggx1 * ggx2;
-}
+//     return ggx1 * ggx2;
+// }
 
 
 
@@ -94,7 +94,7 @@ uniform vec4                   un_cascade_depths;
 
 #define KERNEL_HW 2
 #define BLEND_DIST 1.0
-#define DIRLIGHT_BIAS 0.001
+#define DIRLIGHT_BIAS 0.0005
 
 
 float sampleDepthMap( int layer, vec3 uv, float bias )
@@ -133,8 +133,30 @@ float dirlight_shadow( int idx, mat4 view_matrix, vec3 position, vec3 N )
     vec3 projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
     projCoords = projCoords * 0.5 + 0.5;
 
-    float bias   = 0.001 * max(dot(N, L), 0.0001);
+    float bias   = 0.0005 * max(dot(N, L), 0.00001);
     // float bias = DIRLIGHT_BIAS * max(dot(N, L), 0.0);
+    float shadow = sampleDepthMap(layer, projCoords, bias);
+
+    return shadow;
+}
+
+
+float dirlight_shadow_NoSlopeBias( int idx, mat4 view_matrix, vec3 position )
+{
+    DirLight light = un_dirlights[idx];
+    vec3 L = normalize(-light.direction.xyz);
+
+    vec3  fragpos_viewspace = (view_matrix * vec4(position, 1.0)).xyz;
+    float frag_depth        = abs(fragpos_viewspace.z);
+
+    vec4 res   = step(un_cascade_depths, vec4(frag_depth));
+    int  layer = int(res.x + res.y + res.z + res.w);
+
+    vec4 fragpos_lightspace = un_cascade_matrices[layer] * vec4(position, 1.0);
+    vec3 projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+
+    float bias   = DIRLIGHT_BIAS;
     float shadow = sampleDepthMap(layer, projCoords, bias);
 
     return shadow;
@@ -189,10 +211,9 @@ float dirlight_shadow_2( int idx, sampler2DShadow depth_map, mat4 view_matrix, m
 
 
 vec3 dirlight_contribution( int idx, vec3 position, vec3 F0, vec3 N, vec3 V, vec3 R,
-                            vec3 albedo, float metallic, float roughness )
+                            vec3 albedo, float metallic, float roughness, vec3 brdf )
 {
     DirLight light       = un_dirlights[idx];
-    vec3  light_dir      = normalize(light.direction.xyz);
     vec3  light_diffuse  = light.diffuse.xyz;
     float light_strength = light.diffuse.w;
 
@@ -211,14 +232,13 @@ vec3 dirlight_contribution( int idx, vec3 position, vec3 F0, vec3 N, vec3 V, vec
     vec3 Ks = F;
     vec3 Kd = (vec3(1.0) - Ks) * (1.0 - metallic);
 
-    return (Kd * albedo/PI + specular) * light_strength * light_diffuse * NdotL;
+    return (Kd * albedo/PI + (specular * brdf)) * light_strength * light_diffuse * NdotL;
 }
 
 
 vec3 dirlight_contribution_no_pbr( int idx, vec3 position, vec3 N, vec3 V, vec3 R, vec3 albedo )
 {
     DirLight light       = un_dirlights[idx];
-    vec3  light_dir      = normalize(light.direction.xyz);
     vec3  light_diffuse  = light.diffuse.xyz;
     float light_strength = light.diffuse.w;
 

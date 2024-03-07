@@ -107,8 +107,8 @@ idk::Frustum::getCascades( idk::Camera &camera, const glm::vec3 &L )
 
     std::vector<glm::mat4> cascades;
 
-    float cam_far  = camera.farPlane();
-    float cam_near = camera.nearPlane();
+    float cam_far  = camera.far;
+    float cam_near = camera.near;
 
     float near = cam_near;
     float far  = cam_far;
@@ -120,11 +120,11 @@ idk::Frustum::getCascades( idk::Camera &camera, const glm::vec3 &L )
         far = C[i] * cam_far;
 
         glm::mat4 P = glm::perspective(
-            camera.getFOV(), camera.getAspect(),
+            camera.fov, camera.aspect,
             near, far
         );
     
-        const auto &corners    = getCorners(P, camera.view());
+        const auto &corners    = getCorners(P, camera.V());
         const auto &projection = getProjection(L, corners);
 
         cascades.push_back(projection);

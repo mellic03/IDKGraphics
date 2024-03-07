@@ -3,7 +3,8 @@
 #extension GL_GOOGLE_include_directive: require
 #extension GL_ARB_bindless_texture: require
 
-#include "../include/SSBO_material.glsl"
+#include "../include/SSBO_indirect.glsl"
+#include "../UBOs/UBOs.glsl"
 
 layout (location = 0) in vec3 vsin_pos;
 layout (location = 1) in vec3 vsin_normal;
@@ -21,28 +22,15 @@ out vec3 TBN_fragpos;
 out mat3 TBN;
 out mat3 TBNT;
 
-struct Camera
-{
-    vec4 position;
-    vec4 beg;
-    vec4 aberration_rg;
-    vec4 aberration_b;
-    vec4 exposure;
-};
-
-layout (std140, binding = 2) uniform UBO_camera_data
-{
-    mat4 un_view;
-    mat4 un_projection;
-    vec3 un_viewpos;
-    Camera un_camera;
-};
-
 
 void main()
 {
     material_id = gl_DrawID;
-    const mat4 model = un_ModelData.transforms[gl_DrawID];
+
+    IDK_Camera camera = IDK_RenderData_GetCamera();
+
+    const uint offset = un_IndirectDrawData.offsets[gl_DrawID];
+    const mat4 model  = un_IndirectDrawData.transforms[offset + gl_InstanceID];
 
     vec4 position = model * vec4(vsin_pos,     1.0);
     vec4 normal   = model * vec4(vsin_normal,  0.0);
@@ -64,7 +52,7 @@ void main()
     TBN  = mat3(T, B, N);
     TBNT = transpose(TBN);
     TBN_fragpos = TBNT * fsin_fragpos;
-    TBN_viewpos = TBNT * un_viewpos;
+    TBN_viewpos = TBNT * camera.position.xyz;
 
-    gl_Position = un_projection * un_view * position;
+    gl_Position = camera.P * position;
 }

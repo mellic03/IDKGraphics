@@ -1,27 +1,13 @@
 #version 460 core
 
+#extension GL_GOOGLE_include_directive: require
+#include "../UBOs/UBOs.glsl"
+
+
 layout (location = 0) out vec4 fsout_frag_color;
 
 in vec2 fsin_texcoords;
 uniform sampler2D un_texture_0;
-
-
-struct Camera
-{
-    vec4 position;
-    vec4 beg;
-    vec4 aberration_rg;
-    vec4 aberration_b;
-    vec4 exposure;
-};
-
-layout (std140, binding = 2) uniform UBO_camera_data
-{
-    mat4 un_view;
-    mat4 un_projection;
-    vec3 un_viewpos;
-    Camera un_camera;
-};
 
 
 vec3 filmic(vec3 x, float gamma)
@@ -43,42 +29,28 @@ vec3 aces(vec3 x)
 }
 
 
-
-#define MIN_EXPOSURE 0.85
-#define MAX_EXPOSURE 1.50
-#define AUTO_EXPOSURE 0
-
-#if AUTO_EXPOSURE == 1
-    float autoExposure()
-    {
-        vec2 size = textureSize(un_texture_0, 0);
-        float miplevel = floor(log2(max(size.x, size.y))) + 1.0;
-
-        vec3 max_rgb = textureLod(un_texture_0, fsin_texcoords, miplevel).rgb;
-        float brightness = dot(max_rgb, vec3(0.2126, 0.7152, 0.0722));
-        
-        return clamp(0.5 / brightness, MIN_EXPOSURE, MAX_EXPOSURE);
-    }
-#else
-    float autoExposure()
-    {
-        return un_camera.exposure.x;
-    }
-#endif
+uniform sampler2D un_bloom;
 
 
 void main()
 {
-    float exposure = 1.0; // autoExposure();
+    IDK_Camera camera = IDK_RenderData_GetCamera();
+
+    float exposure = camera.exposure;
     float gamma    = 2.2;
 
     vec3 hdr   = textureLod(un_texture_0, fsin_texcoords, 0.0).rgb;
+    vec3 blm   = texture(un_bloom, fsin_texcoords).rgb;
+
+    hdr += camera.bloom * blm;
+
     vec3 sdr   = aces(exposure * hdr);
     vec3 color = pow(sdr, vec3(1.0 / gamma));
     // vec3 color = pow(sdr, vec3(1.0 / un_camera.beg.y));
 
     // vec3 color = filmic(exposure*hdr, un_camera.beg.y);
     // vec3 color = pow(hdr / (hdr + 1.0), vec3(1.0 / 2.2));
+
 
     fsout_frag_color = vec4(color, 1.0);
 }

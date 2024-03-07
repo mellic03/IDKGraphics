@@ -65,11 +65,6 @@ private:
     SSBO_type                               m_ModelData_SSBO;
     // -----------------------------------------------------------------------------------------
 
-
-
-    GLuint m_draw_indirect_buffer;
-
-
     using drawlist_type = std::vector<std::pair<int, glm::mat4>>;
     drawlist_type m_drawlist;
 
@@ -88,26 +83,22 @@ public:
     int loadTexture( const std::string &filepath, const idk::glTextureConfig & );
     int loadModel( const std::string &filepath );
 
+
+    int createMaterial( int albedo, int normal, int ao_r_m );
+
+    int createMaterial( const std::string &albedo,
+                        const std::string &normal,
+                        const std::string &ao_r_m );
+
+    void addUserMaterial( int model, int material, int idx );
+
+
     void clear();
 
-    void getVertices( int model_id, size_t &num_vertices, std::unique_ptr<uint8_t[]> &vertices );
+    void getVertices( int model_id, size_t &num_vertices, std::unique_ptr<idk::Vertex_P_N_T_UV[]> &vertices );
     void getIndices( int model_id, size_t &num_indices, std::unique_ptr<uint32_t[]> &indices );
 
-
-    idk::glDrawElementsIndirectCommand
-    genDrawCommand( int model_id );
-
-    const std::vector<idk::glDrawElementsIndirectCommand> &
-    genDrawCommands();
-
-    void pushModelDraw( int model_id, const glm::mat4 &transform )
-    {
-        m_drawlist.push_back(std::make_pair(model_id, transform));
-    };
-
-
     GLuint getVAO()                { return m_mesh_allocator.VAO;   };
-    GLuint getDrawIndirectBuffer() { return m_draw_indirect_buffer; };
 
 };
 

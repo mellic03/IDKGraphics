@@ -1,154 +1,127 @@
 #include "idk_camera.hpp"
 
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/rotate_vector.hpp>
 
 
-idk::Camera::Camera(float fov, float near, float far)
-:   m_model(1.0f),
-    m_projection(1.0f),
-    m_view(1.0f),
-    m_fov(fov),
-    m_near(near),
-    m_far(far)
+idk::Camera::Camera()
 {
-
+    near   = 0.2f;
+    far    = 500.0f;
+    aspect = 1.0f;
+    fov    = 80.0f;
 }
 
 
-idk::Camera::Camera():
-Camera(80.0f, 0.1f, 100.0f)
+glm::vec3
+idk::Camera::getUp()
 {
-    glm::vec3 pos;
-
-    pos    = glm::vec3( 0.0f,  0.0f,  0.0f );
-    _front = glm::vec3( 0.0f,  0.0f, -1.0f );
-    _right = glm::vec3( 1.0f,  0.0f,  0.0f );
-    _up    = glm::vec3( 0.0f,  1.0f,  0.0f );
-
-    m_default_pos  = pos;
-    _default_front = glm::vec4(_front, 0.0f);
-    _default_right = glm::vec4(_right, 0.0f);
-    _default_up    = glm::vec4(_up,    0.0f);
-
-    m_view = glm::lookAt(
-        pos,
-        pos + _front,
-        _up
-    ); 
-
-    m_projection = glm::perspective(glm::radians(m_fov), 1.0f, m_near, m_far);
+    return glm::normalize(glm::mat3(m_model) * glm::vec3(0.0f, 1.0f, 0.0f));
 }
+
+glm::vec3
+idk::Camera::getRight()
+{
+    return glm::normalize(glm::mat3(m_model) * glm::vec3(1.0f, 0.0f, 0.0f));
+}
+
+
+glm::vec3
+idk::Camera::getFront()
+{
+    return glm::normalize(glm::mat3(m_model) * glm::vec3(0.0f, 0.0f, -1.0f));
+}
+
+
+
+glm::vec3
+idk::Camera::getSurfaceUp()
+{
+    return m_up;
+}
+
+
+glm::vec3
+idk::Camera::getSurfaceRight()
+{
+    glm::vec3 right;
+              right = glm::normalize(glm::cross(getFront(), getSurfaceUp()));
+            //   right = glm::normalize(glm::mat3(glm::inverse(m_parent)) * right);
+
+    return right;
+}
+
+
+glm::vec3
+idk::Camera::getSurfaceFront()
+{
+    glm::vec3 front;
+              front = glm::normalize(glm::cross(getSurfaceUp(), getRight()));
+            //   front = glm::normalize(glm::mat3(glm::inverse(m_parent)) * front);
+
+    return front;
+}
+
+
+glm::mat4
+idk::Camera::V()
+{
+    // m_up    = glm::normalize(upvector);
+    // m_right = glm::normalize(glm::cross(m_front, m_up));
+    // m_front = glm::normalize(glm::cross(m_up, m_right));
+
+    // glm::quat qYaw   = glm::angleAxis(m_yaw,   glm::vec3(0.0f, 1.0f, 0.0f));
+    // glm::quat qPitch = glm::angleAxis(m_pitch, glm::vec3(1.0f, 0.0f, 0.0f));
+
+    // m_local_pitch = glm::mat4_cast(qPitch);
+    // m_local_yaw   = glm::mat4_cast(qYaw);
+
+    // m_local = glm::inverse(glm::lookAt(glm::vec3(0.0f), m_front, m_up)) * m_local_yaw * m_local_pitch;
+    // m_model = m_world * m_local;
+    // m_view  = glm::inverse(m_model);
+
+    return glm::inverse(m_model);
+}
+
+
+glm::mat4
+idk::Camera::P()
+{
+   return glm::perspective(glm::radians(fov), aspect, near, far);
+}
+
 
 
 void
-idk::Camera::aspect(float w, float h)
+idk::Camera::updateParent( const glm::mat4 &parent )
 {
-    m_aspect = w / h;
-    m_projection = glm::perspective(glm::radians(m_fov), m_aspect, m_near, m_far);
-}
-
-
-void
-idk::Camera::setOffset(const glm::vec3 &v)
-{
-    m_offset = v;
-
-    m_default_pos = v;
-    m_default_pos.y = 0.0f;
-
-    m_view = glm::lookAt(
-        m_default_pos,
-        m_default_pos + _front,
-        _up
-    );
+    // m_world  = parent;
+    // m_view   = V();
+    // position = glm::vec3(m_model[3]);
 }
 
 
 
 void
-idk::Camera::addOffset( const glm::vec3 &v )
+idk::Camera::setModelMatrix( const glm::mat4 &M )
 {
-    m_offset += v;
-
-    m_default_pos += v;
-    m_default_pos.y = 0.0f;
-
-    m_view = glm::lookAt(
-        m_default_pos,
-        m_default_pos + _front,
-        _up
-    );
+    m_model  = M;
+    position = glm::vec3(M[3]);
 }
 
-
-void
-idk::Camera::translate( const glm::vec3 &v )
-{
-    m_model = glm::translate(glm::mat4(1.0f), v) * m_model;
-}
-
-
-void
-idk::Camera::elevation( float f )
-{
-    m_model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, f, 0.0f)) * m_model;
-}
 
 
 void
 idk::Camera::pitch( float f )
 {
-    m_model = m_model * glm::rotate(f, glm::vec3(1.0f, 0.0f, 0.0f));
-}
-
-
-void
-idk::Camera::roll( float f )
-{
-    m_view = glm::rotate(m_view, f, _front);
-
-    if (_noroll == false)
-    {
-        _right = glm::inverse(m_view) * _default_right;
-        _up = glm::inverse(m_view) * _default_up;
-    }
-
+    m_pitch += glm::radians(f);
 }
 
 
 void
 idk::Camera::yaw( float f )
 {
-    glm::mat4 rot = glm::rotate(f, glm::inverse(glm::mat3(m_model)) * glm::vec3(0.0f, 1.0f, 0.0f));
-    m_model = m_model * rot;
-}
-
-
-glm::vec3
-idk::Camera::front()
-{
-    return m_model * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f);
-}
-
-
-
-glm::vec3
-idk::Camera::right()
-{
-    return m_model * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
-}
-
-
-
-glm::mat4
-idk::Camera::view()
-{
-    static glm::mat4 model_mat;
-
-    model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, m_offset.y, 0.0f)) * m_model;
-    model_mat = glm::inverse(model_mat);
-
-    return m_view * model_mat;
+    m_yaw += glm::radians(f);
 }
 

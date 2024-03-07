@@ -34,8 +34,31 @@ float IDK_DepthAtTexel( ivec2 texel, mat4 PV, image2D image )
 }
 
 
-// float IDK_DepthAtUV( vec2 uv, mat4 PV, image2D image )
-// {
-//     float frag_depth = (PV * texture(un_texture_1, uv)).z;
-//     float ray_depth = projected.z;
-// }
+
+vec3 IDK_WorldFromDepth( sampler2D depth, vec2 texcoords, mat4 P, mat4 V )
+{
+    float z = textureLod(depth, texcoords, 0.0).r * 2.0 - 1.0;
+
+    vec4 pos = vec4(texcoords * 2.0 - 1.0, z, 1.0);
+         pos = inverse(P) * pos;
+         pos /= pos.w;
+         pos = inverse(V) * pos;
+    
+    return pos.xyz;
+}
+
+
+
+
+vec3 IDK_PackNormal( vec3 N )
+{
+    return (N * 0.5 + 0.5);
+}
+
+
+vec3 IDK_UnpackNormal( vec3 N )
+{
+    return normalize(N * 2.0 - 1.0);
+}
+
+

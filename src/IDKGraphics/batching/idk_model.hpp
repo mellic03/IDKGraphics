@@ -10,6 +10,8 @@
 
 namespace idk
 {
+    static constexpr uint32_t IDK_MAX_MATERIALS = 128;
+    static constexpr uint32_t IDK_TEXTURES_PER_MATERIAL = 5;
 
     struct ModelHandle
     {
@@ -18,7 +20,7 @@ namespace idk
         uint32_t basevertex;
         uint32_t baseindex;
 
-        idk::glDrawElementsIndirectCommand cmd;
+        idk::glDrawCmd cmd;
     };
 
 
@@ -30,22 +32,21 @@ namespace idk
 
     struct MaterialDescriptor
     {
-        std::vector<int>      textures    = std::vector<int>(4, -1);
-        std::vector<float>    multipliers = std::vector<float>(4, 1.0f);
+        std::vector<int>      textures    = std::vector<int>(IDK_TEXTURES_PER_MATERIAL, -1);
+        std::vector<float>    multipliers = std::vector<float>(IDK_TEXTURES_PER_MATERIAL, 1.0f);
     };
 
-    static constexpr uint32_t IDK_MAX_MATERIALS = 128;
-    static constexpr uint32_t IDK_TEXTURES_PER_MATERIAL = 4;
 
     using BindlessTextureBuffer  = std::vector<GLuint64>;
 
 
     struct MeshDescriptor
     {
-        int material_id;
+        int    material_id;
+        float  bounding_radius;
 
         uint32_t baseVertex;
-        uint32_t baseIndex;
+        uint32_t firstIndex;
 
         uint32_t numVertices;
         uint32_t numIndices;
@@ -55,8 +56,8 @@ namespace idk
     struct ModelDescriptor
     {
         std::vector<int> mesh_ids;
+        std::vector<int> user_materials = std::vector<int>(4, -1);
     };
-
 
 
 
@@ -103,6 +104,7 @@ namespace idk
 
     struct MeshFileHeader
     {
+        float       bounding_radius;
         uint32_t    num_verts;
         uint32_t    num_indices;
         uint32_t    bitmask;
@@ -120,6 +122,10 @@ namespace idk
 
     bool     MeshFile_hasTexture( uint32_t bitmask, int idx );
     uint32_t MeshFile_packBitmask( const idk::MeshFileHeader & );
+
+
+    template <typename vertex_type>
+    float MeshFile_computeBoundingSphere( uint32_t num_vertices, const vertex_type *vertices );
 
     idk::MeshFileHeader MeshFile_new();
 
@@ -149,3 +155,25 @@ namespace idk
                          std::vector<void *>         &indices );
 
 };
+
+
+
+#include <iostream>
+
+template <typename vertex_type>
+float
+idk::MeshFile_computeBoundingSphere( uint32_t num_vertices, const vertex_type *vertices )
+{
+    float radius = -1.0f;
+
+    for (uint32_t i=0; i<num_vertices; i++)
+    {
+        glm::vec3 origin   = glm::vec3(0.0f);
+        glm::vec3 position = vertices[i].position;
+
+        radius = glm::max(radius, glm::distance(origin, position));
+    }
+
+    return radius;
+}
+

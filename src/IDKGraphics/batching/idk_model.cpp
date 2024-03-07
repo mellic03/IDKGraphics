@@ -16,6 +16,7 @@ idk::VertexFormat_sizeof( uint32_t format )
 }
 
 
+
 idk::VertexFormatDescriptor
 idk::VertexFormat_desc( uint32_t format )
 {
@@ -121,17 +122,18 @@ idk::MeshFile_write( std::ofstream          &stream,
                      const void             *vertices,
                      const void             *indices )
 {
-    stream.write(reinterpret_cast<const char *>(&header), 3*sizeof(uint32_t));
-    // stream.write(reinterpret_cast<const char *>(&header.num_verts),   sizeof(uint32_t));
-    // stream.write(reinterpret_cast<const char *>(&header.num_indices), sizeof(uint32_t));
-    // stream.write(reinterpret_cast<const char *>(&header.bitmask),     sizeof(uint32_t));
+    stream.write(reinterpret_cast<const char *>(&header), 4*sizeof(uint32_t));
+
+    idk_printvalue(header.bounding_radius);
+    idk_printvalue(header.num_verts);
+    idk_printvalue(header.num_indices);
+    idk_printvalue(header.bitmask);
 
     for (int i=0; i<IDK_TEXTURES_PER_MATERIAL; i++)
     {
         if (MeshFile_hasTexture(header.bitmask, i))
         {
             idk::streamwrite<std::string>(stream, header.textures[i]);
-            std::cout << "AAAA: " << header.textures[i] << "\n";
         }
     }
 
@@ -150,17 +152,20 @@ idk::MeshFile_read( std::ifstream   &stream,
                     void           *&vertices,
                     void           *&indices )
 {
-    stream.read(reinterpret_cast<char *>(&header), 3*sizeof(uint32_t));
-    // stream.read(reinterpret_cast<char *>(&header.num_verts),   sizeof(uint32_t));
-    // stream.read(reinterpret_cast<char *>(&header.num_indices), sizeof(uint32_t));
-    // stream.read(reinterpret_cast<char *>(&header.bitmask),     sizeof(uint32_t));
+
+    stream.read(reinterpret_cast<char *>(&header), 4*sizeof(uint32_t));
+
+    idk_printvalue(header.bounding_radius);
+    idk_printvalue(header.num_verts);
+    idk_printvalue(header.num_indices);
+    idk_printvalue(header.bitmask);
+
 
     for (int i=0; i<IDK_TEXTURES_PER_MATERIAL; i++)
     {
         if (MeshFile_hasTexture(header.bitmask, i))
         {
             idk::streamread<std::string>(stream, header.textures[i]);
-            std::cout << "BBBB: " << header.textures[i] << "\n";
         }
     }
 

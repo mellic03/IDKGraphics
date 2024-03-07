@@ -3,11 +3,21 @@
 
 #define VXGI_TEXTURE_FORMAT         FORMAT_RGBA16F
 #define VXGI_TEXTURE_SIZE           64.0
-#define VXGI_WORLD_BOUNDS           32.0
+#define VXGI_WORLD_BOUNDS           16.0
 #define VXGI_WORLD_HALF_BOUNDS      (VXGI_WORLD_BOUNDS / 2.0)
 #define VXGI_VOXEL_SIZE             (VXGI_WORLD_BOUNDS / VXGI_TEXTURE_SIZE)
 #define VXGI_VOXEL_SCALE            (VXGI_TEXTURE_SIZE / VXGI_WORLD_BOUNDS)
 #define VXGI_MAX_MIPLEVEL           6.0
+
+
+#define VXGI_DIFFUSE_APERTURE 60.0
+#define VXGI_DIFFUSE_OFFSET   1.25
+#define VXGI_DIFFUSE_STRENGTH 0.25
+
+#define VXGI_SPECULAR_APERTURE 120.0
+#define VXGI_SPECULAR_OFFSET   1.25
+#define VXGI_SPECULAR_STRENGTH 0.25
+
 
 const vec3[6] VXGI_ANISO_DIRECTIONS = vec3[6]
 (
@@ -89,13 +99,13 @@ vec3 VXGI_TexCoordToWorld( vec3 texcoord, vec3 view_position )
 }
 
 
-ivec3 VXGI_encodeNormal( vec3 N )
+ivec3 VXGI_PackNormal( vec3 N )
 {
     return ivec3(255.0 * (N * 0.5 + 0.5));
 }
 
 
-vec3 VXGI_decodeNormal( ivec3 N )
+vec3 VXGI_UnpackNormal( ivec3 N )
 {
     return (vec3(N) / 255.0) * 2.0 - 1.0;
 }
@@ -190,6 +200,65 @@ vec3 VXGI_TraceCone( vec3 origin, vec3 dir, float aperture, vec3 view_position, 
 
     return color.rgb;
 }
+
+
+vec3 VXGI_Orthogonal( vec3 u )
+{
+	u = normalize(u);
+	vec3 v = vec3(0.99146, 0.11664, 0.05832);
+	return abs(dot(u, v)) > 0.99999 ? cross(u, vec3(0, 1, 0)) : cross(u, v);
+}
+
+
+vec3 VXGI_IndirectDiffuse( vec3 origin, vec3 N, float noise, vec3 viewpos, sampler3D aniso[6] )
+{
+    vec3  result = vec3(0.0);
+
+    // vec4 noiseA = textureLod(un_voxel_noise, (origin), 0.0);
+    // vec4 noiseB = textureLod(un_voxel_noise, origin + noiseA.rgb * un_increment * N, 0.0);
+
+    vec4  alphaA = vec4(0.5); // + vec4(0.25) * (noiseB);
+    vec4  alphaB = vec4(0.5); // + vec4(0.25) * (noiseB);
+
+    vec3 T  = normalize(VXGI_Orthogonal(N));
+    vec3 B  = normalize(cross(N, T));
+    vec3 Tp = normalize(mix(T,  B, 0.5));
+    vec3 Bp = normalize(mix(T, -B, 0.5));
+
+    vec3 cone_directions[] = vec3[]
+    (
+        N,
+    
+        normalize(mix(N,  T,  alphaA[0])),
+        normalize(mix(N,  B,  alphaA[1])),
+        normalize(mix(N, -T,  alphaA[2])),
+        normalize(mix(N, -B,  alphaA[3])),
+    
+        normalize(mix(N,  Tp, alphaB[0])),
+        normalize(mix(N, -Tp, alphaB[1])),
+        normalize(mix(N,  Bp, alphaB[2])),
+        normalize(mix(N, -Bp, alphaB[3]))
+    );
+
+
+    for (int i=0; i<9; i++)
+    {
+        float aperture = radians(60.0);
+        vec3  cone_dir = cone_directions[i];
+        float weight   = dot(N, cone_dir) * 0.5 + 0.5;
+
+        result += weight * VXGI_TraceCone(
+            origin + VXGI_VOXEL_SIZE * N,
+            cone_dir,
+            aperture,
+            viewpos,
+            aniso
+        );
+    }
+
+    return result;
+}
+
 
 
 vec3 VXGI_TraceCone2( vec3 origin, vec3 dir, float aperture, vec3 view_position, sampler3D aniso[6], samplerCube skybox )

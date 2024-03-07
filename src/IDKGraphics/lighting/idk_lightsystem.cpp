@@ -15,7 +15,7 @@ idk::LightSystem::init()
     m_dir_vec.reserve(size);
 
     m_depthcascade.reset(2048, 2048);
-    m_depthcascade.setCascadeDepths( 0.1f, 0.25f, 0.4f, 1.0f );
+    m_depthcascade.setCascadeDepths( 0.01f, 0.025f, 0.04f, 0.1f );
 
 }
 

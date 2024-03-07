@@ -70,15 +70,15 @@ idk::MeshAllocator::loadMesh( size_t nbytes_vertices, size_t nbytes_indices,
     VBO_cursor += nbytes_vertices;
     IBO_cursor += nbytes_indices;
 
-    std::cout << "VBO: " << 100.0f * (float(VBO_cursor) / float(VBO_nbytes)) << "%%\n";
-    std::cout << "IBO: " << 100.0f * (float(IBO_cursor) / float(IBO_nbytes)) << "%%\n";
+    // std::cout << "VBO: " << 100.0f * (float(VBO_cursor) / float(VBO_nbytes)) << "%%\n";
+    // std::cout << "IBO: " << 100.0f * (float(IBO_cursor) / float(IBO_nbytes)) << "%%\n";
 
     uint32_t nvertices = uint32_t(nbytes_vertices / sizeof(idk::Vertex_P_N_T_UV));
     uint32_t nindices  = uint32_t(nbytes_indices  / sizeof(uint32_t));
 
     idk::MeshDescriptor desc = {
         .baseVertex  = m_basevertex,
-        .baseIndex   = m_baseindex,
+        .firstIndex  = m_baseindex,
         .numVertices = nvertices,
         .numIndices  = nindices
     };

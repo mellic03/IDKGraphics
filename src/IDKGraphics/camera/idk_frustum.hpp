@@ -23,7 +23,6 @@ public:
 
     std::vector<glm::mat4>        getCascades( idk::Camera &camera, const glm::vec3 &L );
 
-    static std::vector<glm::mat4> getCascades2( idk::Camera &camera, const glm::vec3 &L );
 };
 
 

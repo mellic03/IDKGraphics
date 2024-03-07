@@ -6,16 +6,23 @@
 
 namespace idk
 {
-    class MeshAllocator;
+    class  MeshAllocator;
     struct MeshPage;
 };
 
 
 struct idk::MeshPage
 {
-    size_t size;
-    uint32_t basevertex;
-    uint32_t baseindex;
+    size_t   nbytes;
+    uint32_t base;
+};
+
+
+
+struct REREERE
+{
+    std::vector<idk::MeshPage> pages;
+
 };
 
 
