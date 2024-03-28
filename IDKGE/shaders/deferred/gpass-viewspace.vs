@@ -4,7 +4,7 @@
 #extension GL_ARB_bindless_texture: require
 
 #include "../include/SSBO_indirect.glsl"
-#include "../UBOs/UBOs.glsl"
+#include "../include/UBOs.glsl"
 
 layout (location = 0) in vec3 vsin_pos;
 layout (location = 1) in vec3 vsin_normal;

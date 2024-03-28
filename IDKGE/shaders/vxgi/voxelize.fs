@@ -7,7 +7,7 @@ layout (location = 0) out vec4 fsout_frag_color;
 #include "vxgi.glsl"
 #include "../include/lightsource.glsl"
 #include "../include/SSBO_indirect.glsl"
-#include "../UBOs/UBOs.glsl"
+#include "../include/UBOs.glsl"
 
 layout (binding=0, rgba16f) writeonly uniform image3D un_voxel_radiance[6];
 layout (binding=6, rgba8ui) writeonly uniform uimage3D un_voxel_albedo;

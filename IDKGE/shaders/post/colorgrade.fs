@@ -1,7 +1,7 @@
 #version 460 core
 
 #extension GL_GOOGLE_include_directive: require
-#include "../UBOs/UBOs.glsl"
+#include "../include/UBOs.glsl"
 
 
 layout (location = 0) out vec4 fsout_frag_color;

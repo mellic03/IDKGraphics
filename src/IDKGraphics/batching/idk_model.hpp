@@ -56,7 +56,7 @@ namespace idk
     struct ModelDescriptor
     {
         std::vector<int> mesh_ids;
-        std::vector<int> user_materials = std::vector<int>(4, -1);
+        std::vector<int> user_materials = std::vector<int>(IDK_TEXTURES_PER_MATERIAL, -1);
     };
 
 

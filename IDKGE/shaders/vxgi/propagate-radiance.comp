@@ -2,7 +2,7 @@
 #extension GL_GOOGLE_include_directive: require
 
 #include "../include/lightsource.glsl"
-#include "../UBOs/UBOs.glsl"
+#include "../include/UBOs.glsl"
 #include "./vxgi.glsl"
 
 layout ( local_size_x = 4, local_size_y = 4, local_size_z = 4 ) in;

@@ -528,7 +528,7 @@ idk::RenderEngine::drawModel( int model, const glm::mat4 &transform )
 void
 idk::RenderEngine::drawModelRQ( int RQ, int model, const glm::mat4 &transform )
 {
-    _getRenderQueue(RQ).enque(model, transform);
+    m_user_render_queues.get(RQ).enque(model, transform);
 }
 
 

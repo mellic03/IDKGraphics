@@ -13,7 +13,7 @@ out vec3 fsin_fragpos;
 flat out int idk_AtmosphereID;
 
 #include "../include/SSBO_indirect.glsl"
-#include "../UBOs/UBOs.glsl"
+#include "../include/UBOs.glsl"
 
 
 void main()

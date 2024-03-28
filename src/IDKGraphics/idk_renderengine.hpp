@@ -1,6 +1,6 @@
 #pragma once
 
-#include "render/idk_sdl_glew_init.hpp"
+#include <libidk/idk_sdl_glew_init.hpp>
 
 #include "batching/idk_model_allocator.hpp"
 #include "batching/idk_render_queue.hpp"

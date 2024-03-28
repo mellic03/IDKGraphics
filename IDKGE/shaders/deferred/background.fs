@@ -3,7 +3,7 @@
 
 layout (location = 0) out vec4 fsout_albedo;
 
-#include "../UBOs/UBOs.glsl"
+#include "../include/UBOs.glsl"
 
 in vec4 fsin_fragpos;
 uniform samplerCube un_skybox;

@@ -17,7 +17,7 @@ flat out int material_id;
 
 
 #include "vxgi.glsl"
-#include "../UBOs/UBOs.glsl"
+#include "../include/UBOs.glsl"
 
 
 uniform mat4 un_P;
