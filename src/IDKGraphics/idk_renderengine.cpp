@@ -63,6 +63,11 @@ idk::RenderEngine::compileShaders()
     createProgram("planet-gen", glShaderProgram("IDKGE/shaders/generative/planet-gen.comp"));
 
 
+
+    idk::glShaderStage VS_Dirlight("IDKGE/shaders/deferred/dirlight.vs");
+    idk::glShaderStage FS_Dirlight("IDKGE/shaders/deferred/dirlight.fs");
+    createProgram("deferred-dirlight", idk::glShaderProgram(VS_Dirlight, FS_Dirlight));
+
     idk::glShaderStage VS_Pointlight("IDKGE/shaders/deferred/pointlight.vs");
     idk::glShaderStage FS_Pointlight("IDKGE/shaders/deferred/pointlight.fs");
     createProgram("deferred-pointlight", idk::glShaderProgram(VS_Pointlight, FS_Pointlight));
@@ -70,6 +75,7 @@ idk::RenderEngine::compileShaders()
     idk::glShaderStage VS_Spotlight("IDKGE/shaders/deferred/spotlight.vs");
     idk::glShaderStage FS_Spotlight("IDKGE/shaders/deferred/spotlight.fs");
     createProgram("deferred-spotlight", idk::glShaderProgram(VS_Spotlight, FS_Spotlight));
+
 
     idk::glShaderStage VS_Atmosphere("IDKGE/shaders/deferred/atmosphere.vs");
     idk::glShaderStage FS_Atmosphere("IDKGE/shaders/deferred/atmosphere.fs");
@@ -632,11 +638,11 @@ idk::RenderEngine::updateLightsourcesUBO( idk::UBORenderData &data )
 {
     static uint32_t offset;
 
-    // offset = 0;
-    // for (IDK_Dirlight &light: m_dirlights)
-    // {
-    //     data.dirlights[offset++] = light;
-    // }
+    offset = 0;
+    for (IDK_Dirlight &light: m_dirlights)
+    {
+        data.dirlights[offset++] = light;
+    }
 
     offset = 0;
     for (IDK_Pointlight &light: m_pointlights)

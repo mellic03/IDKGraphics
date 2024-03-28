@@ -173,6 +173,7 @@ private:
                                   glFramebuffer &buffer_out );
 
 
+    void RenderStage_dirlights();
     void RenderStage_pointlights();
     void RenderStage_spotlights();
 

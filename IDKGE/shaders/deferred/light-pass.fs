@@ -59,20 +59,20 @@ void main()
     }
 
 
-    IDK_Dirlight dirlight =  {
-        un_dirlights[0].direction,
-        un_dirlights[0].ambient,
-        un_dirlights[0].diffuse
-    };
+    // IDK_Dirlight dirlight =  {
+    //     un_dirlights[0].direction,
+    //     un_dirlights[0].ambient,
+    //     un_dirlights[0].diffuse
+    // };
 
 
     vec3 result = vec3(0.0);
 
-    vec3  dir_lighting = IDK_PBR_Dirlight(dirlight, surface, surface.position);
-    float dir_shadow   = dirlight_shadow(0, camera.V, surface.position, surface.N);
+    // vec3  dir_lighting = IDK_PBR_Dirlight(dirlight, surface, surface.position);
+    // float dir_shadow   = dirlight_shadow(0, camera.V, surface.position, surface.N);
 
-    result += dir_lighting * dir_shadow;
-    result += surface.albedo * un_dirlights[0].ambient.rgb;
+    // result += dir_lighting * dir_shadow;
+    // result += surface.albedo * un_dirlights[0].ambient.rgb;
 
 
     // IBL

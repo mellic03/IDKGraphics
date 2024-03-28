@@ -141,6 +141,36 @@ idk::RenderEngine::RenderStage_volumetrics( idk::Camera   &camera,
 
 
 void
+idk::RenderEngine::RenderStage_dirlights()
+{
+    idk::glDrawCmd cmd = genLightsourceDrawCommand(m_unit_sphere, m_dirlights.size(), modelAllocator());
+    if (cmd.instanceCount == 0)
+    {
+        return;
+    }
+    m_DrawCommandBuffer.bufferSubData(0, sizeof(idk::glDrawCmd), &cmd);
+
+
+    auto &program = getProgram("deferred-dirlight");
+    program.bind();
+
+    program.set_sampler2D("un_texture_0", m_geom_buffer.attachments[0]);
+    program.set_sampler2D("un_texture_1", m_geom_buffer.attachments[1]);
+    program.set_sampler2D("un_texture_2", m_geom_buffer.attachments[2]);
+    program.set_sampler2D("un_fragdepth", m_geom_buffer.depth_attachment);
+    program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
+
+    gl::multiDrawElementsIndirect(
+        GL_TRIANGLES,
+        GL_UNSIGNED_INT,
+        nullptr,
+        1,
+        sizeof(idk::glDrawCmd)
+    );
+}
+
+
+void
 idk::RenderEngine::RenderStage_pointlights()
 {
     idk::glDrawCmd cmd = genLightsourceDrawCommand(m_unit_sphere, m_pointlights.size(), modelAllocator());
@@ -167,9 +197,7 @@ idk::RenderEngine::RenderStage_pointlights()
         1,
         sizeof(idk::glDrawCmd)
     );
-
 }
-
 
 
 void
@@ -241,8 +269,10 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
     gl::cullFace(GL_FRONT);
 
     IDK_GLCALL( glBlendFunc(GL_ONE, GL_ONE); )
-    RenderStage_spotlights();
+
+    RenderStage_dirlights();
     RenderStage_pointlights();
+    RenderStage_spotlights();
 
 
     gl::disable(GL_DEPTH_TEST);
