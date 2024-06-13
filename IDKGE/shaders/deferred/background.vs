@@ -12,7 +12,11 @@ uniform mat4 un_model;
 
 void main()
 {
-    vec4 worldpos = inverse(un_view) * un_model * vec4(vsin_pos, 1.0);
+    IDK_Camera camera = IDK_RenderData_GetCamera();
+
+    vec4 worldpos = inverse(camera.V) * un_model * vec4(camera.position.xyz, 1.0);
     fsin_fragpos = worldpos;
-    gl_Position = un_projection * un_view * worldpos;
+
+    gl_Position = camera.PV * worldpos;
+
 }

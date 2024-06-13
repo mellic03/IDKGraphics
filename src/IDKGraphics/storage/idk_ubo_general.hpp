@@ -28,6 +28,12 @@ struct IDK_Camera
     glm::vec4 image_plane;
     float exposure = 1.0f, gamma, shutter, bloom = 0.2f;
 
+    glm::vec2 chromatic_r = glm::vec2(0.0f);
+    glm::vec2 chromatic_g = glm::vec2(0.0f);
+    glm::vec2 chromatic_b = glm::vec2(0.0f);
+    glm::vec2 chromatic_pad = glm::vec2(0.0f);
+    glm::vec4 chromatic_strength = glm::vec4(0.0f);
+
     glm::vec4 prev_position;
     glm::mat4 prev_V, prev_P, prev_PV;
 };
@@ -35,6 +41,7 @@ struct IDK_Camera
 
 struct IDK_Dirlight
 {
+    glm::mat4 transform;
     glm::vec4 direction;
     glm::vec4 ambient;
     glm::vec4 diffuse;

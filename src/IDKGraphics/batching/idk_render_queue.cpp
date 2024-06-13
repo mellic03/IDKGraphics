@@ -119,7 +119,7 @@ idk::RenderQueue::genDrawCommands( idk::DrawIndirectData &data, idk::ModelAlloca
         for (int mesh_id: MA.getModel(model_id).mesh_ids)
         {
             idk::MeshDescriptor &mesh = MA.getMesh(mesh_id);
-            bool culled = true;
+            // bool culled = true;
             size_t num_instances = 0;
 
             for (glm::mat4 &T: model_transforms)
@@ -129,11 +129,11 @@ idk::RenderQueue::genDrawCommands( idk::DrawIndirectData &data, idk::ModelAlloca
                     continue;
                 }
 
-                if (culled)
-                {
-                    culled = false;
+                // if (culled)
+                // {
+                //     culled = false;
                     data.offsets[drawID_offset++] = transform_offset;
-                }
+                // }
 
                 // Transform offset will be un_offsets[gl_DrawID] + gl_InstanceID
                 num_instances += 1;
@@ -141,10 +141,10 @@ idk::RenderQueue::genDrawCommands( idk::DrawIndirectData &data, idk::ModelAlloca
             }
 
 
-            if (culled)
-            {
-                continue;
-            }
+            // if (culled)
+            // {
+            //     continue;
+            // }
 
 
             for (int texture_id: MA.getMaterial(mesh.material_id).textures)

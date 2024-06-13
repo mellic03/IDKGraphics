@@ -37,7 +37,10 @@ public:
     float aspect = 1.0f;
     float fov    = 80.0f;
     float bloom  = 0.0f;
-
+    glm::vec2 chromatic_r;
+    glm::vec2 chromatic_g;
+    glm::vec2 chromatic_b;
+    glm::vec4 chromatic_strength;
 
     glm::vec3 upvector    = glm::vec3(0.0f, 1.0f, 0.0f);
     glm::vec3 position    = glm::vec3(0.0f);

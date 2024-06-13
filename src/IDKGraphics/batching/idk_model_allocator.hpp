@@ -40,7 +40,9 @@ private:
     static constexpr uint32_t MAX_DRAW_COMMANDS = 128;
 
 
-    idk::MeshAllocator m_mesh_allocator;
+    idk::vector<idk::MeshAllocator>         m_mesh_allocators;
+
+    // idk::MeshAllocator m_mesh_allocator;
 
     std::unordered_map<std::string, GLuint> m_loaded_textures;
 
@@ -81,8 +83,7 @@ public:
     IDK_ALLOCATOR_ACCESS(Model,    idk::ModelDescriptor,    m_models);
 
     int loadTexture( const std::string &filepath, const idk::glTextureConfig & );
-    int loadModel( const std::string &filepath );
-
+    int loadModel( const std::string &filepath, uint32_t format=0 );
 
     int createMaterial( int albedo, int normal, int ao_r_m );
 
@@ -98,7 +99,7 @@ public:
     void getVertices( int model_id, size_t &num_vertices, std::unique_ptr<idk::Vertex_P_N_T_UV[]> &vertices );
     void getIndices( int model_id, size_t &num_indices, std::unique_ptr<uint32_t[]> &indices );
 
-    GLuint getVAO()                { return m_mesh_allocator.VAO;   };
+    GLuint getVAO( uint32_t format = 0 )    { return m_mesh_allocators[0].VAO;   };
 
 };
 

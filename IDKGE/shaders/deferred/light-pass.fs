@@ -53,10 +53,10 @@ void main()
     );
 
 
-    if (surface.alpha < 1.0)
-    {
-       discard;
-    }
+    // if (surface.alpha < 1.0)
+    // {
+    //    discard;
+    // }
 
 
     // IDK_Dirlight dirlight =  {

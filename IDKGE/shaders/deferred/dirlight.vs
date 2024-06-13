@@ -15,6 +15,8 @@ flat out int idk_LightID;
 #include "../include/SSBO_indirect.glsl"
 #include "../include/UBOs.glsl"
 
+
+
 void main()
 {
     idk_LightID = gl_InstanceID;
@@ -22,7 +24,7 @@ void main()
     IDK_Camera   camera = IDK_RenderData_GetCamera();
     IDK_Dirlight light  = IDK_RenderData_GetDirlight(idk_LightID);
 
-    fsin_fragpos = vsin_pos;
+    fsin_fragpos = (inverse(camera.V) * vec4(vsin_pos, 1.0)).xyz;
 
-    gl_Position = camera.PV * vec4(vsin_pos, 1.0);
+    gl_Position = camera.P * vec4(vsin_pos, 1.0);
 }

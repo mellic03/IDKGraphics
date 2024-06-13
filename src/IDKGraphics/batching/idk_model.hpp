@@ -62,11 +62,20 @@ namespace idk
 
 
 
-
     struct Vertex_P_N_T_UV
     {
-        glm::vec3 position, normal, tangent;
-        glm::vec2 texcoords;
+        glm::vec3  position, normal, tangent;
+        glm::vec2  texcoords;
+    };
+
+
+    struct Vertex_P_N_T_UV_SKINNED
+    {
+        glm::vec3  position, normal, tangent;
+        glm::vec2  texcoords;
+
+        glm::ivec4 bone_IDs;
+        glm::vec4  bone_weights;
     };
 
 
@@ -87,7 +96,8 @@ namespace idk
 
     enum ModelVertexFormat: uint32_t
     {
-        ModelVertexFormat_POS_NORM_TAN_UV = 0
+        ModelVertexFormat_POS_NORM_TAN_UV         = 0,
+        ModelVertexFormat_POS_NORM_TAN_UV_SKINNED = 1
     };
 
 
@@ -142,7 +152,7 @@ namespace idk
                         void           *&vertices,
                         void           *&indices );
 
-    void ModelFile_write( const std::string                 &filepath,
+    void ModelFile_write( std::ofstream                     &stream,
                           const ModelFileHeader             &header,
                           const std::vector<MeshFileHeader> &meshes,
                           const std::vector<void *>         &vertices,

@@ -53,6 +53,7 @@ public:
     GLuint              VBO;
     GLuint              IBO;
 
+                        MeshAllocator() {  };
                         MeshAllocator( size_t nbytes, uint32_t vertexformat );
 
     idk::MeshDescriptor loadMesh( size_t nbytes_vertices, size_t nbytes_indices,

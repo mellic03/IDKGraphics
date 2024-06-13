@@ -22,11 +22,11 @@ struct idk::AnimBone
 {
     std::vector<int> children;
 
-    float m_time = 0.0f;
+    float m_time     = 0.0f;
     float m_duration = 0.0f;
-    int current_p = 0;
-    int current_r = 0;
-    int current_s = 0;
+    int   current_p  = 0;
+    int   current_r  = 0;
+    int   current_s  = 0;
 
     std::vector<glm::vec3> positions;
     std::vector<glm::quat> rotations;
@@ -38,7 +38,6 @@ struct idk::AnimBone
 
     glm::mat4 local_transform = glm::mat4(1.0f);
     glm::mat4 inverse_bind    = glm::mat4(1.0f);
-
 
     glm::vec3   getPosition();
     glm::quat   getRotation();

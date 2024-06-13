@@ -43,5 +43,5 @@ void main()
 
     fsout_albedo = vec4(albedo.rgb, 1.0);
     fsout_normal = IDK_PackNormal(N);
-    fsout_pbr    = vec4(roughness, metallic, ao, emissv);
+    fsout_pbr    = vec4(roughness, metallic, ao, 1.0);
 }

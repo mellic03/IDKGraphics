@@ -1,0 +1,43 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+layout (
+    local_size_x = 8,
+    local_size_y = 8,
+    local_size_z = 1
+) in;
+
+
+layout (binding = 0, rgba16f) uniform image2D un_output;
+
+#include "./include/UBOs.glsl"
+
+uniform sampler2D un_text;
+
+void main()
+{
+    IDK_Camera camera = IDK_RenderData_GetCamera();
+
+    ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+    vec4  color = texelFetch(un_text, texel, 0);
+
+    texel.y = int(camera.image_size.y) - texel.y;
+
+    vec4 dst = imageLoad(un_output, texel);
+    vec4 src = color;
+
+    // vec4 result = (1.0 - src.a)*dst + (src.a)*src;
+    vec4 result = vec4(1.0);
+
+    if (src.a > 0.5)
+    {
+        result.rgb = 1.0 - dst.rgb;
+    }
+
+    else
+    {
+        result = dst;
+    }
+
+    imageStore(un_output, texel, result);
+}

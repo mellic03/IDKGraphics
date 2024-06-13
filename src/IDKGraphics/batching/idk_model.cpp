@@ -9,7 +9,11 @@ idk::VertexFormat_sizeof( uint32_t format )
     {
         using enum idk::ModelVertexFormat;
 
-        case ModelVertexFormat_POS_NORM_TAN_UV: return sizeof(idk::Vertex_P_N_T_UV);
+        case ModelVertexFormat_POS_NORM_TAN_UV:
+            return sizeof(idk::Vertex_P_N_T_UV);
+    
+        case ModelVertexFormat_POS_NORM_TAN_UV_SKINNED:
+            return sizeof(idk::Vertex_P_N_T_UV_SKINNED);
     }
 
     return 0;
@@ -22,6 +26,10 @@ idk::VertexFormat_desc( uint32_t format )
 {
     idk::VertexFormatDescriptor desc;
 
+    int idx;
+    size_t offset;
+
+
     switch (format)
     {
         using enum idk::ModelVertexFormat;
@@ -30,9 +38,6 @@ idk::VertexFormat_desc( uint32_t format )
 
             desc.stride = sizeof(idk::Vertex_P_N_T_UV);
             desc.attribs = 4;
-
-            int idx;
-            size_t offset;
 
             idx = 0;
             desc.attrib_size[idx]   = 3;
@@ -63,6 +68,58 @@ idk::VertexFormat_desc( uint32_t format )
             offset = 0;
 
             for (int i=0; i<4; i++)
+            {
+                desc.attrib_offset[i] = offset;
+                offset += desc.attrib_nbytes[i];
+            }
+
+        break;
+
+
+        case ModelVertexFormat_POS_NORM_TAN_UV_SKINNED:
+
+            desc.stride = sizeof(idk::Vertex_P_N_T_UV_SKINNED);
+            desc.attribs = 6;
+
+            idx = 0;
+            desc.attrib_size[idx]   = 3;
+            desc.attrib_nbytes[idx] = sizeof(glm::vec3);
+            idx += 1;
+
+            desc.attrib_size[idx]   = 3;
+            desc.attrib_nbytes[idx] = sizeof(glm::vec3);
+            idx += 1;
+
+            desc.attrib_size[idx]   = 3;
+            desc.attrib_nbytes[idx] = sizeof(glm::vec3);
+            idx += 1;
+
+            desc.attrib_size[idx]   = 2;
+            desc.attrib_nbytes[idx] = sizeof(glm::vec2);
+            idx += 1;
+
+            desc.attrib_size[idx]   = 4;
+            desc.attrib_nbytes[idx] = sizeof(glm::ivec4);
+            idx += 1;
+
+            desc.attrib_size[idx]   = 4;
+            desc.attrib_nbytes[idx] = sizeof(glm::vec4);
+            idx += 1;
+
+
+            idx = 0;
+            desc.attrib_datatype[idx] = GL_FLOAT;   idx += 1;
+            desc.attrib_datatype[idx] = GL_FLOAT;   idx += 1;
+            desc.attrib_datatype[idx] = GL_FLOAT;   idx += 1;
+            desc.attrib_datatype[idx] = GL_FLOAT;   idx += 1;
+            desc.attrib_datatype[idx] = GL_INT;     idx += 1;
+            desc.attrib_datatype[idx] = GL_FLOAT;   idx += 1;
+
+
+            idx = 0;
+            offset = 0;
+
+            for (int i=0; i<6; i++)
             {
                 desc.attrib_offset[i] = offset;
                 offset += desc.attrib_nbytes[i];
@@ -124,10 +181,10 @@ idk::MeshFile_write( std::ofstream          &stream,
 {
     stream.write(reinterpret_cast<const char *>(&header), 4*sizeof(uint32_t));
 
-    idk_printvalue(header.bounding_radius);
-    idk_printvalue(header.num_verts);
-    idk_printvalue(header.num_indices);
-    idk_printvalue(header.bitmask);
+    // idk_printvalue(header.bounding_radius);
+    // idk_printvalue(header.num_verts);
+    // idk_printvalue(header.num_indices);
+    // idk_printvalue(header.bitmask);
 
     for (int i=0; i<IDK_TEXTURES_PER_MATERIAL; i++)
     {
@@ -155,10 +212,10 @@ idk::MeshFile_read( std::ifstream   &stream,
 
     stream.read(reinterpret_cast<char *>(&header), 4*sizeof(uint32_t));
 
-    idk_printvalue(header.bounding_radius);
-    idk_printvalue(header.num_verts);
-    idk_printvalue(header.num_indices);
-    idk_printvalue(header.bitmask);
+    // idk_printvalue(header.bounding_radius);
+    // idk_printvalue(header.num_verts);
+    // idk_printvalue(header.num_indices);
+    // idk_printvalue(header.bitmask);
 
 
     for (int i=0; i<IDK_TEXTURES_PER_MATERIAL; i++)
@@ -183,22 +240,18 @@ idk::MeshFile_read( std::ifstream   &stream,
 
 
 void
-idk::ModelFile_write( const std::string                 &filepath,
+idk::ModelFile_write( std::ofstream                     &stream,
                       const idk::ModelFileHeader        &header,
                       const std::vector<MeshFileHeader> &meshes,
                       const std::vector<void *>         &vertices,
                       const std::vector<void *>         &indices )
 {
-    std::ofstream stream(filepath, std::ios::binary);
-
     stream.write(reinterpret_cast<const char *>(&header), sizeof(ModelFileHeader));
 
     for (uint32_t i=0; i<meshes.size(); i++)
     {
         idk::MeshFile_write(stream, header.vertexformat, meshes[i], vertices[i], indices[i]);
     }
-
-    stream.close();
 }
 
 

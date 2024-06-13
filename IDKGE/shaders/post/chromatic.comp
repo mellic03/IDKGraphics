@@ -1,0 +1,41 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+#include "../include/UBOs.glsl"
+#include "../include/util.glsl"
+#include "../include/pbr.glsl"
+
+layout(
+    local_size_x = 8,
+    local_size_y = 8,
+    local_size_z = 1
+) in;
+
+
+layout (binding=0, rgba16f) writeonly uniform image2D un_output;
+
+uniform sampler2D un_input;
+
+void main()
+{
+    IDK_Camera camera = IDK_RenderData_GetCamera();
+
+    ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+    vec2 texcoord = camera.image_size.xy * vec2(texel);
+
+    // vec2 center = fsin_texcoords + vec2(0.5, 0.5);
+    // float d = distance(fsin_texcoords, vec2(0.5, 0.5));
+    // float strength = d*d * un_camera.aberration_b.z;
+
+    vec2 r_offset  = camera.chromatic_strength.r * camera.chromatic_r;
+    vec2 g_offset  = camera.chromatic_strength.r * camera.chromatic_r;
+    vec2 b_offset  = camera.chromatic_strength.r * camera.chromatic_r;
+
+    float r = texture( un_input, texcoord - g_offset - b_offset ).r;
+    float g = texture( un_input, texcoord - r_offset - b_offset ).g;
+    float b = texture( un_input, texcoord - r_offset - g_offset ).b;
+
+    vec3 color = vec3(r, g, b);
+
+    imageStore(un_output, texel, vec4(color, 1.0));
+}

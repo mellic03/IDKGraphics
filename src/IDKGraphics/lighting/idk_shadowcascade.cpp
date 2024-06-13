@@ -114,7 +114,7 @@ idk::glDepthCascade::get_projection( const float texture_width,
 void
 idk::glDepthCascade::reset( int w, int h )
 {
-    f_reset(w, h, 0);
+    _reset(w, h, 0);
 
     static const idk::DepthAttachmentConfig config = {
         .internalformat = GL_DEPTH_COMPONENT,

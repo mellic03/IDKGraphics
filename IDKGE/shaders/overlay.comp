@@ -1,0 +1,41 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+layout (
+    local_size_x = 8,
+    local_size_y = 8,
+    local_size_z = 1
+) in;
+
+
+layout (binding = 0, rgba16f) uniform image2D un_output;
+
+#include "./include/UBOs.glsl"
+
+uniform float     un_alpha;
+uniform sampler2D un_input;
+
+void main()
+{
+    IDK_Camera camera = IDK_RenderData_GetCamera();
+
+    vec2  dst_size = camera.image_size.xy;
+    vec2  src_size = textureSize(un_input, 0);
+
+    ivec2 dst_texel    = ivec2(gl_GlobalInvocationID.xy);
+
+
+    vec2 dst_center = dst_size / 2.0;
+    vec2 delta      = (vec2(dst_texel) - dst_center) / src_size;
+
+    vec2 src_texcoord = vec2(0.5) + delta;
+         src_texcoord.y = 1.0 - src_texcoord.y;
+
+
+    vec3 src = texture(un_input, src_texcoord).rgb;
+    vec3 dst = imageLoad(un_output, dst_texel).rgb;
+
+    vec3 result = (1.0 - un_alpha)*dst + (un_alpha)*src;
+
+    imageStore(un_output, dst_texel, vec4(result, 1.0));
+}

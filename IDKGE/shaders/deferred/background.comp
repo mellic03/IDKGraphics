@@ -1,0 +1,38 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+layout (
+    local_size_x = 8,
+    local_size_y = 8,
+    local_size_z = 1
+) in;
+
+
+layout (binding = 0, rg16f) writeonly uniform image2D un_output;
+
+#include "../include/UBOs.glsl"
+#include "../include/util.glsl"
+
+uniform sampler2D   un_fragdepth;
+uniform samplerCube un_skybox;
+
+void main()
+{
+    IDK_Camera camera = IDK_RenderData_GetCamera();
+
+    ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+
+    vec3 position = IDK_WorldFromDepth(
+        un_fragdepth,
+        vec2(texel) / camera.image_size.xy,
+        camera.P,
+        camera.V
+    );
+
+
+    vec3 dir   = normalize(position - camera.position.xyz);
+    vec3 color = texture(un_skybox, dir).rgb;
+
+    imageStore(un_output, texel, vec4(color, 1.0));
+    
+}

@@ -10,8 +10,17 @@ namespace fs = std::filesystem;
 
 
 idk::ModelAllocator::ModelAllocator()
-:   m_mesh_allocator (2048 * idk::MEGA, idk::ModelVertexFormat_POS_NORM_TAN_UV)
 {
+    m_mesh_allocators.resize(2);
+
+    m_mesh_allocators[0] = idk::MeshAllocator(
+        2048 * idk::MEGA, idk::ModelVertexFormat_POS_NORM_TAN_UV
+    );
+
+    m_mesh_allocators[1] = idk::MeshAllocator(
+        512 * idk::MEGA, idk::ModelVertexFormat_POS_NORM_TAN_UV_SKINNED
+    );
+
     m_albedo_config = {
         .internalformat = GL_SRGB8_ALPHA8,
         .format         = GL_RGBA,
@@ -113,7 +122,7 @@ idk::ModelAllocator::loadMaterial( uint32_t bitmask, std::string textures[IDK_TE
 
 
 int
-idk::ModelAllocator::loadModel( const std::string &filepath )
+idk::ModelAllocator::loadModel( const std::string &filepath, uint32_t format )
 {
     if (fs::exists(filepath) == false)
     {
@@ -127,7 +136,7 @@ idk::ModelAllocator::loadModel( const std::string &filepath )
         return m_loaded_model_IDs[filepath];
     }
 
-    std::cout << "Loading model from file: \"" << filepath << "\"\n";
+    // std::cout << "Loading model from file: \"" << filepath << "\"\n";
 
     idk::ModelFileHeader header;
     std::vector<idk::MeshFileHeader> meshes;
@@ -141,7 +150,7 @@ idk::ModelAllocator::loadModel( const std::string &filepath )
     {
         auto &mesh = meshes[i];
 
-        idk::MeshDescriptor desc = m_mesh_allocator.loadMesh(
+        idk::MeshDescriptor desc = m_mesh_allocators[format].loadMesh(
             mesh.num_verts * idk::VertexFormat_sizeof(header.vertexformat),
             mesh.num_indices * sizeof(uint32_t),
             vertices[i],
@@ -207,7 +216,13 @@ idk::ModelAllocator::clear()
     m_meshes.clear();
     m_models.clear();
 
-    m_mesh_allocator.clear();
+
+    for (auto &allocator: m_mesh_allocators)
+    {
+        allocator.clear();
+    }
+
+    // m_mesh_allocator.clear();
 }
 
 
@@ -215,63 +230,63 @@ idk::ModelAllocator::clear()
 void
 idk::ModelAllocator::getVertices( int model_id, size_t &num_vertices, std::unique_ptr<idk::Vertex_P_N_T_UV[]> &vertices )
 {
-    num_vertices = 0;
+    // num_vertices = 0;
 
-    for (int mesh_id: getModel(model_id).mesh_ids)
-    {
-        num_vertices += getMesh(mesh_id).numVertices;
-    }
+    // for (int mesh_id: getModel(model_id).mesh_ids)
+    // {
+    //     num_vertices += getMesh(mesh_id).numVertices;
+    // }
 
-    vertices = std::make_unique<Vertex_P_N_T_UV[]>(num_vertices);
-    Vertex_P_N_T_UV *buffer = (Vertex_P_N_T_UV *)gl::mapNamedBuffer(m_mesh_allocator.VBO, GL_READ_ONLY);
+    // vertices = std::make_unique<Vertex_P_N_T_UV[]>(num_vertices);
+    // Vertex_P_N_T_UV *buffer = (Vertex_P_N_T_UV *)gl::mapNamedBuffer(m_mesh_allocator.VBO, GL_READ_ONLY);
 
-    size_t offset = 0;
-    for (int mesh_id: getModel(model_id).mesh_ids)
-    {
-        auto &mesh = getMesh(mesh_id);
+    // size_t offset = 0;
+    // for (int mesh_id: getModel(model_id).mesh_ids)
+    // {
+    //     auto &mesh = getMesh(mesh_id);
 
-        std::memcpy(
-            vertices.get() + offset,
-            buffer + mesh.baseVertex,
-            mesh.numVertices * sizeof(Vertex_P_N_T_UV)
-        );
+    //     std::memcpy(
+    //         vertices.get() + offset,
+    //         buffer + mesh.baseVertex,
+    //         mesh.numVertices * sizeof(Vertex_P_N_T_UV)
+    //     );
 
-        offset += mesh.numVertices;
-    }
+    //     offset += mesh.numVertices;
+    // }
 
-    gl::unmapNamedBuffer(m_mesh_allocator.VBO);
+    // gl::unmapNamedBuffer(m_mesh_allocator.VBO);
 }
 
 
 void
 idk::ModelAllocator::getIndices( int model_id, size_t &num_indices, std::unique_ptr<uint32_t[]> &indices )
 {
-    num_indices = 0;
+    // num_indices = 0;
 
-    for (int mesh_id: getModel(model_id).mesh_ids)
-    {
-        MeshDescriptor &mesh = getMesh(mesh_id); 
-        num_indices += mesh.numIndices;
-    }
+    // for (int mesh_id: getModel(model_id).mesh_ids)
+    // {
+    //     MeshDescriptor &mesh = getMesh(mesh_id); 
+    //     num_indices += mesh.numIndices;
+    // }
 
-    indices = std::make_unique<uint32_t[]>(num_indices);
-    uint32_t *buffer = (uint32_t *)gl::mapNamedBuffer(m_mesh_allocator.IBO, GL_READ_ONLY);
+    // indices = std::make_unique<uint32_t[]>(num_indices);
+    // uint32_t *buffer = (uint32_t *)gl::mapNamedBuffer(m_mesh_allocator.IBO, GL_READ_ONLY);
 
-    size_t offset = 0;
-    for (int mesh_id: getModel(model_id).mesh_ids)
-    {
-        auto &mesh = getMesh(mesh_id);
+    // size_t offset = 0;
+    // for (int mesh_id: getModel(model_id).mesh_ids)
+    // {
+    //     auto &mesh = getMesh(mesh_id);
 
-        std::memcpy(
-            indices.get() + offset,
-            buffer + mesh.firstIndex,
-            mesh.numIndices * sizeof(uint32_t)
-        );
+    //     std::memcpy(
+    //         indices.get() + offset,
+    //         buffer + mesh.firstIndex,
+    //         mesh.numIndices * sizeof(uint32_t)
+    //     );
 
-        offset += mesh.numIndices;
-    }
+    //     offset += mesh.numIndices;
+    // }
 
-    gl::unmapNamedBuffer(m_mesh_allocator.IBO);
+    // gl::unmapNamedBuffer(m_mesh_allocator.IBO);
 }
 
 

@@ -27,5 +27,5 @@ void main()
     vec4 position = light.transform * vec4(vsin_pos, 1.0);
     fsin_fragpos  = position.xyz;
 
-    gl_Position = camera.P * camera.V * position;
+    gl_Position = camera.PV * position;
 }

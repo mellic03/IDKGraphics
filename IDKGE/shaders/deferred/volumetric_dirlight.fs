@@ -28,25 +28,25 @@ uniform sampler2D un_fragdepth;
 void main()
 {
     vec4 result     = vec4(0.0);
-    vec4 diffuse    = vec4(un_dirlights[0].diffuse.xyz, 1.0);
+    // vec4 diffuse    = vec4(un_dirlights[0].diffuse.xyz, 1.0);
 
-    IDK_Camera camera = IDK_RenderData_GetCamera();
+    // IDK_Camera camera = IDK_RenderData_GetCamera();
 
-    vec3  viewpos    = camera.position.xyz;
-    vec3  frag_pos   = IDK_WorldFromDepth(un_fragdepth, fsin_texcoords, camera.P, camera.V);
-    float frag_dist  = distance(camera.position.xyz, frag_pos);
-    vec3  ray_dir    = normalize(frag_pos - camera.position.xyz);
+    // vec3  viewpos    = camera.position.xyz;
+    // vec3  frag_pos   = IDK_WorldFromDepth(un_fragdepth, fsin_texcoords, camera.P, camera.V);
+    // float frag_dist  = distance(camera.position.xyz, frag_pos);
+    // vec3  ray_dir    = normalize(frag_pos - camera.position.xyz);
 
-    const float step_size = frag_dist / MAX_STEPS;
+    // const float step_size = frag_dist / MAX_STEPS;
 
 
-    for (int i=0; i<MAX_STEPS; i++)
-    {
-        vec3 ray_pos = camera.position.xyz + float(i) * step_size * ray_dir;
-        result += SHAFT_INTENSITY * diffuse * dirlight_shadow_NoSlopeBias(0, camera.V, ray_pos);
-    }
+    // for (int i=0; i<MAX_STEPS; i++)
+    // {
+    //     vec3 ray_pos = camera.position.xyz + float(i) * step_size * ray_dir;
+    //     result += SHAFT_INTENSITY * diffuse * dirlight_shadow_NoSlopeBias(0, camera.V, ray_pos);
+    // }
 
-    result.a = (frag_dist < camera.image_plane[1]) ? 1.0 : 0.0;
+    // result.a = (frag_dist < camera.image_plane[1]) ? 1.0 : 0.0;
 
     fsout_frag_color = result;
 }

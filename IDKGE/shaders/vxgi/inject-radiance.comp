@@ -24,53 +24,53 @@ uniform int un_offset;
 
 void main()
 {
-    ivec3 texel = ivec3(gl_GlobalInvocationID.xyz);
+    // ivec3 texel = ivec3(gl_GlobalInvocationID.xyz);
 
-    DirLight light = un_dirlights[0];
+    // DirLight light = un_dirlights[0];
 
-    vec3 L = -normalize(light.direction.xyz);
-    vec3 N = VXGI_UnpackNormal(ivec3(imageLoad(un_voxel_normal, texel).xyz));
-    float NdotL = max(dot(N, L), 0.0);
+    // vec3 L = -normalize(light.direction.xyz);
+    // vec3 N = VXGI_UnpackNormal(ivec3(imageLoad(un_voxel_normal, texel).xyz));
+    // float NdotL = max(dot(N, L), 0.0);
 
-    vec4 albedo = imageLoad(un_voxel_albedo, texel) / 255.0;
+    // vec4 albedo = imageLoad(un_voxel_albedo, texel) / 255.0;
 
-    const vec3 directions[6] = vec3[]
-    (
-        vec3(-1.0,  0.0,  0.0),
-        vec3(+1.0,  0.0,  0.0),
-        vec3( 0.0, -1.0,  0.0),
-        vec3( 0.0, +1.0,  0.0),
-        vec3( 0.0,  0.0, -1.0),
-        vec3( 0.0,  0.0, +1.0)
-    );
+    // const vec3 directions[6] = vec3[]
+    // (
+    //     vec3(-1.0,  0.0,  0.0),
+    //     vec3(+1.0,  0.0,  0.0),
+    //     vec3( 0.0, -1.0,  0.0),
+    //     vec3( 0.0, +1.0,  0.0),
+    //     vec3( 0.0,  0.0, -1.0),
+    //     vec3( 0.0,  0.0, +1.0)
+    // );
 
 
-    uvec3 indices = VXGI_AnisoIndex3(N);
-    vec3  weights = VXGI_AnisoWeights(N);
+    // uvec3 indices = VXGI_AnisoIndex3(N);
+    // vec3  weights = VXGI_AnisoWeights(N);
 
-    const float a = (ROLLING_AVG_FRAMES - 1.0) / ROLLING_AVG_FRAMES;
-    const float b = 1.0 / ROLLING_AVG_FRAMES;
+    // const float a = (ROLLING_AVG_FRAMES - 1.0) / ROLLING_AVG_FRAMES;
+    // const float b = 1.0 / ROLLING_AVG_FRAMES;
 
-    vec3 position = VXGI_TexelToWorld(texel, un_viewpos);
+    // vec3 position = VXGI_TexelToWorld(texel, un_viewpos);
 
-    // for (int i=0; i<6; i++)
-    {
-        uint  idx    = un_face;
-        float weight = max(dot(N, directions[idx]), 0.0);
+    // // for (int i=0; i<6; i++)
+    // {
+    //     uint  idx    = un_face;
+    //     float weight = max(dot(N, directions[idx]), 0.0);
 
-        vec3 P = VXGI_TexelToWorld(texel, un_viewpos);
-             P -= 0.5 * VXGI_VOXEL_SIZE * directions[idx];
+    //     vec3 P = VXGI_TexelToWorld(texel, un_viewpos);
+    //          P -= 0.5 * VXGI_VOXEL_SIZE * directions[idx];
 
-        vec4 radiance = albedo;
-             radiance.rgb *= light.diffuse.rgb * light.diffuse.w;
-             radiance.rgb *= NdotL;
-             radiance.rgb *= dirlight_shadow_2(0, un_depthmap, un_view, un_light_matrix, P, N);
-             radiance *= weight;
+    //     vec4 radiance = albedo;
+    //          radiance.rgb *= light.diffuse.rgb * light.diffuse.w;
+    //          radiance.rgb *= NdotL;
+    //          radiance.rgb *= dirlight_shadow_2(0, un_depthmap, un_view, un_light_matrix, P, N);
+    //          radiance *= weight;
 
-        vec4 prev = imageLoad(un_voxel_radiance[idx], texel);
-        radiance = a*prev + b*radiance;
+    //     vec4 prev = imageLoad(un_voxel_radiance[idx], texel);
+    //     radiance = a*prev + b*radiance;
 
-        imageStore(un_voxel_radiance[idx], texel, radiance);
-    }
+    //     imageStore(un_voxel_radiance[idx], texel, radiance);
+    // }
 
 }

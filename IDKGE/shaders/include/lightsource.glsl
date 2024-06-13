@@ -118,96 +118,96 @@ float sampleDepthMap( int layer, vec3 uv, float bias )
 }
 
 
-float dirlight_shadow( int idx, mat4 view_matrix, vec3 position, vec3 N )
-{
-    DirLight light = un_dirlights[idx];
-    vec3 L = normalize(-light.direction.xyz);
+// float dirlight_shadow( int idx, mat4 view_matrix, vec3 position, vec3 N )
+// {
+//     DirLight light = un_dirlights[idx];
+//     vec3 L = normalize(-light.direction.xyz);
 
-    vec3  fragpos_viewspace = (view_matrix * vec4(position, 1.0)).xyz;
-    float frag_depth        = abs(fragpos_viewspace.z);
+//     vec3  fragpos_viewspace = (view_matrix * vec4(position, 1.0)).xyz;
+//     float frag_depth        = abs(fragpos_viewspace.z);
 
-    vec4 res   = step(un_cascade_depths, vec4(frag_depth));
-    int  layer = int(res.x + res.y + res.z + res.w);
+//     vec4 res   = step(un_cascade_depths, vec4(frag_depth));
+//     int  layer = int(res.x + res.y + res.z + res.w);
 
-    vec4 fragpos_lightspace = un_cascade_matrices[layer] * vec4(position, 1.0);
-    vec3 projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
-    projCoords = projCoords * 0.5 + 0.5;
+//     vec4 fragpos_lightspace = un_cascade_matrices[layer] * vec4(position, 1.0);
+//     vec3 projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
+//     projCoords = projCoords * 0.5 + 0.5;
 
-    float bias   = 0.0005 * max(dot(N, L), 0.00001);
-    // float bias = DIRLIGHT_BIAS * max(dot(N, L), 0.0);
-    float shadow = sampleDepthMap(layer, projCoords, bias);
+//     float bias   = 0.0005 * max(dot(N, L), 0.00001);
+//     // float bias = DIRLIGHT_BIAS * max(dot(N, L), 0.0);
+//     float shadow = sampleDepthMap(layer, projCoords, bias);
 
-    return shadow;
-}
-
-
-float dirlight_shadow_NoSlopeBias( int idx, mat4 view_matrix, vec3 position )
-{
-    DirLight light = un_dirlights[idx];
-    vec3 L = normalize(-light.direction.xyz);
-
-    vec3  fragpos_viewspace = (view_matrix * vec4(position, 1.0)).xyz;
-    float frag_depth        = abs(fragpos_viewspace.z);
-
-    vec4 res   = step(un_cascade_depths, vec4(frag_depth));
-    int  layer = int(res.x + res.y + res.z + res.w);
-
-    vec4 fragpos_lightspace = un_cascade_matrices[layer] * vec4(position, 1.0);
-    vec3 projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
-    projCoords = projCoords * 0.5 + 0.5;
-
-    float bias   = DIRLIGHT_BIAS;
-    float shadow = sampleDepthMap(layer, projCoords, bias);
-
-    return shadow;
-}
+//     return shadow;
+// }
 
 
+// float dirlight_shadow_NoSlopeBias( int idx, mat4 view_matrix, vec3 position )
+// {
+//     DirLight light = un_dirlights[idx];
+//     vec3 L = normalize(-light.direction.xyz);
+
+//     vec3  fragpos_viewspace = (view_matrix * vec4(position, 1.0)).xyz;
+//     float frag_depth        = abs(fragpos_viewspace.z);
+
+//     vec4 res   = step(un_cascade_depths, vec4(frag_depth));
+//     int  layer = int(res.x + res.y + res.z + res.w);
+
+//     vec4 fragpos_lightspace = un_cascade_matrices[layer] * vec4(position, 1.0);
+//     vec3 projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
+//     projCoords = projCoords * 0.5 + 0.5;
+
+//     float bias   = DIRLIGHT_BIAS;
+//     float shadow = sampleDepthMap(layer, projCoords, bias);
+
+//     return shadow;
+// }
 
 
 
-float sampleDepthMap_2( sampler2DShadow depth_map, vec3 uv, float bias )
-{
-    vec2 texelSize = 0.5 / textureSize(depth_map, 0).xy;
-
-    float shadow = 0.0;
-
-    for(int x = -KERNEL_HW; x <= KERNEL_HW; ++x)
-    {
-        for(int y = -KERNEL_HW; y <= KERNEL_HW; ++y)
-        {
-            vec2 sample_uv    = uv.xy + vec2(x, y) * texelSize;
-            // vec2 sample_uv    = uv.xy;
-            vec3 sample_coord = vec3(sample_uv, uv.z - bias);
-
-            shadow += texture(depth_map, sample_coord); 
-        }
-    }
-
-    // return shadow;
-    return shadow / ((2*KERNEL_HW+1)*(2*KERNEL_HW+1));
-}
 
 
+// float sampleDepthMap_2( sampler2DShadow depth_map, vec3 uv, float bias )
+// {
+//     vec2 texelSize = 0.5 / textureSize(depth_map, 0).xy;
 
-float dirlight_shadow_2( int idx, sampler2DShadow depth_map, mat4 view_matrix, mat4 light_matrix,
-                         vec3 position, vec3 N )
-{
-    DirLight light = un_dirlights[idx];
-    vec3 L = normalize(-light.direction.xyz);
+//     float shadow = 0.0;
 
-    vec3  fragpos_viewspace  = (view_matrix * vec4(position, 1.0)).xyz;
-    float frag_depth         = abs(fragpos_viewspace.z);
-    vec4  fragpos_lightspace = light_matrix * vec4(position, 1.0);
+//     for(int x = -KERNEL_HW; x <= KERNEL_HW; ++x)
+//     {
+//         for(int y = -KERNEL_HW; y <= KERNEL_HW; ++y)
+//         {
+//             vec2 sample_uv    = uv.xy + vec2(x, y) * texelSize;
+//             // vec2 sample_uv    = uv.xy;
+//             vec3 sample_coord = vec3(sample_uv, uv.z - bias);
 
-    vec3  projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
-          projCoords = projCoords * 0.5 + 0.5;
+//             shadow += texture(depth_map, sample_coord); 
+//         }
+//     }
 
-    float bias   = 0.02 * max(dot(N, L), 0.0001);
-    float shadow = sampleDepthMap_2(depth_map, projCoords, bias);
+//     // return shadow;
+//     return shadow / ((2*KERNEL_HW+1)*(2*KERNEL_HW+1));
+// }
 
-    return clamp(shadow, 0.0, 1.0);
-}
+
+
+// float dirlight_shadow_2( int idx, sampler2DShadow depth_map, mat4 view_matrix, mat4 light_matrix,
+//                          vec3 position, vec3 N )
+// {
+//     DirLight light = un_dirlights[idx];
+//     vec3 L = normalize(-light.direction.xyz);
+
+//     vec3  fragpos_viewspace  = (view_matrix * vec4(position, 1.0)).xyz;
+//     float frag_depth         = abs(fragpos_viewspace.z);
+//     vec4  fragpos_lightspace = light_matrix * vec4(position, 1.0);
+
+//     vec3  projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
+//           projCoords = projCoords * 0.5 + 0.5;
+
+//     float bias   = 0.02 * max(dot(N, L), 0.0001);
+//     float shadow = sampleDepthMap_2(depth_map, projCoords, bias);
+
+//     return clamp(shadow, 0.0, 1.0);
+// }
 
 
 vec3 dirlight_contribution( int idx, vec3 position, vec3 F0, vec3 N, vec3 V, vec3 R,

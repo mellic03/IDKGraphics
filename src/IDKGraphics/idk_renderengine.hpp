@@ -1,19 +1,21 @@
 #pragma once
 
 #include <libidk/idk_sdl_glew_init.hpp>
+#include <libidk/idk_log.hpp>
+#include <libidk/idk_gl.hpp>
+#include <libidk/idk_allocator.hpp>
 
 #include "batching/idk_model_allocator.hpp"
 #include "batching/idk_render_queue.hpp"
 
-#include <libidk/idk_gl.hpp>
-#include <libidk/idk_allocator.hpp>
-
 #include "storage/idk_ubo_general.hpp"
+#include "idk_overlay.hpp"
 
 #include "camera/idk_camera.hpp"
 #include "lighting/IDKlighting.hpp"
 
 #include <unordered_map>
+#include <queue>
 
 #define IDK_MAX_POINTLIGHTS 10
 #define IDK_MAX_SPOTLIGHTS 10
@@ -49,22 +51,23 @@ class IDK_VISIBLE idk::RenderEngine
 private:
     internal::SDL2_WindowSystem         m_windowsys;
     glm::ivec2                          m_resolution;
-
     uint32_t                            m_render_settings = ~0;
 
-    // idk::glFramebuffers ------------------------------------
+    SDL_Surface *                       m_textsurface;
+
+    std::queue<RenderOverlay>           m_overlays;
+    std::queue<RenderOverlayFill>       m_overlayfills;
+
+
+    // idk::glFramebuffers
+    // -----------------------------------------------------------------------------------------
     static const size_t                 NUM_SCRATCH_BUFFERS    = 8;
     static const size_t                 ATTACHMENTS_PER_BUFFER = 1;
 
 
     glFramebuffer                       m_scratchbuffers[4];
+    glFramebuffer                       m_scratchbuffers2[4];
 
-    glFramebuffer                       m_mainbuffer_0;
-    glFramebuffer                       m_mainbuffer_1;
-    glFramebuffer                       m_finalbuffer;
-
-    glFramebuffer                       m_geom_buffer;
-    glFramebuffer                       m_volumetrics_buffer;
 
 
     static constexpr int                BLOOM_MAX_LEVEL = 6;
@@ -91,7 +94,7 @@ private:
 
     int                                 m_active_camera_id;
     idk::Allocator<Camera>              m_camera_allocator;
-    idk::LightSystem                    m_lightsystem;
+    // idk::LightSystem                    m_lightsystem;
     idk::ModelAllocator                 m_model_allocator;
 
     idk::Allocator<idk::RenderQueue>    m_render_queues;
@@ -130,8 +133,11 @@ private:
     GLuint                              m_skybox;
 
     int                                 m_unit_line;
+    int                                 m_unit_cube;
     int                                 m_unit_sphere;
+    int                                 m_unit_sphere_FF;
     int                                 m_unit_cone;
+    int                                 m_unit_cylinder_FF;
     // -----------------------------------------------------------------------------------------
 
 
@@ -183,17 +189,20 @@ private:
                                glFramebuffer &buffer_out );
 
 
-    void PostProcess_bloom( glFramebuffer &buffer_in,
-                            glFramebuffer &buffer_out );
+    void PostProcess_bloom( glFramebuffer &buffer_in );
 
     void PostProcess_chromatic_aberration( glFramebuffer &buffer_in,
                                            glFramebuffer &buffer_out );
 
-    void PostProcess_SSR();
+    void PostProcess_SSR( glFramebuffer &buffer_in, glFramebuffer &buffer_out );
 
     void PostProcess_colorgrading( idk::Camera &,
                                    glFramebuffer &buffer_in,
                                    glFramebuffer &buffer_out );
+
+    void PostProcess_text( glFramebuffer &buffer_out );
+
+    void PostProcess_overlay( glFramebuffer &buffer_out );
 
 
     void RenderStage_postprocessing( idk::Camera &,
@@ -265,7 +274,7 @@ public:
     void                                destroyRenderQueue( int RQ );
 
 
-    idk::LightSystem &                  lightSystem() { return m_lightsystem; };
+    // idk::LightSystem &                  lightSystem() { return m_lightsystem; };
     ModelAllocator &                    modelAllocator() { return m_model_allocator; };
 
 
@@ -284,19 +293,39 @@ public:
     void                                useSkybox( int skybox ) { current_skybox = skybox; };
 
 
-
     int                                 loadModel( const std::string &filepath );
 
+    void                                drawSphere( const glm::vec3 position, float radius );
+    void                                drawSphere( const glm::mat4& );
+    void                                drawSphereWireframe( const glm::mat4& );
+    void                                drawRect( const glm::mat4& );
+    void                                drawRectWireframe( const glm::mat4& );
     void                                drawLine( const glm::vec3 A, const glm::vec3 B, float thickness );
+    void                                drawCapsule( const glm::vec3 A, const glm::vec3 B, float thickness );
 
     void                                drawModel( int model, const glm::mat4 & );
     void                                drawModelRQ( int RQ, int model, const glm::mat4 & );
 
-    void                                drawModelViewspace( int model, const glm::mat4 & );
+    // void                                drawModelViewspace( int model, const glm::mat4 & );
     void                                drawShadowCaster( int model, const glm::mat4 & );
 
     /** Draw a model which contributes to global illumination. */
     void                                drawEnvironmental( int model, const glm::mat4 & );
+
+
+    void                                pushRenderOverlay( const std::string &filepath,
+                                                           float fadein, float display,
+                                                           float fadeout );
+
+    void                                pushRenderOverlayFill( const glm::vec3 &fill,
+                                                               float fadein, float display,
+                                                               float fadeout );
+
+
+    void                                pushRenderOverlay( const RenderOverlay& );
+    void                                pushRenderOverlayFill( const RenderOverlayFill& );
+    void                                skipRenderOverlay();
+    void                                skipAllRenderOverlays();
 
 
     int                                 createProgram( const std::string &name,
@@ -312,7 +341,12 @@ public:
 
     idk::glShaderProgram &getProgram( const std::string &name )
     {
-        IDK_ASSERT("No such program", m_program_ids.contains(name));
+        if (m_program_ids.contains(name) == false)
+        {
+            LOG_ERROR() << "No such shader program: " << name; 
+            IDK_ASSERT("No such shader program", false);
+        }
+
 
         int id = m_program_ids[name];
         return m_programs.get(id);
@@ -339,6 +373,17 @@ public:
     glm::ivec2                          resolution() const { return m_resolution;   };
     int                                 width()      const { return m_resolution.x; };
     int                                 height()     const { return m_resolution.y; };
+
+
+    idk::glFramebuffer                  m_dirshadow_buffer;
+    glFramebuffer                       m_mainbuffer_0;
+    glFramebuffer                       m_mainbuffer_1;
+    glFramebuffer                       m_finalbuffer;
+
+    glFramebuffer                       m_geom_buffer;
+    glFramebuffer                       m_volumetrics_buffer;
+    auto &getScratchBuffers()  { return m_scratchbuffers; };
+    auto &getScratchBuffers2() { return m_scratchbuffers2; };
 
 };
 
