@@ -19,10 +19,11 @@ float IDK_ComputeLuminance( vec3 color )
 
 void main()
 {
-    vec3 color = texture(un_texture_0, fsin_texcoords).rgb;
+    vec4 color = texture(un_texture_0, fsin_texcoords);
 
-    float luminance = IDK_ComputeLuminance(color);
+    float luminance = IDK_ComputeLuminance(color.rgb * color.a);
     color *= luminance;
+    // color *= (luminance > 1.0) ? clamp(luminance, 1.0, 1.25) : 0.25;
 
-    fsout_frag_color = vec4(color, 1.0);
+    fsout_frag_color = vec4(color);
 }

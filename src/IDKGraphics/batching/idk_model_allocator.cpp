@@ -53,26 +53,21 @@ idk::ModelAllocator::ModelAllocator()
     auto data_albedo = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 200, 200, 200, 255 );
     auto data_normal = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 125, 125, 255, 0);
     auto data_ao_r_m = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 255, 180, 1, 0);
-    auto data_emissv = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 0, 0, 0, 255);
+    auto data_emissv = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 0, 0, 0, 0);
 
     GLuint textures[5];
+    GLuint handles[5];
 
-    textures[0] = gltools::loadTexture2D(IMG_W, IMG_W, data_albedo.get(), m_albedo_config);
-    textures[1] = gltools::loadTexture2D(IMG_W, IMG_W, data_normal.get(), m_lightmap_config);
-    textures[2] = gltools::loadTexture2D(IMG_W, IMG_W, data_ao_r_m.get(), m_lightmap_config);
-    textures[3] = gltools::loadTexture2D(IMG_W, IMG_W, data_emissv.get(), m_lightmap_config);
-    textures[4] = gltools::loadTexture2D(IMG_W, IMG_W, data_emissv.get(), m_lightmap_config);
+    m_default_textures[0] = gltools::loadTexture2D(IMG_W, IMG_W, data_albedo.get(), m_albedo_config);
+    m_default_textures[1] = gltools::loadTexture2D(IMG_W, IMG_W, data_normal.get(), m_lightmap_config);
+    m_default_textures[2] = gltools::loadTexture2D(IMG_W, IMG_W, data_ao_r_m.get(), m_lightmap_config);
+    m_default_textures[3] = gltools::loadTexture2D(IMG_W, IMG_W, data_emissv.get(), m_lightmap_config);
+    m_default_textures[4] = m_default_textures[3];
 
     for (int i=0; i<5; i++)
     {
-        TextureDescriptor desc = {
-            .texture  = textures[i],
-            .handle = gl::getTextureHandleARB(textures[i])
-        };
-
-        createTexture(desc);
+        m_default_handles[i] = gl::getTextureHandleARB(m_default_textures[i]);
     }
-
 
     m_ModelData_SSBO.init(1);
 
@@ -80,44 +75,44 @@ idk::ModelAllocator::ModelAllocator()
 
 
 int
-idk::ModelAllocator::loadTexture( const std::string &filepath, const glTextureConfig &config )
+idk::ModelAllocator::loadTexture( const std::string &filepath, uint32_t &texture, uint64_t &handle,
+                                  const glTextureConfig &config )
 {
-    if (m_loaded_textures.contains(filepath))
+    if (m_texture_cache.contains(filepath))
     {
-        return m_loaded_textures[filepath];
+        texture = m_texture_cache[filepath];
+        handle  = gl::getTextureHandleARB(texture);
+        return 0;
     }
 
-    TextureDescriptor desc;
-    desc.texture  = gltools::loadTexture(filepath, config);
-    desc.handle = gl::getTextureHandleARB(desc.texture);
+    texture = gltools::loadTexture(filepath, config);
+    handle  = gl::getTextureHandleARB(texture);
 
-    int id = createTexture(desc);
-    m_loaded_textures[filepath] = id;
+    m_texture_cache[filepath] = texture;
 
-    return id;
+    return 0;
 }
 
 
-int
-idk::ModelAllocator::loadMaterial( uint32_t bitmask, std::string textures[IDK_TEXTURES_PER_MATERIAL] )
+void
+idk::ModelAllocator::loadMaterial( uint32_t bitmask,
+                                   std::string textures[draw_buffer::TEXTURES_PER_MATERIAL],
+                                   idk::MeshDescriptor &mesh )
 {
-    idk::MaterialDescriptor desc;
-    
-    for (int i=0; i<IDK_TEXTURES_PER_MATERIAL; i++)
+    for (int i=0; i<5; i++)
     {
-        desc.textures[i] = i;
+        mesh.textures[i] = m_default_textures[i];
+        mesh.handles[i] = m_default_handles[i];
     }
 
-    for (int i=0; i<IDK_TEXTURES_PER_MATERIAL; i++)
+    for (int i=0; i<draw_buffer::TEXTURES_PER_MATERIAL; i++)
     {
         if (idk::MeshFile_hasTexture(bitmask, i))
         {
             const auto &config = (i == 0) ? m_albedo_config : m_lightmap_config;
-            desc.textures[i] = loadTexture(textures[i], config);
+            loadTexture(textures[i], mesh.textures[i], mesh.handles[i], config);
         }
     }
-
-    return createMaterial(desc);
 }
 
 
@@ -157,10 +152,10 @@ idk::ModelAllocator::loadModel( const std::string &filepath, uint32_t format )
             indices[i]
         );
 
-        desc.material_id = loadMaterial(mesh.bitmask, mesh.textures);
+        loadMaterial(mesh.bitmask, mesh.textures, desc);
         desc.bounding_radius = meshes[i].bounding_radius;
 
-        model_desc.mesh_ids.push_back(createMesh(desc));
+        model_desc.meshes.push_back(desc);
     }
 
     int model_id = createModel(model_desc);
@@ -173,56 +168,39 @@ idk::ModelAllocator::loadModel( const std::string &filepath, uint32_t format )
 }
 
 
-int
-idk::ModelAllocator::createMaterial( int albedo, int normal, int ao_r_m )
-{
-    int id = createMaterial();
-
-    getMaterial(id).textures[0] = albedo;
-    getMaterial(id).textures[1] = normal;
-    getMaterial(id).textures[2] = ao_r_m;
-
-    return id;
-}
-
-
-int
-idk::ModelAllocator::createMaterial( const std::string &albedo, const std::string &normal,
-                                     const std::string &ao_r_m)
-{
-    int id = createMaterial();
-
-    getMaterial(id).textures[0] = loadTexture(albedo, m_albedo_config);
-    getMaterial(id).textures[1] = loadTexture(normal, m_lightmap_config);
-    getMaterial(id).textures[2] = loadTexture(ao_r_m, m_lightmap_config);
-
-    return id;
-}
-
 
 void
-idk::ModelAllocator::addUserMaterial( int model, int material, int idx )
+idk::ModelAllocator::addUserMaterials( int model, const std::vector<uint32_t> &textures )
 {
-    getModel(model).user_materials[idx] = material;
-}
+    for (auto &mesh: getModel(model).meshes)
+    {
+        if (mesh.textures.size() < textures.size())
+        {
+            mesh.textures.resize(textures.size());
+            mesh.handles.resize(textures.size());
+        }
 
+        for (size_t i=0; i<textures.size(); i++)
+        {
+            mesh.textures[i] = textures[i];
+            mesh.handles[i] = gl::getTextureHandleARB(textures[i]);
+        }
+    }
+}
 
 
 
 void
 idk::ModelAllocator::clear()
 {
-    m_materials.clear();
     m_meshes.clear();
     m_models.clear();
-
 
     for (auto &allocator: m_mesh_allocators)
     {
         allocator.clear();
     }
 
-    // m_mesh_allocator.clear();
 }
 
 

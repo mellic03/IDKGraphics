@@ -62,11 +62,11 @@ idk::RenderEngine::compileShaders()
     createProgram("overlay",      glShaderProgram("IDKGE/shaders/overlay.comp"));
     createProgram("overlay-fill", glShaderProgram("IDKGE/shaders/overlay-fill.comp"));
 
-    createProgram("gbuffer-clear", glShaderProgram("IDKGE/shaders/deferred/gbuffer-clear.comp"));
     createProgram("background", "IDKGE/shaders/", "screenquad.vs", "deferred/background.fs");
 
+    createProgram("gpass-particle", "IDKGE/shaders/deferred/", "gpass-particle.vs", "gpass-particle.fs");
+
     createProgram("gpass", "IDKGE/shaders/deferred/", "gpass.vs", "gpass.fs");
-    createProgram("gpass-viewspace", "IDKGE/shaders/deferred/", "gpass-viewspace.vs", "gpass.fs");
     createProgram("lpass", "IDKGE/shaders/", "screenquad.vs", "deferred/light-pass.fs");
 
 
@@ -93,8 +93,6 @@ idk::RenderEngine::compileShaders()
 
     createProgram("dirshadow-indirect", "IDKGE/shaders/", "dirshadow-indirect.vs", "dirshadow.fs");
     createProgram("dir-volumetric", "IDKGE/shaders/", "screenquad.vs", "deferred/volumetric_dirlight.fs");
-
-    // createProgram("SSR", glShaderProgram("IDKGE/shaders/post/SSR.comp"));
     createProgram("SSR", "IDKGE/shaders/", "screenquad.vs", "post/SSR.fs");
 
     // createProgram("chromatic", glShaderProgram("IDKGE/shaders/post/chromatic.comp"));
@@ -107,6 +105,7 @@ idk::RenderEngine::compileShaders()
 
     createProgram("screenquad", "IDKGE/shaders/", "screenquad.vs", "screenquad.fs");
 
+    createProgram("alpha-0-1",       "IDKGE/shaders/", "screenquad.vs", "post/alpha-0-1.fs");
     createProgram("additive",       "IDKGE/shaders/", "screenquad.vs", "post/additive.fs");
     createProgram("blit",           "IDKGE/shaders/", "screenquad.vs", "post/blit.fs");
     createProgram("fxaa",           "IDKGE/shaders/", "screenquad.vs", "post/fxaa.fs");
@@ -126,6 +125,14 @@ idk::RenderEngine::init_framebuffers( int w, int h )
 
     idk::glTextureConfig config = {
         .internalformat = GL_RGBA16F,
+        .minfilter      = GL_LINEAR,
+        .magfilter      = GL_LINEAR,
+        .datatype       = GL_FLOAT,
+        .genmipmap      = GL_FALSE
+    };
+
+    idk::glTextureConfig SSR_config = {
+        .internalformat = GL_RGBA16F,
         .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
         .magfilter      = GL_LINEAR,
         .datatype       = GL_FLOAT,
@@ -137,19 +144,6 @@ idk::RenderEngine::init_framebuffers( int w, int h )
         .datatype       = GL_UNSIGNED_INT
     };
 
-
-    m_mainbuffer_0.reset(w, h, 2);
-    m_mainbuffer_0.colorAttachment(0, config);
-    m_mainbuffer_0.colorAttachment(1, config);
-
-
-    config = {
-        .internalformat = GL_RGBA16F,
-        .minfilter      = GL_LINEAR,
-        .magfilter      = GL_LINEAR,
-        .datatype       = GL_FLOAT,
-        .genmipmap      = GL_FALSE
-    };
 
     // m_vxgi_buffer.reset(VXGI_TEXTURE_SIZE, VXGI_TEXTURE_SIZE, 1);
     // m_vxgi_buffer.colorAttachment(0, config);
@@ -164,13 +158,19 @@ idk::RenderEngine::init_framebuffers( int w, int h )
 
     m_dirshadow_buffer.depthAttachment(shadow_config);
 
-
     m_finalbuffer.reset(w, h, 1);
     m_finalbuffer.colorAttachment(0, config);
+
+    m_mainbuffer_0.reset(w, h, 2);
+    m_mainbuffer_0.colorAttachment(0, config);
+    m_mainbuffer_0.colorAttachment(1, config);
 
     m_mainbuffer_1.reset(w, h, 2);
     m_mainbuffer_1.colorAttachment(0, config);
     m_mainbuffer_1.colorAttachment(1, config);
+
+    m_mip_scratchbuffer.reset(w, h, 1);
+    m_mip_scratchbuffer.colorAttachment(0, SSR_config);
 
     for (int i=0; i<4; i++)
     {
@@ -190,11 +190,11 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     };
 
     idk::glTextureConfig normal_config = {
-        .internalformat = GL_RGBA16F,
+        .internalformat = GL_RGB8_SNORM,
         .format         = GL_RGB,
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
-        .datatype       = GL_FLOAT,
+        .datatype       = GL_UNSIGNED_INT,
         .genmipmap      = GL_FALSE
     };
 
@@ -256,7 +256,7 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
 
 
     m_RQ           = m_render_queues.create();
-    // m_viewspace_RQ = m_render_queues.create();
+    m_viewspace_RQ = m_render_queues.create();
     m_shadow_RQ    = m_render_queues.create();
     m_GI_RQ        = m_render_queues.create();
 
@@ -399,6 +399,8 @@ int
 idk::RenderEngine::createRenderQueue( const std::string &program )
 {
     int ID = m_user_render_queues.create();
+    LOG_INFO() << "Created user-facing render queue \"" << program << "\" with ID " << ID;
+
     m_user_render_queues.get(ID).name = program;
     return ID;
 }
@@ -720,6 +722,19 @@ idk::RenderEngine::skipAllRenderOverlays()
 
 
 
+int
+idk::RenderEngine::createParticleEmitter( const ParticleEmitter &P )
+{
+    return m_particle_emitters.create(P);
+}
+
+
+idk::ParticleEmitter &
+idk::RenderEngine::getParticleEmitter( int emitter )
+{
+    return m_particle_emitters.get(emitter);
+}
+
 
 void
 idk::RenderEngine::update_UBO_camera()
@@ -770,8 +785,7 @@ idk::RenderEngine::update_UBO_camera()
 idk::glDrawCmd
 idk::RenderEngine::genLightsourceDrawCommand( int model, uint32_t num_lights, idk::ModelAllocator &MA )
 {
-    int mesh_id = MA.getModel(model).mesh_ids[0];
-    MeshDescriptor &mesh = MA.getMesh(mesh_id);
+    MeshDescriptor &mesh = MA.getModel(model).meshes[0];
 
     idk::glDrawCmd cmd = {
         .count         = mesh.numIndices,
@@ -788,8 +802,7 @@ idk::RenderEngine::genLightsourceDrawCommand( int model, uint32_t num_lights, id
 idk::glDrawCmd
 idk::RenderEngine::genAtmosphereDrawCommand( idk::ModelAllocator &MA )
 {
-    int mesh_id = MA.getModel(m_unit_sphere).mesh_ids[0];
-    MeshDescriptor &mesh = MA.getMesh(mesh_id);
+    MeshDescriptor &mesh = MA.getModel(m_unit_sphere).meshes[0];
 
     idk::glDrawCmd cmd = {
         .count         = mesh.numIndices,
@@ -925,10 +938,23 @@ idk::RenderEngine::endFrame( float dt )
 
     idk::Camera &camera = getCamera();
 
-    shadowpass_dirlights();
+    for (auto &P: m_particle_emitters)
+    {
+        P.update(dt);
 
+        for (int i=0; i<P.m_particles.size(); i++)
+        {
+            glm::mat4 M = P.getTransform(i, camera.position);
+            _getRenderQueue(m_viewspace_RQ).enque(P.model_id, M);
+        }
+    }
+
+
+
+
+    shadowpass_dirlights();
     RenderStage_geometry(camera, dt, m_geom_buffer);
-    RenderStage_lighting(camera, dt, m_geom_buffer,  m_mainbuffer_0);
+    RenderStage_lighting(camera, dt, m_geom_buffer, m_mainbuffer_0);
 
 
     if (m_overlays.empty() == false)

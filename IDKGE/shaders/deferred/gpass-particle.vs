@@ -30,7 +30,8 @@ void main()
     IDK_Camera camera = IDK_RenderData_GetCamera();
 
     const uint offset = un_IndirectDrawData.transform_offsets[gl_DrawID];
-    const mat4 model  = un_IndirectDrawData.transforms[offset + gl_InstanceID];
+    mat4 model  = un_IndirectDrawData.transforms[offset + gl_InstanceID];
+         model  = model;
 
     vec4 position = model * vec4(vsin_pos,     1.0);
     vec4 normal   = model * vec4(vsin_normal,  0.0);
@@ -54,5 +55,5 @@ void main()
     TBN_fragpos = TBNT * fsin_fragpos;
     TBN_viewpos = TBNT * camera.position.xyz;
 
-    gl_Position = camera.PV * position;
+    gl_Position = camera.P * camera.V * position;
 }

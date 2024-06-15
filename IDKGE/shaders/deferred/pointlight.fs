@@ -47,5 +47,5 @@ void main()
     vec3 result = IDK_PBR_Pointlight(light, surface, worldpos);
     result = (result == result) ? result : vec3(0.0);
 
-    fsout_frag_color = vec4(result, 1.0);
+    fsout_frag_color = vec4(result, surface.alpha);
 }

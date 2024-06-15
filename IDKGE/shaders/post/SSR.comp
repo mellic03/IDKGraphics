@@ -71,7 +71,10 @@ void main()
     }
 
 
-    vec3 ray_pos = position + RAY_OFFSET*surface.N;
+    vec3  ray_pos = position + RAY_OFFSET*surface.N;
+    float initial_depth = IDK_WorldToUV(ray_pos, camera.PV).z;
+
+
     vec3 cam_to_frag = normalize(ray_pos - viewpos);
     vec3 ray_dir = surface.R;
 
@@ -106,7 +109,7 @@ void main()
             break;
         }
 
-        if (ray_depth >= frag_depth)
+        if (frag_depth < initial_depth && ray_depth >= frag_depth)
         {
             result = imageLoad(un_input, tx).rgb;
             break;

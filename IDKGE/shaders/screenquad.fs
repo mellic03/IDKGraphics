@@ -8,8 +8,5 @@ uniform sampler2D un_texture_0;
 
 void main()
 {
-    vec3 src = texture(un_texture_0, fsin_texcoords).rgb;
-    vec3 result = src;
-
-    fsout_frag_color = vec4(result, 1.0);
+    fsout_frag_color = texture(un_texture_0, fsin_texcoords);
 }

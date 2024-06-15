@@ -10,6 +10,7 @@
 
 #include "storage/idk_ubo_general.hpp"
 #include "idk_overlay.hpp"
+#include "render/particle.hpp"
 
 #include "camera/idk_camera.hpp"
 #include "lighting/IDKlighting.hpp"
@@ -57,6 +58,8 @@ private:
 
     std::queue<RenderOverlay>           m_overlays;
     std::queue<RenderOverlayFill>       m_overlayfills;
+
+    idk::Allocator<ParticleEmitter>     m_particle_emitters;
 
 
     // idk::glFramebuffers
@@ -328,6 +331,10 @@ public:
     void                                skipAllRenderOverlays();
 
 
+    int                                 createParticleEmitter( const ParticleEmitter &P );
+    ParticleEmitter &                   getParticleEmitter( int emitter );
+
+
     int                                 createProgram( const std::string &name,
                                                        const std::string &root,
                                                        const std::string &vs,
@@ -375,13 +382,15 @@ public:
     int                                 height()     const { return m_resolution.y; };
 
 
-    idk::glFramebuffer                  m_dirshadow_buffer;
+    glFramebuffer                       m_dirshadow_buffer;
     glFramebuffer                       m_mainbuffer_0;
     glFramebuffer                       m_mainbuffer_1;
     glFramebuffer                       m_finalbuffer;
 
     glFramebuffer                       m_geom_buffer;
     glFramebuffer                       m_volumetrics_buffer;
+    glFramebuffer                       m_mip_scratchbuffer;
+
     auto &getScratchBuffers()  { return m_scratchbuffers; };
     auto &getScratchBuffers2() { return m_scratchbuffers2; };
 

@@ -34,11 +34,18 @@ void main()
     vec3 h = texture(un_texture_0, vec2(texcoord.x,     texcoord.y - y)).rgb;
     vec3 i = texture(un_texture_0, vec2(texcoord.x + x, texcoord.y - y)).rgb;
 
-    vec3 result  = 4.0 * e;
-         result += 2.0 * (b + d + f + h);
-         result += 1.0 * (a + c + g + i);
-         result *= (1.0 / 16.0);
+    vec3 result = (a+b+c+d+e+f+g+h+i) / 9.0;
 
+    // vec3 result  = 4.0 * e;
+    //      result += 2.0 * (b + d + f + h);
+    //      result += 1.0 * (a + c + g + i);
+    //      result *= (1.0 / 16.0);
+
+
+    if (result != result)
+    {
+        result = vec3(0.0);
+    }
 
     fsout_frag_color = vec4(result, 1.0);
 

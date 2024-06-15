@@ -128,6 +128,7 @@ void main()
     }
     // -----------------------------------------------------------------------------------------
 
+    result += (surface.emission * surface.albedo);
 
-    fsout_frag_color = vec4(result, (depth < 0.999) ? 1.0 : 0.0);
+    fsout_frag_color = vec4(result, surface.alpha);
 }

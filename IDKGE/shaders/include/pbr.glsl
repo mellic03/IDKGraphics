@@ -1,5 +1,5 @@
 #define PBR_PI  3.14159265359
-#define PBR_EPSILON 0.0001
+#define PBR_EPSILON 0.001
 
 
 #define PBR_DOT(u, v) max(dot(u, v), 0.0)
@@ -44,7 +44,7 @@ float NDF( float roughness, vec3 N, vec3 H )
     float denom = NdotH*NdotH * (a2 - 1.0) + 1.0;
           denom = PBR_PI * denom*denom;
 
-    return a2 / denom;
+    return a2 / (denom + PBR_EPSILON);
 }
 
 
@@ -53,7 +53,7 @@ float GeometrySchlickGGX( float NdotV, float roughness )
     float r = (roughness + 1.0);
     float k = (r*r) / 8.0;
 
-    return NdotV / (NdotV * (1.0 - k) + k);
+    return NdotV / (NdotV * (1.0 - k) + k + PBR_EPSILON);
 }
 
 float GSF( float roughness, vec3 N, vec3 V, vec3 L )
@@ -97,7 +97,7 @@ IDK_PBRSurfaceData_load( IDK_Camera camera, vec2 texcoord, sampler2D depth_tex, 
     float alpha    = albedo_a.a;
 
     vec3  worldpos = IDK_WorldFromDepth(depth_tex, texcoord, camera.P, camera.V);
-    vec3  normal   = IDK_UnpackNormal(texture(normal_tex, texcoord).xyz);
+    vec3  normal   = texture(normal_tex, texcoord).xyz;
 
     vec4  texture_pbr = texture(PBR_tex, texcoord);
     float roughness   = clamp(texture_pbr.r*texture_pbr.r, 0.0, 1.0);

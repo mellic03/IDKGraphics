@@ -39,22 +39,20 @@ class idk::ModelAllocator
 private:
     static constexpr uint32_t MAX_DRAW_COMMANDS = 128;
 
+    uint32_t m_default_textures[5];
+    uint64_t m_default_handles[5];
 
     idk::vector<idk::MeshAllocator>         m_mesh_allocators;
 
-    // idk::MeshAllocator m_mesh_allocator;
-
-    std::unordered_map<std::string, GLuint> m_loaded_textures;
+    std::unordered_map<std::string, GLuint> m_texture_cache;
 
     std::unordered_set<std::string>         m_loaded_models;
     std::unordered_map<std::string, int>    m_loaded_model_IDs;
 
     idk::glTextureConfig                    m_albedo_config;
     idk::glTextureConfig                    m_lightmap_config;
-    int                                     m_default_textures[IDK_TEXTURES_PER_MATERIAL];
 
-    idk::Allocator<idk::TextureDescriptor>  m_textures;
-    idk::Allocator<idk::MaterialDescriptor> m_materials;
+    // idk::Allocator<idk::MaterialDescriptor> m_materials;
     idk::Allocator<idk::MeshDescriptor>     m_meshes;
     idk::Allocator<idk::ModelDescriptor>    m_models;
 
@@ -71,27 +69,22 @@ private:
     drawlist_type m_drawlist;
 
 
-    int loadMaterial( uint32_t bitmask, std::string textures[IDK_TEXTURES_PER_MATERIAL] );
+    void loadMaterial( uint32_t bitmask, std::string textures[draw_buffer::TEXTURES_PER_MATERIAL],
+                       idk::MeshDescriptor& );
 
 
 public:
         ModelAllocator();
 
-    IDK_ALLOCATOR_ACCESS(Texture,  idk::TextureDescriptor,  m_textures);
-    IDK_ALLOCATOR_ACCESS(Material, idk::MaterialDescriptor, m_materials);
+    // IDK_ALLOCATOR_ACCESS(Texture,  idk::TextureDescriptor,  m_textures);
+    // IDK_ALLOCATOR_ACCESS(Material, idk::MaterialDescriptor, m_materials);
     IDK_ALLOCATOR_ACCESS(Mesh,     idk::MeshDescriptor,     m_meshes);
     IDK_ALLOCATOR_ACCESS(Model,    idk::ModelDescriptor,    m_models);
 
-    int loadTexture( const std::string &filepath, const idk::glTextureConfig & );
+    int loadTexture( const std::string &filepath, uint32_t&, uint64_t&, const idk::glTextureConfig & );
     int loadModel( const std::string &filepath, uint32_t format=0 );
 
-    int createMaterial( int albedo, int normal, int ao_r_m );
-
-    int createMaterial( const std::string &albedo,
-                        const std::string &normal,
-                        const std::string &ao_r_m );
-
-    void addUserMaterial( int model, int material, int idx );
+    void addUserMaterials( int model, const std::vector<uint32_t> &textures );
 
 
     void clear();

@@ -10,7 +10,7 @@ uniform mat4 un_lightspacematrix;
 
 void main()
 {
-    const uint offset = un_IndirectDrawData.offsets[gl_DrawID];
+    const uint offset = un_IndirectDrawData.transform_offsets[gl_DrawID];
     const mat4 model  = un_IndirectDrawData.transforms[offset + gl_InstanceID];
     gl_Position = un_lightspacematrix * model * vec4(vsin_pos, 1.0);
 }  

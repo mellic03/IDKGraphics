@@ -13,7 +13,6 @@ out vec4 fsout_frag_color;
 in vec2 fsin_texcoords;
 
 uniform sampler2D un_input;
-
 uniform sampler2D un_albedo;
 uniform sampler2D un_normal;
 uniform sampler2D un_pbr;
@@ -47,31 +46,38 @@ void main()
         un_BRDF_LUT
     );
 
+    vec4 in_color = texture(un_input, texcoord);
+
+    fsout_frag_color = in_color;
+    return;
+
+
     if (texture(un_normal, texcoord).a > 1.0)
     {
-        fsout_frag_color = textureLod(un_input, texcoord, 0.0);
+        fsout_frag_color = in_color;
         return;
     }
 
-    // if (surface.roughness > 0.4)
-    // {
-    //     vec4 current = imageLoad(un_input, texel);
-    //     imageStore(un_output, texel, current);
-    //     return;
-    // }
-
     if (dot(surface.R, surface.V) > 0.0)
     {
-        fsout_frag_color = textureLod(un_input, texcoord, 0.0);
+        fsout_frag_color = in_color;
         return;
     }
 
 
     vec3 ray_pos = position + RAY_OFFSET*surface.N;
-    vec3 cam_to_frag = normalize(ray_pos - viewpos);
-    vec3 ray_dir = surface.R;
+    float initial_depth = IDK_WorldToUV(ray_pos, camera.PV).z;
 
-    vec3  result  = texture(un_skybox, ray_dir).rgb;
+    vec3 view_dir = inverse(mat3(camera.PV)) * vec3(fsin_texcoords * 2.0 - 1.0, 1.0);
+    vec3 ray_dir  = surface.R;
+
+    if (dot(view_dir, ray_dir) < 0.3)
+    {
+        fsout_frag_color = in_color;
+        return;
+    }
+
+    vec4  result  = texture(un_skybox, ray_dir);
     int   count   = 0;
     float cumdist = 0.0;
 
@@ -89,7 +95,6 @@ void main()
         vec2  uv = projected.xy;
 
 
-
         // float frag_depth = (PV * imageLoad(un_position, tx)).z;
         vec3 pos = IDK_WorldFromDepth(un_fragdepth, uv, camera.P, camera.V);
 
@@ -99,13 +104,13 @@ void main()
 
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
         {
-            result = vec3(0.0);
-            break;
+            fsout_frag_color = in_color;
+            return;
         }
 
-        if (ray_depth >= frag_depth)
+        else if (ray_depth >= frag_depth && frag_depth > initial_depth)
         {
-            result = textureLod(un_input, uv, MIPLEVEL_SPECULAR*surface.roughness).rgb;
+            result = textureLod(un_input, uv, MIPLEVEL_SPECULAR*surface.roughness);
             break;
         }
 
@@ -113,9 +118,8 @@ void main()
         cumdist += RAY_STEP_SIZE;
     }
 
-    result *= fresnelSchlickR(surface.NdotV, surface.F0, surface.roughness);
+    result.rgb *= fresnelSchlickR(surface.NdotV, surface.F0, surface.roughness);
 
-    vec4 current = textureLod(un_input, fsin_texcoords, 0.0);
-    fsout_frag_color = vec4(current.rgb + result, 1.0);
+    fsout_frag_color = vec4(in_color.rgb + result.rgb, in_color.a);
 }
 

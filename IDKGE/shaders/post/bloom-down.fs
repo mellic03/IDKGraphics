@@ -32,16 +32,21 @@ void main()
     vec3 h = texture(un_texture_0, vec2(texcoord.x,       texcoord.y - 2*y)).rgb;
     vec3 i = texture(un_texture_0, vec2(texcoord.x + 2*x, texcoord.y - 2*y)).rgb;
 
-    vec3 j = texture(un_texture_0, vec2(texcoord.x - x, texcoord.y + y)).rgb;
-    vec3 k = texture(un_texture_0, vec2(texcoord.x + x, texcoord.y + y)).rgb;
-    vec3 l = texture(un_texture_0, vec2(texcoord.x - x, texcoord.y - y)).rgb;
-    vec3 m = texture(un_texture_0, vec2(texcoord.x + x, texcoord.y - y)).rgb;
+    // vec3 j = texture(un_texture_0, vec2(texcoord.x - x, texcoord.y + y)).rgb;
+    // vec3 k = texture(un_texture_0, vec2(texcoord.x + x, texcoord.y + y)).rgb;
+    // vec3 l = texture(un_texture_0, vec2(texcoord.x - x, texcoord.y - y)).rgb;
+    // vec3 m = texture(un_texture_0, vec2(texcoord.x + x, texcoord.y - y)).rgb;
 
-    vec3 result  = 0.125 * e;
-         result += 0.03125 * (a + c + g + i);
-         result += 0.06250 * (b + d + f + h);
-         result += 0.12500 * (j + k + l + m);
+    vec3 result = (a+b+c+d+e+f+g+h+i) / 9.0; //  = 0.125 * e;
+        //  result += 0.03125 * (a + c + g + i);
+        //  result += 0.06250 * (b + d + f + h);
+        //  result += 0.12500 * (j + k + l + m);
 
+
+    // if (result != result)
+    // {
+    //     result = vec3(0.0);
+    // }
 
     fsout_frag_color = vec4(result, 1.0);
 

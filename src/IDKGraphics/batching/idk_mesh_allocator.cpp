@@ -76,12 +76,11 @@ idk::MeshAllocator::loadMesh( size_t nbytes_vertices, size_t nbytes_indices,
     uint32_t nvertices = uint32_t(nbytes_vertices / sizeof(idk::Vertex_P_N_T_UV));
     uint32_t nindices  = uint32_t(nbytes_indices  / sizeof(uint32_t));
 
-    idk::MeshDescriptor desc = {
-        .baseVertex  = m_basevertex,
-        .firstIndex  = m_baseindex,
-        .numVertices = nvertices,
-        .numIndices  = nindices
-    };
+    idk::MeshDescriptor desc;
+    desc.baseVertex  = m_basevertex;
+    desc.firstIndex  = m_baseindex;
+    desc.numVertices = nvertices;
+    desc.numIndices  = nindices;
 
     m_basevertex += nvertices;
     m_baseindex  += nindices;

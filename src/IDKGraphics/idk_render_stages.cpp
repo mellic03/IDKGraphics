@@ -9,20 +9,6 @@ idk::RenderEngine::RenderStage_geometry( idk::Camera &camera, float dtime,
                                          glFramebuffer &buffer_out )
 {
     buffer_out.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    {
-        auto &program = getProgram("gbuffer-clear");
-        program.bind();
-
-        gl::bindImageTexture(
-            1, m_geom_buffer.attachments[1], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F
-        );
-    
-        program.dispatch(width()/8, height()/8, 1);
-
-        gl::memoryBarrier(GL_ALL_BARRIER_BITS);
-    }
-
     buffer_out.bind();
 
     gl::enable(GL_CULL_FACE);
@@ -47,25 +33,6 @@ idk::RenderEngine::RenderStage_geometry( idk::Camera &camera, float dtime,
             sizeof(idk::glDrawCmd)
         );
     }
-
-    // {
-    //     idk::RenderQueue &queue = _getRenderQueue(m_viewspace_RQ);
-
-    //     const auto &commands = queue.genDrawCommands(*m_DrawIndirectData, m_model_allocator);
-    //     m_DrawCommandBuffer.bufferSubData(0, commands.size()*sizeof(idk::glDrawCmd), commands.data());
-    //     m_DrawIndirectSSBO.update(*m_DrawIndirectData);
-
-    //     auto &program = getProgram("gpass-viewspace");
-    //     program.bind();
-
-    //     gl::multiDrawElementsIndirect(
-    //         GL_TRIANGLES,
-    //         GL_UNSIGNED_INT,
-    //         nullptr,
-    //         commands.size(),
-    //         sizeof(idk::glDrawCmd)
-    //     );
-    // }
     // -----------------------------------------------------------------------------------------
 
 
@@ -94,6 +61,42 @@ idk::RenderEngine::RenderStage_geometry( idk::Camera &camera, float dtime,
             sizeof(idk::glDrawCmd)
         );
     }
+    // -----------------------------------------------------------------------------------------
+
+
+
+    // Heighmap terrain
+    // -----------------------------------------------------------------------------------------
+    idk::RenderQueue &queue = _getRenderQueue(m_viewspace_RQ);
+
+    // -----------------------------------------------------------------------------------------
+
+
+
+    // Particles
+    // -----------------------------------------------------------------------------------------
+    // gl::enable(GL_BLEND);
+    // IDK_GLCALL( glDepthMask(GL_FALSE); )
+    // IDK_GLCALL( glBlendFunc(GL_SRC_ALPHA, GL_ONE); )
+    {
+        idk::RenderQueue &queue = _getRenderQueue(m_viewspace_RQ);
+
+        const auto &commands = queue.genDrawCommands(*m_DrawIndirectData, m_model_allocator);
+        m_DrawCommandBuffer.bufferSubData(0, commands.size()*sizeof(idk::glDrawCmd), commands.data());
+        m_DrawIndirectSSBO.update(*m_DrawIndirectData);
+
+        auto &program = getProgram("gpass-particle");
+        program.bind();
+
+        gl::multiDrawElementsIndirect(
+            GL_TRIANGLES,
+            GL_UNSIGNED_INT,
+            nullptr,
+            commands.size(),
+            sizeof(idk::glDrawCmd)
+        );
+    }
+    // glDepthMask(GL_TRUE);
     // -----------------------------------------------------------------------------------------
 
 }
@@ -257,53 +260,62 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
                                          glFramebuffer &buffer_in,
                                          glFramebuffer &buffer_out )
 {
-    // gl::bindVertexArray(m_quad_VAO);
-
-    buffer_out.bind();
-    buffer_out.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-
-    gl::disable(GL_CULL_FACE);
-    gl::disable(GL_DEPTH_TEST);
-
-    // Background
-    // // -----------------------------------------------------------------------------------------
-    {
-        gl::bindVertexArray(m_quad_VAO);
-
-        glShaderProgram &program = getProgram("background");
-        program.bind();
-
-        program.set_sampler2D("un_fragdepth", m_geom_buffer.depth_attachment);
-        program.set_samplerCube("un_skybox", skyboxes[current_skybox]);
-
-        gl::drawArrays(GL_TRIANGLES, 0, 6);
-    }
-
-    // {
-    //     gl::bindImageTexture(0, buffer_out.attachments[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
-
-    //     glShaderProgram &program = getProgram("background");
-    //     program.bind();
-
-    //     program.set_sampler2D("un_fragdepth", m_geom_buffer.depth_attachment);
-    //     program.set_samplerCube("un_skybox", skyboxes[current_skybox]);
-
-    //     program.dispatch(width()/8, height()/8, 1);
-    //     gl::memoryBarrier(GL_ALL_BARRIER_BITS);
-    // }
-    // -----------------------------------------------------------------------------------------
-
+    m_scratchbuffers2[2].bind();
+    m_scratchbuffers2[2].clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // buffer_out.bind();
 
     gl::bindVertexArray(m_model_allocator.getVAO());
-    gl::enable(GL_CULL_FACE, GL_BLEND);
+
+    gl::enable(GL_CULL_FACE);
     gl::cullFace(GL_FRONT);
 
-    IDK_GLCALL( glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); )
+    gl::enable(GL_BLEND);
+    IDK_GLCALL( glBlendFunc(GL_SRC_ALPHA, GL_ONE); )
 
     RenderStage_dirlights();
     RenderStage_pointlights();
     RenderStage_spotlights();
+
+
+    buffer_out.bind();
+
+    gl::bindVertexArray(m_quad_VAO);
+    gl::disable(GL_CULL_FACE, GL_DEPTH_TEST);
+
+    // // Do SSR before background
+    // // -----------------------------------------------------------------------------------------
+    // // IDK_GLCALL( glBlendFunc(GL_SRC_ALPHA, GL_ONE); )
+    // gl::disable(GL_BLEND);
+    // PostProcess_SSR(m_mip_scratchbuffer, m_scratchbuffers2[2]);
+    // gl::enable(GL_BLEND);
+    // // -----------------------------------------------------------------------------------------
+
+
+    // step alpha 0/1
+    // -----------------------------------------------------------------------------------------
+    {
+        glShaderProgram &program = getProgram("alpha-0-1");
+        program.bind();
+        program.set_sampler2D("un_input", m_scratchbuffers2[2].attachments[0]);
+
+        gl::drawArrays(GL_TRIANGLES, 0, 6);
+    }
+    // -----------------------------------------------------------------------------------------
+
+
+    // Background
+    // -----------------------------------------------------------------------------------------
+    IDK_GLCALL( glBlendFunc(GL_ONE_MINUS_DST_ALPHA, GL_DST_ALPHA); )
+    {
+        glShaderProgram &program = getProgram("background");
+        program.bind();
+        program.set_samplerCube("un_skybox", skyboxes[current_skybox]);
+
+        gl::drawArrays(GL_TRIANGLES, 0, 6);
+    }
+    // -----------------------------------------------------------------------------------------
+
+
 
 
     gl::disable(GL_DEPTH_TEST);
@@ -347,28 +359,23 @@ idk::RenderEngine::PostProcess_chromatic_aberration( glFramebuffer &buffer_in,
 void
 idk::RenderEngine::PostProcess_SSR( glFramebuffer &buffer_in, glFramebuffer &buffer_out )
 {
-    // auto &program = getProgram("SSR");
-    // program.bind();
+    glBlitNamedFramebuffer(
+        buffer_in.m_FBO,
+        m_mip_scratchbuffer.m_FBO,
+        0, 0, m_mip_scratchbuffer.size().x, m_mip_scratchbuffer.size().y,
+        0, 0, width(), height(),
+        GL_COLOR_BUFFER_BIT,
+        GL_LINEAR
+    );
 
-    // gl::bindImageTexture(0, buffer_in.attachments[0], 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
-    // gl::bindImageTexture(1, buffer_out.attachments[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+    gl::generateTextureMipmap(m_mip_scratchbuffer.attachments[0]);
 
-    // program.set_sampler2D("un_albedo", m_geom_buffer.attachments[0]);
-    // program.set_sampler2D("un_normal", m_geom_buffer.attachments[1]);
-    // program.set_sampler2D("un_pbr",    m_geom_buffer.attachments[2]);
-    // program.set_sampler2D("un_fragdepth", m_geom_buffer.depth_attachment);
-    // program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
-    // program.set_samplerCube("un_skybox", skyboxes[current_skybox]);
-
-    // program.dispatch(width()/8, height()/8, 1);
-    // gl::memoryBarrier(GL_ALL_BARRIER_BITS);
-
-    gl::generateTextureMipmap(buffer_in.attachments[0]);
+    buffer_out.bind();
 
     auto &program = getProgram("SSR");
     program.bind();
 
-    program.set_sampler2D("un_input",  buffer_in.attachments[0]);
+    program.set_sampler2D("un_input",  m_mip_scratchbuffer.attachments[0]);
     program.set_sampler2D("un_albedo", m_geom_buffer.attachments[0]);
     program.set_sampler2D("un_normal", m_geom_buffer.attachments[1]);
     program.set_sampler2D("un_pbr",    m_geom_buffer.attachments[2]);
@@ -376,9 +383,7 @@ idk::RenderEngine::PostProcess_SSR( glFramebuffer &buffer_in, glFramebuffer &buf
     program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
     program.set_samplerCube("un_skybox", skyboxes[current_skybox]);
 
-    buffer_out.bind();
     gl::drawArrays(GL_TRIANGLES, 0, 6);
-
 }
 
 
@@ -396,6 +401,7 @@ idk::RenderEngine::PostProcess_bloom( glFramebuffer &buffer_in )
         program.bind();
         tex2tex(program, buffer_in, m_bloom_buffers[0]);
     }
+
 
 
     {
@@ -511,26 +517,26 @@ idk::RenderEngine::RenderStage_postprocessing( idk::Camera   &camera,
                                                glFramebuffer &buffer_in,
                                                glFramebuffer &buffer_out )
 {
-    idk::glFramebuffer *A = &m_scratchbuffers2[0];
-    idk::glFramebuffer *B = &m_scratchbuffers2[1];
+    idk::glFramebuffer *src = &m_scratchbuffers2[0];
+    idk::glFramebuffer *dst = &m_scratchbuffers2[1];
 
+    gl::disable(GL_DEPTH_TEST);
 
-
-    PostProcess_SSR(buffer_in, *A);
-    PostProcess_bloom(*A);
+    PostProcess_SSR(buffer_in, *dst);
+    PostProcess_bloom(*dst);
+    std::swap(src, dst);
 
     // PostProcess_chromatic_aberration(*A, *B);
-    // std::swap(A, B);
+    // std::swap(src, dst);
 
-    PostProcess_colorgrading(camera, *A, *B);
-    std::swap(A, B);
-
+    PostProcess_colorgrading(camera, *src, *dst);
+    std::swap(src, dst);
 
     // FXAA
     // -----------------------------------------------------------------------------------------
     glShaderProgram &fxaa = getProgram("fxaa");
     fxaa.bind();
-    tex2tex(fxaa, *A, buffer_out);
+    tex2tex(fxaa, *src, buffer_out);
     // -----------------------------------------------------------------------------------------
 
     PostProcess_text(buffer_out);

@@ -102,5 +102,5 @@ void main()
 
     vec3 result  = IDK_PBR_Spotlight(light, surface, worldpos);
 
-    fsout_frag_color = vec4(result, 1.0);
+    fsout_frag_color = vec4(result, surface.alpha);
 }

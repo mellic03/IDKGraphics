@@ -11,7 +11,7 @@ file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/batching/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/UI/*.cpp
 )
-add_library(${PROJECT_NAME} SHARED ${SOURCES})
+add_library(${PROJECT_NAME} STATIC ${SOURCES})
 
 set_target_properties(
     ${PROJECT_NAME} PROPERTIES

@@ -7,12 +7,6 @@ idk::RenderEngine::shadowpass_dirlights()
 {
     idk::Camera &cam = getCamera();
 
-    // std::vector<idk::Dirlight> &dirlights = m_lightsystem.dirlights();
-    // idk::glDepthCascade &depthcascade = m_lightsystem.depthCascade();
-
-    // idk::Dirlight &light = dirlights[0];
-    // const glm::vec3 dir = glm::normalize(glm::vec3(light.direction));
-
     m_dirshadow_buffer.clear(GL_DEPTH_BUFFER_BIT);
     m_dirshadow_buffer.bind();
 
@@ -21,7 +15,7 @@ idk::RenderEngine::shadowpass_dirlights()
         idk::RenderQueue &queue = _getRenderQueue(m_shadow_RQ);
         
         const auto &commands = queue.genDrawCommands(
-            *m_DrawIndirectData, m_model_allocator, getCamera()
+            *m_DrawIndirectData, m_model_allocator
         );
 
         m_DrawCommandBuffer.bufferSubData(
