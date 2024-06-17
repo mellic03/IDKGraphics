@@ -7,7 +7,8 @@
 layout (location = 0) out vec4 fsout_frag_color;
 
 in vec2 fsin_texcoords;
-uniform sampler2D un_texture_0;
+uniform sampler2D un_input;
+uniform sampler2D un_bloom;
 
 
 vec3 filmic(vec3 x, float gamma)
@@ -29,7 +30,6 @@ vec3 aces(vec3 x)
 }
 
 
-uniform sampler2D un_bloom;
 
 
 void main()
@@ -39,7 +39,7 @@ void main()
     float exposure = camera.exposure;
     float gamma    = 2.2;
 
-    vec3 hdr   = textureLod(un_texture_0, fsin_texcoords, 0.0).rgb;
+    vec3 hdr   = textureLod(un_input, fsin_texcoords, 0.0).rgb;
     vec3 blm   = texture(un_bloom, fsin_texcoords).rgb;
 
     hdr += camera.bloom * blm;

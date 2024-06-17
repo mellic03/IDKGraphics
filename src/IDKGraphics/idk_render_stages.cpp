@@ -260,8 +260,8 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
                                          glFramebuffer &buffer_in,
                                          glFramebuffer &buffer_out )
 {
-    m_scratchbuffers2[2].bind();
-    m_scratchbuffers2[2].clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    m_scratchbuffers2[0].bind();
+    m_scratchbuffers2[0].clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     // buffer_out.bind();
 
     gl::bindVertexArray(m_model_allocator.getVAO());
@@ -296,7 +296,7 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
     {
         glShaderProgram &program = getProgram("alpha-0-1");
         program.bind();
-        program.set_sampler2D("un_input", m_scratchbuffers2[2].attachments[0]);
+        program.set_sampler2D("un_input", m_scratchbuffers2[0].attachments[0]);
 
         gl::drawArrays(GL_TRIANGLES, 0, 6);
     }
@@ -310,7 +310,6 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
         glShaderProgram &program = getProgram("background");
         program.bind();
         program.set_samplerCube("un_skybox", skyboxes[current_skybox]);
-
         gl::drawArrays(GL_TRIANGLES, 0, 6);
     }
     // -----------------------------------------------------------------------------------------
@@ -381,7 +380,7 @@ idk::RenderEngine::PostProcess_SSR( glFramebuffer &buffer_in, glFramebuffer &buf
     program.set_sampler2D("un_pbr",    m_geom_buffer.attachments[2]);
     program.set_sampler2D("un_fragdepth", m_geom_buffer.depth_attachment);
     program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
-    program.set_samplerCube("un_skybox", skyboxes[current_skybox]);
+    program.set_samplerCube("un_skybox",  skyboxes[current_skybox]);
 
     gl::drawArrays(GL_TRIANGLES, 0, 6);
 }
@@ -438,11 +437,14 @@ idk::RenderEngine::PostProcess_colorgrading( idk::Camera &camera,
                                              glFramebuffer &buffer_in,
                                              glFramebuffer &buffer_out )
 {
+    buffer_out.bind();
+
     glShaderProgram &program = getProgram("colorgrade");
     program.bind();
+    program.set_sampler2D("un_input", buffer_in.attachments[0]);
     program.set_sampler2D("un_bloom", m_bloom_buffers[0].attachments[0]);
 
-    tex2tex(program, buffer_in, buffer_out);
+    gl::drawArrays(GL_TRIANGLES, 0, 6);
 }
 
 
@@ -460,7 +462,6 @@ idk::RenderEngine::PostProcess_text( glFramebuffer &buffer_out )
 
     GLuint texture = gltools::loadTexture2D(width(), height(), m_textsurface->pixels, config);
 
-
     gl::bindImageTexture(0, buffer_out.attachments[0], 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
 
     glShaderProgram &program = getProgram("text");
@@ -471,6 +472,25 @@ idk::RenderEngine::PostProcess_text( glFramebuffer &buffer_out )
     gl::memoryBarrier(GL_ALL_BARRIER_BITS);
 
     gl::deleteTextures(1, &texture);
+}
+
+
+void
+idk::RenderEngine::PostProcess_ui( glFramebuffer &buffer_out )
+{
+    buffer_out.bind();
+
+    gl::enable(GL_BLEND);
+    gl::blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glShaderProgram &program = getProgram("button-rect");
+    program.bind();
+
+    program.set_sampler2D("un_input", m_ui_buffer.attachments[0]);
+    gl::drawArrays(GL_TRIANGLES, 0, 6);
+
+    gl::disable(GL_BLEND);
+
 }
 
 
@@ -507,8 +527,6 @@ idk::RenderEngine::PostProcess_overlay( idk::glFramebuffer &buffer_out )
         program.dispatch(width()/8, height()/8, 1);
         gl::memoryBarrier(GL_ALL_BARRIER_BITS);
     }
-
-
 }
 
 
@@ -518,34 +536,54 @@ idk::RenderEngine::RenderStage_postprocessing( idk::Camera   &camera,
                                                glFramebuffer &buffer_out )
 {
     idk::glFramebuffer *src = &m_scratchbuffers2[0];
-    idk::glFramebuffer *dst = &m_scratchbuffers2[1];
+    idk::glFramebuffer *dst = &buffer_out;
 
-    gl::disable(GL_DEPTH_TEST);
+    gl::disable(GL_DEPTH_TEST, GL_CULL_FACE);
 
-    PostProcess_SSR(buffer_in, *dst);
-    PostProcess_bloom(*dst);
-    std::swap(src, dst);
+    PostProcess_SSR(buffer_in, m_scratchbuffers2[0]);
+    PostProcess_bloom(m_scratchbuffers2[0]);
+    // std::swap(src, dst);
 
     // PostProcess_chromatic_aberration(*A, *B);
     // std::swap(src, dst);
 
-    PostProcess_colorgrading(camera, *src, *dst);
-    std::swap(src, dst);
+    PostProcess_colorgrading(camera, m_scratchbuffers2[0], m_scratchbuffers2[1]);
+    // std::swap(src, dst);
+
+
+    buffer_out.bind();
 
     // FXAA
     // -----------------------------------------------------------------------------------------
-    glShaderProgram &fxaa = getProgram("fxaa");
-    fxaa.bind();
-    tex2tex(fxaa, *src, buffer_out);
+    {
+        auto &program = getProgram("fxaa");
+        program.bind();
+        program.set_sampler2D("un_input", m_scratchbuffers2[1].attachments[0]);
+
+        gl::drawArrays(GL_TRIANGLES, 0, 6);
+    }
     // -----------------------------------------------------------------------------------------
 
     PostProcess_text(buffer_out);
+    PostProcess_ui(buffer_out);
     PostProcess_overlay(buffer_out);
 
+    {
+        gl::bindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        IDK_GLCALL(
+            glBlitNamedFramebuffer(
+                buffer_out.m_FBO,
+                0,
+                0, 0, width(), height(),
+                0, 0, width(), height(),
+                GL_COLOR_BUFFER_BIT,
+                GL_NEAREST
+            );
+        )
+    }
 
 
-    glShaderProgram &program = getProgram("screenquad");
-    program.bind();
-    f_fbfb(program, buffer_out);
 
+    gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
 }

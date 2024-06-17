@@ -4,6 +4,39 @@
 #include <sstream>
 
 #include <SDL2/SDL_ttf.h>
+#include <functional>
+
+#include <glm/glm.hpp>
+
+
+namespace idk { class EngineAPI; }
+
+
+// namespace idk::ui
+// {
+//     struct ElementStyle
+//     {
+//         glm::vec4 bg = glm::vec4(0.25f);
+//         glm::vec4 fg = glm::vec4(1.0f);
+//         float radius = 4.0f;
+//     };
+
+
+//     void init( const std::string &fontpath, int size );
+//     void shutdown();
+
+//     int createPanel( int direction, const ElementStyle &style );
+
+//     void openPanel( int panel );
+//     void closePanel( int panel );
+//     void togglePanel( int panel );
+
+//     void createButton( int panel, const std::string &text, std::function<void()> callback );
+
+//     void update( idk::EngineAPI& );
+//     void render( idk::EngineAPI& );
+// }
+
 
 
 
@@ -11,7 +44,7 @@ namespace idkui
 {
     class FontStream;
     class TextManager;
-};
+}
 
 
 

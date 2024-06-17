@@ -1,6 +1,12 @@
 
 # IDK Graphics
 
+| | | |
+|-|-|-|
+|<img src="scr1.png">|<img src="scr12.png">| |
+|<img src="scr0.png">|<img src="scr13.png">| |
+|<img src="scr9.png">|<img src="scr10.png">| |
+
 
 # Architecture
 

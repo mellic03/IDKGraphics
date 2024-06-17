@@ -59,10 +59,9 @@ private:
 
     // SSBO
     // -----------------------------------------------------------------------------------------
-    using SSBO_type = idk::glTemplatedBufferObject<GL_SHADER_STORAGE_BUFFER, idk::SSBOModelData>;
-
-    idk::SSBOModelData                      m_ModelData;
-    SSBO_type                               m_ModelData_SSBO;
+    // using SSBO_type = idk::glTemplatedBufferObject<GL_SHADER_STORAGE_BUFFER, idk::SSBOModelData>;
+    // idk::SSBOModelData                      m_ModelData;
+    // SSBO_type                               m_ModelData_SSBO;
     // -----------------------------------------------------------------------------------------
 
     using drawlist_type = std::vector<std::pair<int, glm::mat4>>;

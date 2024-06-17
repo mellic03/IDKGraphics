@@ -56,6 +56,14 @@ idk::RenderQueue::genDrawCommands( idk::DrawIndirectData &data, idk::ModelAlloca
     static std::vector<idk::glDrawCmd> commands(idk::indirect_draw::MAX_DRAW_CALLS);
     commands.resize(0);
 
+    // static std::set<GLuint64> resident_handles;
+    // for (GLuint64 handle: resident_handles)
+    // {
+    //     gl::makeTextureHandleNonResidentARB(handle);
+    // }
+    // resident_handles.clear();
+
+
     size_t texture_offset  = 0;
     size_t transform_offset = 0;
     size_t drawID_offset    = 0;
@@ -77,7 +85,9 @@ idk::RenderQueue::genDrawCommands( idk::DrawIndirectData &data, idk::ModelAlloca
 
             for (GLuint64 handle: mesh.handles)
             {
+                // resident_handles.insert(handle);
                 data.textures[texture_offset] = handle;
+
                 texture_offset += 1;
             }
 
@@ -85,6 +95,10 @@ idk::RenderQueue::genDrawCommands( idk::DrawIndirectData &data, idk::ModelAlloca
         }
     }
 
+    // for (GLuint64 handle: resident_handles)
+    // {
+    //     gl::makeTextureHandleResidentARB(handle);
+    // }
 
     return commands;
 }

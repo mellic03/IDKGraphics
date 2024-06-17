@@ -7,8 +7,8 @@ namespace idk
 {
     namespace indirect_draw
     {
-        static constexpr uint32_t MAX_TEXTURES   = 2048;
-        static constexpr uint32_t MAX_TRANSFORMS = 2048;
+        static constexpr uint32_t MAX_TEXTURES   = 1024;
+        static constexpr uint32_t MAX_TRANSFORMS = 1024;
         static constexpr uint32_t MAX_DRAW_CALLS = 512;
 
     };

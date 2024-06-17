@@ -59,6 +59,10 @@ idk::RenderEngine::compileShaders()
     // createProgram("vxgi-copy",      glShaderProgram("IDKGE/shaders/vxgi/copy.comp"));
 
     createProgram("text",         glShaderProgram("IDKGE/shaders/text.comp"));
+    createProgram("button-rect",  "IDKGE/shaders/", "button-rect.vs", "button-rect.fs");
+    createProgram("ui-text",      "IDKGE/shaders/", "ui-text.vs", "ui-text.fs");
+    createProgram("ui-quad",      "IDKGE/shaders/", "ui-quad.vs", "ui-quad.fs");
+
     createProgram("overlay",      glShaderProgram("IDKGE/shaders/overlay.comp"));
     createProgram("overlay-fill", glShaderProgram("IDKGE/shaders/overlay-fill.comp"));
 
@@ -70,7 +74,7 @@ idk::RenderEngine::compileShaders()
     createProgram("lpass", "IDKGE/shaders/", "screenquad.vs", "deferred/light-pass.fs");
 
 
-    createProgram("planet-gen", glShaderProgram("IDKGE/shaders/generative/planet-gen.comp"));
+    // createProgram("planet-gen", glShaderProgram("IDKGE/shaders/generative/planet-gen.comp"));
 
 
 
@@ -87,18 +91,14 @@ idk::RenderEngine::compileShaders()
     createProgram("deferred-spotlight", idk::glShaderProgram(VS_Spotlight, FS_Spotlight));
 
 
-    idk::glShaderStage VS_Atmosphere("IDKGE/shaders/deferred/atmosphere.vs");
-    idk::glShaderStage FS_Atmosphere("IDKGE/shaders/deferred/atmosphere.fs");
-    createProgram("atmosphere", idk::glShaderProgram(VS_Atmosphere, FS_Atmosphere));
+    // idk::glShaderStage VS_Atmosphere("IDKGE/shaders/deferred/atmosphere.vs");
+    // idk::glShaderStage FS_Atmosphere("IDKGE/shaders/deferred/atmosphere.fs");
+    // createProgram("atmosphere", idk::glShaderProgram(VS_Atmosphere, FS_Atmosphere));
 
     createProgram("dirshadow-indirect", "IDKGE/shaders/", "dirshadow-indirect.vs", "dirshadow.fs");
-    createProgram("dir-volumetric", "IDKGE/shaders/", "screenquad.vs", "deferred/volumetric_dirlight.fs");
+    // createProgram("dir-volumetric", "IDKGE/shaders/", "screenquad.vs", "deferred/volumetric_dirlight.fs");
     createProgram("SSR", "IDKGE/shaders/", "screenquad.vs", "post/SSR.fs");
 
-    // createProgram("chromatic", glShaderProgram("IDKGE/shaders/post/chromatic.comp"));
-    // createProgram("chromatic", "IDKGE/shaders/", "screenquad.vs", "post/chromatic.fs");
-
-    // createProgram("motion-blur", glShaderProgram("IDKGE/shaders/post/motion-blur.comp"));
     createProgram("bloom-first", "IDKGE/shaders/", "screenquad.vs", "post/bloom-first.fs");
     createProgram("bloom-down",  "IDKGE/shaders/", "screenquad.vs", "post/bloom-down.fs");
     createProgram("bloom-up",    "IDKGE/shaders/", "screenquad.vs", "post/bloom-up.fs");
@@ -106,11 +106,11 @@ idk::RenderEngine::compileShaders()
     createProgram("screenquad", "IDKGE/shaders/", "screenquad.vs", "screenquad.fs");
 
     createProgram("alpha-0-1",       "IDKGE/shaders/", "screenquad.vs", "post/alpha-0-1.fs");
-    createProgram("additive",       "IDKGE/shaders/", "screenquad.vs", "post/additive.fs");
-    createProgram("blit",           "IDKGE/shaders/", "screenquad.vs", "post/blit.fs");
+    // createProgram("additive",       "IDKGE/shaders/", "screenquad.vs", "post/additive.fs");
+    // createProgram("blit",           "IDKGE/shaders/", "screenquad.vs", "post/blit.fs");
     createProgram("fxaa",           "IDKGE/shaders/", "screenquad.vs", "post/fxaa.fs");
     createProgram("colorgrade",     "IDKGE/shaders/", "screenquad.vs", "post/colorgrade.fs");
-    createProgram("dir_shadow",     "IDKGE/shaders/", "dirshadow.vs",  "dirshadow.fs");
+    // createProgram("dir_shadow",     "IDKGE/shaders/", "dirshadow.vs",  "dirshadow.fs");
 
 }
 
@@ -165,18 +165,18 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     m_mainbuffer_0.colorAttachment(0, config);
     m_mainbuffer_0.colorAttachment(1, config);
 
-    m_mainbuffer_1.reset(w, h, 2);
-    m_mainbuffer_1.colorAttachment(0, config);
-    m_mainbuffer_1.colorAttachment(1, config);
-
     m_mip_scratchbuffer.reset(w, h, 1);
     m_mip_scratchbuffer.colorAttachment(0, SSR_config);
 
-    for (int i=0; i<4; i++)
+    for (int i=0; i<2; i++)
     {
         m_scratchbuffers2[i].reset(w, h, 1);
         m_scratchbuffers2[i].colorAttachment(0, config);
     }
+
+    m_ui_buffer.reset(w, h, 1);
+    m_ui_buffer.colorAttachment(0, config);
+    m_ui_buffer.depthAttachment(depth_config);
 
 
 
@@ -214,18 +214,6 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     m_geom_buffer.colorAttachment(2, pbr_config);
     m_geom_buffer.depthAttachment(depth_config);
 
-
-    for (int i=0; i<4; i++)
-    {
-        int width  = w / pow(2, i);
-        int height = h / pow(2, i);
-
-        m_scratchbuffers[i].reset(width, height, 1);
-        m_scratchbuffers[i].colorAttachment(0, config);
-    }
-
-
-
     config = {
         .internalformat = GL_RGBA16F,
         .format         = GL_RGBA,
@@ -252,8 +240,6 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     init_screenquad();
     init_framebuffers(w, h);
 
-    // m_lightsystem.init();
-
 
     m_RQ           = m_render_queues.create();
     m_viewspace_RQ = m_render_queues.create();
@@ -272,7 +258,7 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     // -----------------------------------------------------------------------------------------
 
 
-    // Deferred light sources
+    // Primitive shapes
     // -----------------------------------------------------------------------------------------
     m_unit_cube        = modelAllocator().loadModel("IDKGE/resources/unit-cube.idkvi");
     m_unit_sphere      = modelAllocator().loadModel("IDKGE/resources/unit-sphere.idkvi");
@@ -280,30 +266,9 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     m_unit_line        = modelAllocator().loadModel("IDKGE/resources/unit-line.idkvi");
     m_unit_cone        = modelAllocator().loadModel("IDKGE/resources/unit-cone.idkvi");
     m_unit_cylinder_FF = modelAllocator().loadModel("IDKGE/resources/unit-cylinder-FF.idkvi");
-
     // -----------------------------------------------------------------------------------------
 
     m_UBO_RenderData.init(3);
-
-    m_UBO_dirlights.init();
-    m_UBO_dirlights.bind(5);
-    m_UBO_dirlights.bufferData(IDK_MAX_DIRLIGHTS * (sizeof(Dirlight) + sizeof(glm::mat4)), nullptr);
-
-
-    // Allocate space for atmosphere cubemap
-    // -----------------------------------------------------------------------------------------
-    static const glTextureConfig atmosphere_config = {
-        .internalformat = GL_RGBA16F,
-        .format         = GL_RGBA,
-        .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
-        .magfilter      = GL_LINEAR,
-        .datatype       = GL_FLOAT,
-        .genmipmap      = GL_TRUE
-    };
-    m_skybox = gltools::loadCubemap2(256, nullptr, atmosphere_config);
-    gl::clearTexImage(m_skybox, 0, GL_RGBA, GL_FLOAT, nullptr);
-    // -----------------------------------------------------------------------------------------
-
 
 
     // Compute BRDF LUT
@@ -327,8 +292,7 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     idk::glShaderProgram program("IDKGE/shaders/brdf-lut.comp");
     program.bind();
     program.dispatch(LUT_TEXTURE_SIZE/8, LUT_TEXTURE_SIZE/8, 1);
-    idk::gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-    program.unbind();
+    idk::gl::memoryBarrier(GL_ALL_BARRIER_BITS);
     // -----------------------------------------------------------------------------------------
 
 
@@ -436,7 +400,7 @@ idk::RenderEngine::loadSkybox( const std::string &filepath )
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
         .datatype       = GL_UNSIGNED_BYTE,
-        .genmipmap      = false
+        .genmipmap      = GL_FALSE
     };
 
     static const glTextureConfig diffuse_config = {
@@ -445,7 +409,7 @@ idk::RenderEngine::loadSkybox( const std::string &filepath )
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
         .datatype       = GL_UNSIGNED_BYTE,
-        .genmipmap      = true
+        .genmipmap      = GL_FALSE
     };
 
 
@@ -455,8 +419,8 @@ idk::RenderEngine::loadSkybox( const std::string &filepath )
         .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
         .magfilter      = GL_LINEAR,
         .datatype       = GL_UNSIGNED_BYTE,
-        .genmipmap      = false,
-        .setmipmap      = true,
+        .genmipmap      = GL_FALSE,
+        .setmipmap      = GL_TRUE,
         .texbaselevel   = 0,
         .texmaxlevel    = 5
     };
@@ -472,6 +436,8 @@ idk::RenderEngine::loadSkybox( const std::string &filepath )
 
     skyboxes.push_back(skybox);
     skyboxes_IBL.push_back(std::make_pair(diffuse, specular));
+
+    LOG_INFO() << "Loaded skybox \"" << filepath << "\"";
 
     return skyboxes.size() - 1;
 }
@@ -632,6 +598,14 @@ idk::RenderEngine::drawModelRQ( int RQ, int model, const glm::mat4 &transform )
 }
 
 
+void
+idk::RenderEngine::drawTextureOverlay( uint32_t texture )
+{
+    m_texture_overlays.push(texture);
+}
+
+
+
 // void
 // idk::RenderEngine::drawModelViewspace( int model, const glm::mat4 &transform )
 // {
@@ -727,6 +701,14 @@ idk::RenderEngine::createParticleEmitter( const ParticleEmitter &P )
 {
     return m_particle_emitters.create(P);
 }
+
+
+void
+idk::RenderEngine::destroyParticleEmitter( int emitter )
+{
+    m_particle_emitters.destroy(emitter);
+}
+
 
 
 idk::ParticleEmitter &
@@ -908,10 +890,6 @@ idk::RenderEngine::endFrame( float dt )
 {
     delta_time = dt;
 
-    m_mainbuffer_0.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    m_mainbuffer_1.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    m_finalbuffer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
     m_DrawCommandBuffer.bind();
     gl::bindVertexArray(m_model_allocator.getVAO());
 
@@ -920,17 +898,12 @@ idk::RenderEngine::endFrame( float dt )
     // m_DrawIndirectSSBO.update(*m_DrawIndirectData);
     // -----------------------------------------------------------------------------------------
 
-    gl::disable(GL_CULL_FACE);
-    this->shadowpass();
-    gl::enable(GL_CULL_FACE);
-
-
     // Update UBO data
     // -----------------------------------------------------------------------------------------
     update_UBO_camera();
 
     updateLightsourcesUBO(m_RenderData);
-    updateAtmosphereUBO(m_RenderData);
+    // updateAtmosphereUBO(m_RenderData);
     m_UBO_RenderData.update(m_RenderData);
     // -----------------------------------------------------------------------------------------
 
@@ -951,8 +924,15 @@ idk::RenderEngine::endFrame( float dt )
 
 
 
+    gl::disable(GL_CULL_FACE);
+    this->shadowpass();
+    gl::enable(GL_CULL_FACE);
 
-    shadowpass_dirlights();
+
+
+    m_mainbuffer_0.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    m_finalbuffer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
     RenderStage_geometry(camera, dt, m_geom_buffer);
     RenderStage_lighting(camera, dt, m_geom_buffer, m_mainbuffer_0);
 
@@ -1019,9 +999,6 @@ idk::RenderEngine::swapWindow()
 void
 idk::RenderEngine::resize( int w, int h )
 {
-    LOG_INFO() << "Truncating " << w << " to " << 8*(w/8);
-    LOG_INFO() << "Truncating " << h << " to " << 8*(h/8);
-
     w = 8 * (w / 8);
     h = 8 * (h / 8);
 

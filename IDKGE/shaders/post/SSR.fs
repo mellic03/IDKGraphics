@@ -18,14 +18,13 @@ uniform sampler2D un_normal;
 uniform sampler2D un_pbr;
 uniform sampler2D un_fragdepth;
 uniform sampler2D un_BRDF_LUT;
-uniform samplerCube un_skybox;
 
 
 #define RAY_OFFSET 0.02
 #define RAY_STEP_SIZE 1.0
 #define RAY_MAX_STEPS 128
 
-#define MIPLEVEL_SPECULAR 5.0
+#define MIPLEVEL_SPECULAR 4.0
 
 
 void main()
@@ -48,11 +47,7 @@ void main()
 
     vec4 in_color = texture(un_input, texcoord);
 
-    fsout_frag_color = in_color;
-    return;
-
-
-    if (texture(un_normal, texcoord).a > 1.0)
+    if (surface.alpha < 1.0)
     {
         fsout_frag_color = in_color;
         return;
@@ -77,7 +72,9 @@ void main()
         return;
     }
 
-    vec4  result  = texture(un_skybox, ray_dir);
+
+
+    vec4  result  = vec4(0.0, 0.0, 0.0, 1.0);
     int   count   = 0;
     float cumdist = 0.0;
 

@@ -50,6 +50,17 @@ namespace idk
 class IDK_VISIBLE idk::RenderEngine
 {
 private:
+
+    struct TextQuad
+    {
+        float x, y, w, h;
+        float radius;
+        glm::vec4 color;
+        uint32_t texture;
+    };
+
+
+
     internal::SDL2_WindowSystem         m_windowsys;
     glm::ivec2                          m_resolution;
     uint32_t                            m_render_settings = ~0;
@@ -58,7 +69,7 @@ private:
 
     std::queue<RenderOverlay>           m_overlays;
     std::queue<RenderOverlayFill>       m_overlayfills;
-
+    std::queue<uint32_t>                m_texture_overlays;
     idk::Allocator<ParticleEmitter>     m_particle_emitters;
 
 
@@ -68,8 +79,8 @@ private:
     static const size_t                 ATTACHMENTS_PER_BUFFER = 1;
 
 
-    glFramebuffer                       m_scratchbuffers[4];
-    glFramebuffer                       m_scratchbuffers2[4];
+    // glFramebuffer                       m_scratchbuffers[4];
+    glFramebuffer                       m_scratchbuffers2[2];
 
 
 
@@ -90,8 +101,6 @@ private:
     using UBO_type = idk::glTemplatedBufferObject<GL_UNIFORM_BUFFER, idk::UBORenderData>;
     idk::UBORenderData                  m_RenderData;
     UBO_type                            m_UBO_RenderData;
-
-    glUBO                               m_UBO_dirlights;
     // -----------------------------------------------------------------------------------------
 
 
@@ -133,7 +142,6 @@ private:
     idk::Allocator<IDK_Pointlight>      m_pointlights;
     idk::Allocator<IDK_Spotlight>       m_spotlights;
     idk::Allocator<IDK_Atmosphere>      m_atmospheres;
-    GLuint                              m_skybox;
 
     int                                 m_unit_line;
     int                                 m_unit_cube;
@@ -203,7 +211,8 @@ private:
                                    glFramebuffer &buffer_in,
                                    glFramebuffer &buffer_out );
 
-    void PostProcess_text( glFramebuffer &buffer_out );
+    void PostProcess_text ( glFramebuffer &buffer_out );
+    void PostProcess_ui   ( glFramebuffer &buffer_out );
 
     void PostProcess_overlay( glFramebuffer &buffer_out );
 
@@ -309,6 +318,8 @@ public:
     void                                drawModel( int model, const glm::mat4 & );
     void                                drawModelRQ( int RQ, int model, const glm::mat4 & );
 
+    void                                drawTextureOverlay( uint32_t texture );
+
     // void                                drawModelViewspace( int model, const glm::mat4 & );
     void                                drawShadowCaster( int model, const glm::mat4 & );
 
@@ -332,6 +343,7 @@ public:
 
 
     int                                 createParticleEmitter( const ParticleEmitter &P );
+    void                                destroyParticleEmitter( int emitter );
     ParticleEmitter &                   getParticleEmitter( int emitter );
 
 
@@ -390,9 +402,12 @@ public:
     glFramebuffer                       m_geom_buffer;
     glFramebuffer                       m_volumetrics_buffer;
     glFramebuffer                       m_mip_scratchbuffer;
+    glFramebuffer                       m_ui_buffer;
 
-    auto &getScratchBuffers()  { return m_scratchbuffers; };
+    // auto &getScratchBuffers()  { return m_scratchbuffers; };
     auto &getScratchBuffers2() { return m_scratchbuffers2; };
+
+    idk::glFramebuffer &getUIFrameBuffer() { return m_ui_buffer; };
 
 };
 

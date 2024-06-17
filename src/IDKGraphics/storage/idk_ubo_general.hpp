@@ -8,9 +8,9 @@ namespace idk
     namespace deferred_lighting
     {
         static constexpr size_t MAX_DIRLIGHTS   = 1;
-        static constexpr size_t MAX_POINTLIGHTS = 256;
-        static constexpr size_t MAX_SPOTLIGHTS  = 32;
-        static constexpr size_t MAX_ATMOSPHERES = 16;
+        static constexpr size_t MAX_POINTLIGHTS = 16;
+        static constexpr size_t MAX_SPOTLIGHTS  = 8;
+        static constexpr size_t MAX_ATMOSPHERES = 2;
     };
 
 

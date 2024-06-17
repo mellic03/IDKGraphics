@@ -3,7 +3,7 @@
 out vec4 fsout_frag_color;
 
 in vec2 fsin_texcoords;
-uniform sampler2D un_texture_0;
+uniform sampler2D un_input;
 
 
 // FXAA Quality Settings
@@ -89,7 +89,7 @@ vec3 hsv2rgb(vec3 c)
 
 void main()
 {
-    vec3 color = fxaa(un_texture_0, textureSize(un_texture_0, 0), fsin_texcoords);
+    vec3 color = fxaa(un_input, textureSize(un_input, 0), fsin_texcoords);
 
     fsout_frag_color = vec4(color, 1.0);
 }

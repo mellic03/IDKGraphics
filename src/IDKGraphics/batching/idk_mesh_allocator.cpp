@@ -3,8 +3,8 @@
 #include <libidk/idk_assert.hpp>
 #include <libidk/idk_vertex.hpp>
 #include <libidk/GL/idk_glBindings.hpp>
+#include <libidk/idk_log.hpp>
 
-#include <iostream>
 
 idk::MeshAllocator::MeshAllocator( size_t nbytes, uint32_t vertexformat )
 :
@@ -69,6 +69,24 @@ idk::MeshAllocator::loadMesh( size_t nbytes_vertices, size_t nbytes_indices,
 
     VBO_cursor += nbytes_vertices;
     IBO_cursor += nbytes_indices;
+
+    float VBO_usage = float(VBO_cursor) / VBO_nbytes;
+          VBO_usage = float(int(10000.0f * VBO_usage)) / 10000.0f;
+          VBO_usage = 100.0f * VBO_usage;
+
+    float IBO_usage = float(IBO_cursor) / IBO_nbytes;
+          IBO_usage = float(int(10000.0f * IBO_usage)) / 10000.0f;
+          IBO_usage = 100.0f * IBO_usage;
+
+    LOG_INFO()
+        << "[MeshAllocator] VBO usage: "
+        << VBO_usage << "%  "
+        << "(" << VBO_cursor/1000000 << " / " << VBO_nbytes/1000000 << " MB)";
+
+    LOG_INFO()
+        << "[MeshAllocator] IBO usage: "
+        << IBO_usage << "%  "
+        << "(" << IBO_cursor/1000000 << " / " << IBO_nbytes/1000000 << " MB)";
 
     // std::cout << "VBO: " << 100.0f * (float(VBO_cursor) / float(VBO_nbytes)) << "%%\n";
     // std::cout << "IBO: " << 100.0f * (float(IBO_cursor) / float(IBO_nbytes)) << "%%\n";

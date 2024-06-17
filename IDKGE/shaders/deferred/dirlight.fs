@@ -10,8 +10,8 @@ layout (location = 0) out vec4 fsout_frag_color;
 #include "../include/util.glsl"
 #include "../include/pbr.glsl"
 
-#define MIPLEVEL_SPECULAR  4.0
-#define SKYBOX_IBL_STRENGTH 1
+#define MIPLEVEL_SPECULAR 4.0
+#define SKYBOX_IBL_STRENGTH 1.0
 
 in vec3 fsin_fragpos;
 flat in int idk_LightID;
@@ -85,7 +85,7 @@ void main()
 
     vec2 texcoord = IDK_WorldToUV(fsin_fragpos, camera.P * camera.V).xy;
     vec3 worldpos = IDK_WorldFromDepth(un_fragdepth, texcoord, camera.P, camera.V);
-    float depth = texture(un_fragdepth, texcoord).r;
+    // float depth = texture(un_fragdepth, texcoord).r;
 
     IDK_PBRSurfaceData surface = IDK_PBRSurfaceData_load(
         camera,
@@ -101,8 +101,6 @@ void main()
     float shadow  = dirlight_shadow_2(light, camera.V, worldpos, surface.N);
     vec3  result  = shadow * IDK_PBR_Dirlight2(light, surface, worldpos);
           result += light.ambient.rgb * surface.albedo.rgb;
-
-    result = (result == result) ? result : vec3(0.0);
 
 
     // IBL
@@ -121,11 +119,7 @@ void main()
     // #endif
 
     IBL_contribution = SKYBOX_IBL_STRENGTH * ambient;
-
-    if (IBL_contribution == IBL_contribution)
-    {
-        result += IBL_contribution;
-    }
+    result += IBL_contribution;
     // -----------------------------------------------------------------------------------------
 
     result += (surface.emission * surface.albedo);

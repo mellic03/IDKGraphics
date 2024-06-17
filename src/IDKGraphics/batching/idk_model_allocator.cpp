@@ -11,15 +11,15 @@ namespace fs = std::filesystem;
 
 idk::ModelAllocator::ModelAllocator()
 {
-    m_mesh_allocators.resize(2);
+    m_mesh_allocators.resize(1);
 
     m_mesh_allocators[0] = idk::MeshAllocator(
-        2048 * idk::MEGA, idk::ModelVertexFormat_POS_NORM_TAN_UV
+        512 * idk::MEGA, idk::ModelVertexFormat_POS_NORM_TAN_UV
     );
 
-    m_mesh_allocators[1] = idk::MeshAllocator(
-        512 * idk::MEGA, idk::ModelVertexFormat_POS_NORM_TAN_UV_SKINNED
-    );
+    // m_mesh_allocators[1] = idk::MeshAllocator(
+    //     64 * idk::MEGA, idk::ModelVertexFormat_POS_NORM_TAN_UV_SKINNED
+    // );
 
     m_albedo_config = {
         .internalformat = GL_SRGB8_ALPHA8,
@@ -69,7 +69,7 @@ idk::ModelAllocator::ModelAllocator()
         m_default_handles[i] = gl::getTextureHandleARB(m_default_textures[i]);
     }
 
-    m_ModelData_SSBO.init(1);
+    // m_ModelData_SSBO.init(1);
 
 }
 
