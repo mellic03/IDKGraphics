@@ -111,6 +111,7 @@ private:
 
     idk::Allocator<idk::RenderQueue>    m_render_queues;
     idk::Allocator<idk::RenderQueue>    m_user_render_queues;
+    idk::Allocator<idk::RenderQueue>    m_user_shadow_queues;
     int                                 m_RQ, m_viewspace_RQ, m_shadow_RQ, m_GI_RQ;
 
 
@@ -285,6 +286,9 @@ public:
     int                                 createRenderQueue( const std::string &program );
     void                                destroyRenderQueue( int RQ );
 
+    int                                 createShadowCasterQueue( const std::string &program );
+    void                                destroyShadowCasterQueue( int RQ );
+
 
     // idk::LightSystem &                  lightSystem() { return m_lightsystem; };
     ModelAllocator &                    modelAllocator() { return m_model_allocator; };
@@ -317,6 +321,7 @@ public:
 
     void                                drawModel( int model, const glm::mat4 & );
     void                                drawModelRQ( int RQ, int model, const glm::mat4 & );
+    void                                drawShadowCasterRQ( int RQ, int model, const glm::mat4 & );
 
     void                                drawTextureOverlay( uint32_t texture );
 

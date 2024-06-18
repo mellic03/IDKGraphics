@@ -132,16 +132,16 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     };
 
     idk::glTextureConfig SSR_config = {
-        .internalformat = GL_RGBA16F,
+        .internalformat = GL_RGBA8,
         .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
         .magfilter      = GL_LINEAR,
-        .datatype       = GL_FLOAT,
+        .datatype       = GL_UNSIGNED_BYTE,
         .genmipmap      = GL_TRUE
     };
 
     static const idk::DepthAttachmentConfig depth_config = {
-        .internalformat = GL_DEPTH_COMPONENT16,
-        .datatype       = GL_UNSIGNED_INT
+        .internalformat = GL_DEPTH_COMPONENT24,
+        .datatype       = GL_FLOAT
     };
 
 
@@ -149,14 +149,9 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     // m_vxgi_buffer.colorAttachment(0, config);
     // m_vxgi_buffer.depthAttachment(depth_config);
 
+
     m_dirshadow_buffer.reset(2048, 2048, 0);
-
-    static const idk::DepthAttachmentConfig shadow_config = {
-        .internalformat = GL_DEPTH_COMPONENT24,
-        .datatype       = GL_FLOAT
-    };
-
-    m_dirshadow_buffer.depthAttachment(shadow_config);
+    m_dirshadow_buffer.depthAttachment(depth_config);
 
     m_finalbuffer.reset(w, h, 1);
     m_finalbuffer.colorAttachment(0, config);
@@ -181,7 +176,7 @@ idk::RenderEngine::init_framebuffers( int w, int h )
 
 
     idk::glTextureConfig albedo_config = {
-        .internalformat = GL_RGBA16F,
+        .internalformat = GL_RGB10_A2,
         .format         = GL_RGBA,
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
@@ -190,20 +185,20 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     };
 
     idk::glTextureConfig normal_config = {
-        .internalformat = GL_RGB8_SNORM,
+        .internalformat = GL_RGB32F,
         .format         = GL_RGB,
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
-        .datatype       = GL_UNSIGNED_INT,
+        .datatype       = GL_FLOAT,
         .genmipmap      = GL_FALSE
     };
 
     idk::glTextureConfig pbr_config = {
-        .internalformat = GL_RGBA16F,
+        .internalformat = GL_RGBA8,
         .format         = GL_RGBA,
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
-        .datatype       = GL_FLOAT,
+        .datatype       = GL_UNSIGNED_BYTE,
         .genmipmap      = GL_FALSE
     };
 
@@ -377,6 +372,23 @@ idk::RenderEngine::destroyRenderQueue( int RQ )
 }
 
 
+int
+idk::RenderEngine::createShadowCasterQueue( const std::string &program )
+{
+    int ID = m_user_shadow_queues.create();
+    LOG_INFO() << "Created user-facing shadow caster queue \"" << program << "\" with ID " << ID;
+
+    m_user_shadow_queues.get(ID).name = program;
+    return ID;
+}
+
+
+void
+idk::RenderEngine::destroyShadowCasterQueue( int RQ )
+{
+    m_user_shadow_queues.destroy(RQ);
+}
+
 
 
 int
@@ -404,7 +416,7 @@ idk::RenderEngine::loadSkybox( const std::string &filepath )
     };
 
     static const glTextureConfig diffuse_config = {
-        .internalformat = GL_SRGB8_ALPHA8,
+        .internalformat = GL_RGBA8,
         .format         = GL_RGBA,
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
@@ -414,7 +426,7 @@ idk::RenderEngine::loadSkybox( const std::string &filepath )
 
 
     static const glTextureConfig specular_config = {
-        .internalformat = GL_SRGB8_ALPHA8,
+        .internalformat = GL_RGBA8,
         .format         = GL_RGBA,
         .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
         .magfilter      = GL_LINEAR,
@@ -599,6 +611,13 @@ idk::RenderEngine::drawModelRQ( int RQ, int model, const glm::mat4 &transform )
 
 
 void
+idk::RenderEngine::drawShadowCasterRQ( int RQ, int model, const glm::mat4 &transform )
+{
+    m_user_shadow_queues.get(RQ).enque(model, transform);
+}
+
+
+void
 idk::RenderEngine::drawTextureOverlay( uint32_t texture )
 {
     m_texture_overlays.push(texture);
@@ -699,7 +718,9 @@ idk::RenderEngine::skipAllRenderOverlays()
 int
 idk::RenderEngine::createParticleEmitter( const ParticleEmitter &P )
 {
-    return m_particle_emitters.create(P);
+    int id = m_particle_emitters.create(P);
+    LOG_INFO() << "[idk::RenderEngine] Created particle emitter with ID " << id;
+    return id;
 }
 
 
@@ -983,8 +1004,12 @@ idk::RenderEngine::endFrame( float dt )
     {
         queue.clear();
     }
-    // -----------------------------------------------------------------------------------------
 
+    for (idk::RenderQueue &queue: m_user_shadow_queues)
+    {
+        queue.clear();
+    }
+    // -----------------------------------------------------------------------------------------
 
 }
 

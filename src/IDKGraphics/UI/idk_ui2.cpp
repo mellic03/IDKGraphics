@@ -256,9 +256,35 @@ idkui2::LayoutManager::createButton( const std::string &panel, const std::string
 
 
 void
+idkui2::LayoutManager::disableButton( const std::string &panel, const std::string &button )
+{
+    if (m_panels.contains(panel) == false)
+    {
+        return;
+    }
+
+    for (Button &b: m_panels[panel]->m_buttons)
+    {
+        if (b.text == button)
+        {
+            b.enabled = false;
+        }
+    }
+}
+
+
+
+
+void
 idkui2::LayoutManager::_renderButton( const idkui2::Button &button, const glm::vec2 &center,
                                       const glm::vec2 &span )
 {
+    if (button.enabled == false)
+    {
+        return;
+    }
+
+
     glm::vec2 pos = center;
 
     float width  = m_glyph_w * button.text.length();

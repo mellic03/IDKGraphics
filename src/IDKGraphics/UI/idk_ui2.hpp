@@ -118,6 +118,8 @@ public:
     idkui2::ElementStyle style;
     std::function<void()> callback;
 
+    bool enabled = true;
+
 };
 
 
@@ -204,6 +206,7 @@ public:
     void closePanel( const std::string &panel );
     void togglePanel( const std::string &panel );
 
+    void disableButton( const std::string &panel, const std::string &button );
 
     void createButton( const std::string &panel, const std::string &label,
                        const ElementStyle&, std::function<void()> );

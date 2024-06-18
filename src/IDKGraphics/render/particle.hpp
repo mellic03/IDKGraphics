@@ -61,7 +61,7 @@ public:
 
     ParticleEmitter( const ParticleDesc &desc, const glm::vec3 &position,
                      const glm::vec3 &vel = glm::vec3(0.0f),
-                     const glm::vec3 &dir = glm::vec3(0.0f, 1.0f, 0.0f) );
+                     const glm::vec3 &dir = glm::vec3(0.01f, 1.0f, 0.01f) );
 
     void update( float dt );
 

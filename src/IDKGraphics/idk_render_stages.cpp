@@ -19,19 +19,23 @@ idk::RenderEngine::RenderStage_geometry( idk::Camera &camera, float dtime,
         idk::RenderQueue &queue = _getRenderQueue(m_RQ);
 
         const auto &commands = queue.genDrawCommands(*m_DrawIndirectData, m_model_allocator);
-        m_DrawCommandBuffer.bufferSubData(0, commands.size()*sizeof(idk::glDrawCmd), commands.data());
-        m_DrawIndirectSSBO.update(*m_DrawIndirectData);
 
-        auto &program = getProgram("gpass");
-        program.bind();
+        if (commands.empty() == false)
+        {
+            m_DrawCommandBuffer.bufferSubData(0, commands.size()*sizeof(idk::glDrawCmd), commands.data());
+            m_DrawIndirectSSBO.update(*m_DrawIndirectData);
 
-        gl::multiDrawElementsIndirect(
-            GL_TRIANGLES,
-            GL_UNSIGNED_INT,
-            nullptr,
-            commands.size(),
-            sizeof(idk::glDrawCmd)
-        );
+            auto &program = getProgram("gpass");
+            program.bind();
+
+            gl::multiDrawElementsIndirect(
+                GL_TRIANGLES,
+                GL_UNSIGNED_INT,
+                nullptr,
+                commands.size(),
+                sizeof(idk::glDrawCmd)
+            );
+        }
     }
     // -----------------------------------------------------------------------------------------
 
@@ -42,7 +46,7 @@ idk::RenderEngine::RenderStage_geometry( idk::Camera &camera, float dtime,
     {
         const auto &commands = queue.genDrawCommands(*m_DrawIndirectData, m_model_allocator);
 
-        if (commands.size() == 0)
+        if (commands.empty())
         {
             continue;
         }
@@ -65,19 +69,11 @@ idk::RenderEngine::RenderStage_geometry( idk::Camera &camera, float dtime,
 
 
 
-    // Heighmap terrain
-    // -----------------------------------------------------------------------------------------
-    idk::RenderQueue &queue = _getRenderQueue(m_viewspace_RQ);
-
-    // -----------------------------------------------------------------------------------------
-
-
-
     // Particles
     // -----------------------------------------------------------------------------------------
     // gl::enable(GL_BLEND);
     // IDK_GLCALL( glDepthMask(GL_FALSE); )
-    // IDK_GLCALL( glBlendFunc(GL_SRC_ALPHA, GL_ONE); )
+    // gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
     {
         idk::RenderQueue &queue = _getRenderQueue(m_viewspace_RQ);
 
@@ -144,7 +140,7 @@ idk::RenderEngine::RenderStage_volumetrics( idk::Camera   &camera,
     auto &program = getProgram("dir-volumetric");
     program.bind();
 
-    IDK_GLCALL( glBlendFunc(GL_SRC_ALPHA, GL_ONE); )
+    gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
 
     // idk::glDepthCascade depthcascade = m_lightsystem.depthCascade();
     // program.set_vec4("un_cascade_depths", depthcascade.getCascadeDepths(camera.far));
@@ -270,7 +266,7 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
     gl::cullFace(GL_FRONT);
 
     gl::enable(GL_BLEND);
-    IDK_GLCALL( glBlendFunc(GL_SRC_ALPHA, GL_ONE); )
+    gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
 
     RenderStage_dirlights();
     RenderStage_pointlights();
@@ -281,15 +277,6 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
 
     gl::bindVertexArray(m_quad_VAO);
     gl::disable(GL_CULL_FACE, GL_DEPTH_TEST);
-
-    // // Do SSR before background
-    // // -----------------------------------------------------------------------------------------
-    // // IDK_GLCALL( glBlendFunc(GL_SRC_ALPHA, GL_ONE); )
-    // gl::disable(GL_BLEND);
-    // PostProcess_SSR(m_mip_scratchbuffer, m_scratchbuffers2[2]);
-    // gl::enable(GL_BLEND);
-    // // -----------------------------------------------------------------------------------------
-
 
     // step alpha 0/1
     // -----------------------------------------------------------------------------------------
@@ -305,7 +292,7 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
 
     // Background
     // -----------------------------------------------------------------------------------------
-    IDK_GLCALL( glBlendFunc(GL_ONE_MINUS_DST_ALPHA, GL_DST_ALPHA); )
+    gl::blendFunc(GL_ONE_MINUS_DST_ALPHA, GL_DST_ALPHA);
     {
         glShaderProgram &program = getProgram("background");
         program.bind();
@@ -328,7 +315,7 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
     // -----------------------------------------------------------------------------------------
     // gl::bindVertexArray(m_quad_VAO);
 
-    // IDK_GLCALL( glBlendFunc(GL_SRC_ALPHA, GL_ONE); )
+    // gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
 
     // glShaderProgram &additive = getProgram("additive");
     // additive.bind();
@@ -367,6 +354,9 @@ idk::RenderEngine::PostProcess_SSR( glFramebuffer &buffer_in, glFramebuffer &buf
         GL_LINEAR
     );
 
+    gl::enable(GL_BLEND);
+    gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
+
     gl::generateTextureMipmap(m_mip_scratchbuffer.attachments[0]);
 
     buffer_out.bind();
@@ -383,6 +373,8 @@ idk::RenderEngine::PostProcess_SSR( glFramebuffer &buffer_in, glFramebuffer &buf
     program.set_samplerCube("un_skybox",  skyboxes[current_skybox]);
 
     gl::drawArrays(GL_TRIANGLES, 0, 6);
+
+    gl::disable(GL_BLEND);
 }
 
 
@@ -415,7 +407,7 @@ idk::RenderEngine::PostProcess_bloom( glFramebuffer &buffer_in )
 
 
     gl::enable(GL_BLEND);
-    IDK_GLCALL( glBlendFunc(GL_ONE, GL_ONE); )
+    gl::blendFunc(GL_ONE, GL_ONE);
 
     {
         glShaderProgram &program = getProgram("bloom-up");
@@ -547,7 +539,7 @@ idk::RenderEngine::RenderStage_postprocessing( idk::Camera   &camera,
     // PostProcess_chromatic_aberration(*A, *B);
     // std::swap(src, dst);
 
-    PostProcess_colorgrading(camera, m_scratchbuffers2[0], m_scratchbuffers2[1]);
+    PostProcess_colorgrading(camera, buffer_in, m_scratchbuffers2[1]);
     // std::swap(src, dst);
 
 

@@ -170,7 +170,8 @@ idk::ModelAllocator::loadModel( const std::string &filepath, uint32_t format )
 
 
 void
-idk::ModelAllocator::addUserMaterials( int model, const std::vector<uint32_t> &textures )
+idk::ModelAllocator::addUserMaterials( int model, const std::vector<std::string> &textures,
+                                       const idk::glTextureConfig &config )
 {
     for (auto &mesh: getModel(model).meshes)
     {
@@ -182,8 +183,7 @@ idk::ModelAllocator::addUserMaterials( int model, const std::vector<uint32_t> &t
 
         for (size_t i=0; i<textures.size(); i++)
         {
-            mesh.textures[i] = textures[i];
-            mesh.handles[i] = gl::getTextureHandleARB(textures[i]);
+            loadTexture(textures[i], mesh.textures[i], mesh.handles[i], config);
         }
     }
 }

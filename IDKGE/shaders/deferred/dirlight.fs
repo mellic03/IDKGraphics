@@ -34,7 +34,7 @@ uniform sampler2DShadow un_shadowmap;
 
 float sampleDepthMap_2( vec3 uv, float bias )
 {
-    const int KERNEL_HW = 1;
+    const int KERNEL_HW = 3;
 
     vec2 texelSize = 0.5 / textureSize(un_shadowmap, 0).xy;
 

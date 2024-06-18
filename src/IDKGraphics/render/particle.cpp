@@ -7,9 +7,10 @@
 idk::ParticleEmitter::ParticleEmitter( const idk::ParticleDesc &desc, const glm::vec3 &position,
                                        const glm::vec3 &vel, const glm::vec3 &dir )
 :   m_desc    (desc),
+    model_id  (desc.model_id),
     origin    (position),
     velocity  (vel),
-    direction (dir)
+    direction (glm::normalize(dir))
 {
     m_particles.resize(64);
 
@@ -21,21 +22,16 @@ idk::ParticleEmitter::ParticleEmitter( const idk::ParticleDesc &desc, const glm:
 }
 
 
+#include <libidk/idk_log.hpp>
+
 void
 idk::ParticleEmitter::_reset( Particle &p )
 {
-    p.pos.x = idk::randf(-1.0f, +1.0f);
-    p.pos.y = idk::randf(-1.0f, +1.0f);
-    p.pos.z = idk::randf(-1.0f, +1.0f);
-    p.pos = origin + glm::normalize(p.pos);
-    p.pos = origin + glm::vec3(0.0f);
+    p.pos = origin;
 
 
     glm::vec3 velA = m_desc.velocity;
     glm::vec3 velB = m_desc.velocity_randomness;
-    // glm::vec3 velB = glm::vec3(idk::randf(-1.0f, 1.0f), idk::randf(-1.0f, 1.0f), idk::randf(-1.0f, 1.0f));
-
-            //   velB = glm::length(velA) * glm::normalize(velB);
 
     glm::mat4 R = glm::lookAt(
         glm::vec3(0.0f),
@@ -51,9 +47,8 @@ idk::ParticleEmitter::_reset( Particle &p )
 
     p.vel = glm::mat3(R) * velA;
 
-    p.timer = glm::mix(m_desc.duration*idk::randf(0.0f, 1.0f), m_desc.duration, m_desc.duration_randomness);
-
-    p.scale = glm::mix(idk::randf(0.0f, 1.0f), m_desc.scale, m_desc.scale_randomness);
+    p.timer = 0.0f;
+    p.scale = m_desc.scale;
 }
 
 

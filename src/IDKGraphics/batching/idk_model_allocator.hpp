@@ -80,10 +80,10 @@ public:
     IDK_ALLOCATOR_ACCESS(Mesh,     idk::MeshDescriptor,     m_meshes);
     IDK_ALLOCATOR_ACCESS(Model,    idk::ModelDescriptor,    m_models);
 
-    int loadTexture( const std::string &filepath, uint32_t&, uint64_t&, const idk::glTextureConfig & );
+    int loadTexture( const std::string &filepath, uint32_t&, uint64_t&, const idk::glTextureConfig& );
     int loadModel( const std::string &filepath, uint32_t format=0 );
 
-    void addUserMaterials( int model, const std::vector<uint32_t> &textures );
+    void addUserMaterials( int model, const std::vector<std::string>&, const idk::glTextureConfig& );
 
 
     void clear();
