@@ -18,18 +18,17 @@ set_target_properties(
     POSITION_INDEPENDENT_CODE ON
 )
 
-# if(MSVC)
-#     target_compile_options(${PROJECT_NAME} PRIVATE /W4 /WX)
-# else()
-#     target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
-# endif()
-find_package(SDL2_ttf REQUIRED)
-include_directories(${SDL2_ttf_INCLUDE_DIRS})
+if (IDK_DEBUG)
+    target_compile_options(${PROJECT_NAME} PUBLIC -O0 -g)
+else()
+    target_compile_options(${PROJECT_NAME} PUBLIC -Ofast)
+endif ()
+
 
 
 target_link_libraries(
     ${PROJECT_NAME} PUBLIC
-    SDL2_ttf
+    # SDL2_ttf
     libidk
 )
 
