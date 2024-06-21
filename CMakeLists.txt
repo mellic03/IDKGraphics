@@ -19,7 +19,7 @@ set_target_properties(
 )
 
 if (IDK_DEBUG)
-    target_compile_options(${PROJECT_NAME} PUBLIC -O0 -g)
+    target_compile_options(${PROJECT_NAME} PUBLIC -Werror -fsanitize=undefined -lstdc++fs -g)
 else()
     target_compile_options(${PROJECT_NAME} PUBLIC -Ofast)
 endif ()

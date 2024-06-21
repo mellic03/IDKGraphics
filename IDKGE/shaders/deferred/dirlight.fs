@@ -74,7 +74,7 @@ float dirlight_shadow_2( IDK_Camera camera, IDK_Dirlight light, mat4 view_matrix
     float bias   = 0.01; // * max(dot(N, L), 0.001);
 
 
-    const int KERNEL_HW = 9;
+    const int KERNEL_HW = 1;
     vec2 texelSize = 1.0 / textureSize(un_shadowmap, 0).xy;
     float shadow = 0.0;
 
