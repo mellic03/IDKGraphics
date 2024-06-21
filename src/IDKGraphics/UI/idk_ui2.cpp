@@ -5,486 +5,232 @@
 #include <libidk/idk_geometry.hpp>
 
 
-static glm::vec2 m_screen_size = glm::vec2(512.0f);
-static glm::vec2 m_mouse = glm::vec2(512.0f);
-static bool  m_clicked = false;
-static float m_zindex = 1.0f;
+
+static glm::vec2 mouse_screen  = glm::vec2(0.0f);
+static bool      mouse_down    = false;
+static bool      mouse_clicked = false;
 
 
-
-idkui2::Panel::Panel( const std::string &name, const ElementAlignment &alignment,
-                      const ElementStyle &style, Panel *parent )
-:   m_parent    (parent),
-    m_name      (name),
-    m_alignment (alignment),
-    m_style     (style)
+idkui2::Panel::Panel( const std::string &name, const ElementStyle &style, int rows, int cols )
+:   ElementBase (name, style),
+    m_rows      (rows),
+    m_cols      (cols),
+    m_children  (rows, std::vector<ElementBase*>(cols, nullptr))
 {
 
 }
 
 
 void
-idkui2::Panel::giveChild( const std::string &name, ElementAlignment alignment, const ElementStyle &style )
+idkui2::Panel::giveChild( int row, int col, ElementBase *element )
 {
-    m_children.push_back(new Panel(name, alignment, style, this));
+    std::string msg = element->m_label + " (row, col) is out of range of " + this->m_label + ".children";
+
+    while (row < 0)       row += m_rows;
+    while (row >= m_rows) row -= m_rows;
+
+    while (col < 0)       col += m_cols;
+    while (col >= m_cols) col -= m_cols;
+
+    IDK_ASSERT(
+        msg.c_str(),
+        (row < m_rows) && (col < m_cols)
+    );
+
+    m_children[row][col] = element;
 }
-
-
-
-idkui2::LayoutManager::LayoutManager( const std::string &filepath, int size )
-{
-    m_atlas = _renderFontAtlas(filepath, size);
-
-    _genQuadVAO();
-
-    m_quad_UBO.init(2, 1024);
-    m_quad_buffer.resize(1024);
-
-    m_text_UBO.init(1, 1024);
-    m_text_buffer.resize(1024);
-
-    m_cmdbuffer.init();
-    m_cmdbuffer.bufferData(1 * sizeof(idk::glDrawCmd), nullptr, GL_DYNAMIC_COPY);
-
-}
-
 
 void
-idkui2::LayoutManager::_genQuadVAO()
+idkui2::List::update( glm::vec2 corner, glm::vec2 span, int depth,
+                      idkui2::UIRenderer &uiren )
 {
-    float vertices[] = {
-         0.5f,  0.5f, 0.0f, 1.0f, 1.0f, // top right
-         0.5f, -0.5f, 0.0f, 1.0f, 0.0f, // bottom right
-        -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, // bottom left
-        -0.5f,  0.5f, 0.0f, 0.0f, 1.0f  // top left 
-    };
+    glm::vec4 margin = m_style.margin;
 
-    unsigned int indices[] = {  // note that we start from 0!
-        0, 1, 3,   // first triangle
-        1, 2, 3    // second triangle
-    };  
+    float xmin = corner.x          + margin[0];
+    float xmax = corner.x + span.x - margin[1];
+    float ymin = corner.y          + margin[2];
+    float ymax = corner.y + span.y - margin[3];
+
+    corner = glm::vec2(xmin, ymin);
+    span   = glm::vec2(xmax-xmin, ymax-ymin);
 
 
-    size_t vert_nbytes = 5 * sizeof(float); // x, y, u, v
-    size_t vbo_nbytes  = 6 * vert_nbytes;
-    size_t ibo_nbytes  = 6 * sizeof(uint32_t);
-
-    gl::createBuffers(1, &m_VBO);
-    gl::namedBufferData(m_VBO, vbo_nbytes, vertices, GL_STATIC_DRAW);
-
-    gl::createBuffers(1, &m_IBO);
-    gl::namedBufferData(m_IBO, ibo_nbytes, indices, GL_STATIC_DRAW);
-
-    gl::createVertexArrays(1, &m_VAO);
-    gl::vertexArrayVertexBuffer(m_VAO, 0, m_VBO, 0, vert_nbytes);
-    gl::vertexArrayElementBuffer(m_VAO, m_IBO);
-
-    gl::enableVertexArrayAttrib(m_VAO, 0);
-    gl::vertexArrayAttribFormat(m_VAO, 0, 3, GL_FLOAT, GL_FALSE, 0);
-    gl::vertexArrayAttribBinding(m_VAO, 0, 0);
-
-    gl::enableVertexArrayAttrib(m_VAO, 1);
-    gl::vertexArrayAttribFormat(m_VAO, 1, 2, GL_FLOAT, GL_FALSE, 3*sizeof(float));
-    gl::vertexArrayAttribBinding(m_VAO, 1, 0);
-}
-
-
-
-
-uint32_t
-idkui2::LayoutManager::_renderFontAtlas( const std::string &filepath, int size )
-{
-    TTF_Font *font = TTF_OpenFont(filepath.c_str(), size);
-
-    int atlas_w = 512;
-    int atlas_h = 512;
-    int grid_w = atlas_w / size;
-    int glyph_w = size;
-
-    m_atlas_w = 512;
-    m_glyph_w = size;
-    m_grid_w  = grid_w;
-
-    SDL_Surface *atlas = SDL_CreateRGBSurface(0, atlas_w, atlas_h, 32, 0, 0, 0, 0);
-
-    for (uint8_t current='A'; current<='z'; current++)
+    if (m_style.invisible == false)
     {
-        int x = size * ((current-'A') % grid_w);
-        int y = size * ((current-'A') / grid_w);
-
-        SDL_Surface *S = TTF_RenderGlyph32_Blended(font, (current), {255, 255, 255, 255});
-
-        SDL_Rect src = {0, 0, S->w, S->h};
-        SDL_Rect dst = {x, y, glyph_w, glyph_w};
-
-        SDL_BlitSurface(S, &src, atlas, &dst);
-        SDL_FreeSurface(S);
-    }
-
-    idk::glTextureConfig config = {
-        .internalformat = GL_RGBA8,
-        .format         = GL_RGBA,
-        .minfilter      = GL_NEAREST,
-        .magfilter      = GL_NEAREST,
-        .datatype       = GL_UNSIGNED_BYTE,
-        .genmipmap      = GL_FALSE
-    };
-
-    uint32_t texture = gltools::loadTexture2D(atlas->w, atlas->h, atlas->pixels, config);
-    SDL_FreeSurface(atlas);
-
-    return texture;
-}
-
-
-
-void
-idkui2::LayoutManager::_renderQuad( int x, int y, int w, int h, const glm::vec4 &color,
-                                    ElementAlignment alignment )
-{
-    if (alignment & ALIGN_CENTER)
-    {
-        x -= w/2;
-        y -= h/2;
+        uiren.renderQuad(corner.x, corner.y, depth++, span.x, span.y, m_style.radius, m_style.bg);
     }
 
 
-    PanelQuad quad;
-    quad.x = x;
-    quad.y = y;
-    quad.w = w;
-    quad.h = h;
-    quad.color = color;
-    quad.pad   = glm::vec4(16.0f, m_zindex, 0.0f, 0.0f);
+    glm::vec4 padding    = m_style.padding;
+    glm::vec2 offset     = glm::vec2(0.0f, padding[3]);
+    glm::vec2 child_span = glm::vec2(span.x, offset.y);
 
-    m_quad_buffer.push_back(quad);
-}
-
-
-void
-idkui2::LayoutManager::_renderText( int x, int y, const std::string &text, ElementAlignment alignment )
-{
-    int width = m_glyph_w * text.length();
-    glm::ivec2 offset = glm::ivec2(0.0f);
-
-    if (alignment & ALIGN_CENTER)
+    for (ElementBase *child: m_children_front)
     {
-        offset = glm::ivec2(-width/2.0f, 0.0f);
+        child->update(corner+offset, child_span, depth+1, uiren);
+        offset.y += padding[3];
     }
 
-    for (char c: text)
+    offset = glm::vec2(0.0f, span.y - padding[3]);
+
+    for (ElementBase *child: m_children_back)
     {
-        int32_t idx = int32_t(c - 'A');
-
-        m_text_buffer.push_back({x+offset.x, y+offset.y, m_zindex, idx});
-        x += m_glyph_w;
-    }
-}
-
-
-void
-idkui2::LayoutManager::createPanel( const std::string &label, uint32_t alignment,
-                                    const ElementStyle &style )
-{
-    Panel *P = new idkui2::Panel(label, ElementAlignment(alignment), style);
-           P->m_visible = false;
-
-    m_panels[label] = P;
-    m_root_panels[label] = P;
-}
-
-
-void
-idkui2::LayoutManager::createSubPanel( const std::string &panel, const std::string &label,
-                                       ElementAlignment alignment, const ElementStyle &style )
-{
-    if (m_panels.contains(panel) == false)
-    {
-        LOG_ERROR() << "Panel \"" << panel << "\" does not exist.";
-        return;
+        child->update(corner+offset, child_span, depth+1, uiren);
+        offset.y -= padding[3];
     }
 
-    m_panels[panel]->giveChild(label, alignment, style);
-    m_panels[label] = m_panels[panel]->m_children.back();
-    m_panels[panel]->m_children.back()->m_style.bg += 0.2f;
 }
 
 
 
 void
-idkui2::LayoutManager::openPanel( const std::string &panel )
+idkui2::Button::update( glm::vec2 corner, glm::vec2 span, int depth,
+                        idkui2::UIRenderer &uiren )
 {
-    m_panels[panel]->m_visible = true;
-}
+    glm::vec4 margin = m_style.margin;
 
+    float xmin = corner.x          + margin[0];
+    float xmax = corner.x + span.x - margin[1];
+    float ymin = corner.y          + margin[2];
+    float ymax = corner.y + span.y - margin[3];
 
-void
-idkui2::LayoutManager::closePanel( const std::string &panel )
-{
-    m_panels[panel]->m_visible = false;
-}
+    corner = glm::vec2(xmin, ymin);
+    span   = glm::vec2(xmax-xmin, ymax-ymin);
 
+    glm::vec4 fg = m_style.fg;
+    glm::vec4 bg = m_style.bg;
 
-void
-idkui2::LayoutManager::togglePanel( const std::string &panel )
-{
-    if (m_panels.contains(panel) == false)
+    if (idk::geometry::pointInRect(mouse_screen.x, mouse_screen.y, xmin, ymin, span.x, span.y))
     {
-        LOG_ERROR() << "Panel \"" << panel << "\" does not exist.";
-        return;
-    }
+        std::swap(fg, bg);
 
-    bool b = m_panels[panel]->m_visible;
-    m_panels[panel]->m_visible = !b;
-}
-
-
-
-
-
-void
-idkui2::LayoutManager::createButton( const std::string &panel, const std::string &label,
-                                     const ElementStyle &style, std::function<void()> callback )
-{
-    if (m_panels.contains(panel) == false)
-    {
-        return;
-    }
-
-    m_panels[panel]->m_buttons.push_back({label, style, callback});
-}
-
-
-void
-idkui2::LayoutManager::disableButton( const std::string &panel, const std::string &button )
-{
-    if (m_panels.contains(panel) == false)
-    {
-        return;
-    }
-
-    for (Button &b: m_panels[panel]->m_buttons)
-    {
-        if (b.text == button)
+        if (mouse_clicked)
         {
-            b.enabled = false;
-        }
-    }
-}
-
-
-
-
-void
-idkui2::LayoutManager::_renderButton( const idkui2::Button &button, const glm::vec2 &center,
-                                      const glm::vec2 &span )
-{
-    if (button.enabled == false)
-    {
-        return;
-    }
-
-
-    glm::vec2 pos = center;
-
-    float width  = m_glyph_w * button.text.length();
-    float height = m_glyph_w;
-
-    int x = int(pos.x);
-    int y = int(pos.y);
-    int w = int(width);
-    int h = int(height);
-
-    // x -= w/2;
-    // y -= h/2;
-
-    ElementStyle style0 = button.style;
-    ElementStyle style1 = button.style;
-    std::swap(style1.fg, style1.bg);
-
-    m_zindex += 0.01f;
-
-    if (geometry::pointInsideRect(m_mouse.x, m_mouse.y, x, y, w, h))
-    {
-        if (m_clicked)
-        {
-            button.callback();
+            m_callback();
         }
 
-        std::swap(style0, style1);
+        else if (mouse_down)
+        {
+            std::swap(fg, bg);
+        }
     }
 
+    uiren.renderQuad(xmin, ymin, depth++, span.x, span.y, m_style.radius, bg);
 
-    _renderQuad(x, y, w+4, h+4, 2.0f*style0.bg, ALIGN_LEFT);
-    m_zindex += 0.01f;
-    _renderQuad(x, y, w, h, style0.bg, ALIGN_LEFT);
+    glm::vec2 center = glm::vec2(xmin+span.x/2.0f, ymin+span.y/2.0f);
+    uiren.renderTextCentered(center.x, center.y, depth++, m_label, fg);
 
+}
 
-    m_zindex += 0.01f;
+void
+idkui2::Title::update( glm::vec2 corner, glm::vec2 span, int depth,
+                       idkui2::UIRenderer &uiren )
+{
+    glm::vec4 margin = m_style.margin;
 
-    _renderText(x, y, button.text, ALIGN_LEFT);
+    float xmin = corner.x          + margin[0];
+    float xmax = corner.x + span.x - margin[1];
+    float ymin = corner.y          + margin[2];
+    float ymax = corner.y + span.y - margin[3];
 
-    m_zindex += 0.01f;
+    corner = glm::vec2(xmin, ymin);
+    span   = glm::vec2(xmax-xmin, ymax-ymin);
+
+    glm::vec4 fg = m_style.fg;
+    glm::vec4 bg = m_style.bg;
+
+    glm::vec2 center = glm::vec2(xmin+span.x/2.0f, ymin+span.y/2.0f);
+    uiren.renderTextCentered(center.x, center.y, depth++, m_label, fg);
 
 }
 
 
 
 void
-idkui2::LayoutManager::_renderPanel( idkui2::Panel *P, const glm::vec2 &center, const glm::vec2 &span )
+idkui2::Panel::update( glm::vec2 corner, glm::vec2 span, int depth,
+                       idkui2::UIRenderer &uiren )
 {
-    if (P->m_visible == false)
+    if (m_visible == false)
     {
         return;
     }
 
-    glm::vec2 size   = 0.5f * span;
-    glm::vec2 delta  = glm::vec2(0.0f);
 
-    if (P->m_alignment & ALIGN_LEFT)
+    glm::vec4 margin = m_style.margin;
+
+    float xmin = corner.x          + margin[0];
+    float xmax = corner.x + span.x - margin[1];
+    float ymin = corner.y          + margin[2];
+    float ymax = corner.y + span.y - margin[3];
+
+    corner = glm::vec2(xmin, ymin);
+    span   = glm::vec2(xmax-xmin, ymax-ymin);
+
+
+    if (m_style.invisible == false)
     {
-        delta.x -= 2.0f * (size.x / 3.0f);
+        float width  = xmax - xmin;
+        float height = ymax - ymin;
+
+        uiren.renderQuad(corner.x, corner.y, depth++, width, height, m_style.radius, m_style.bg);
+        uiren.renderTextCenteredX((xmin+xmax)/2.0f, corner.y, depth++, m_label, m_style.fg);
     }
 
-    if (P->m_alignment & ALIGN_RIGHT)
+    glm::vec2 child_span = span / glm::vec2(m_cols, m_rows);
+    float y = corner.y;
+
+    for (std::vector<ElementBase *> &row: m_children)
     {
-        delta.x += 2.0f * (size.x / 3.0f);
-    }
+        float x = corner.x;
 
-    if (P->m_alignment & ALIGN_TOP)
-    {
-        delta.y -= size.y/2;
-    }
-
-    if (P->m_alignment & ALIGN_BOTTOM)
-    {
-        delta.y += size.y/2;
-    }
-
-    glm::vec2 new_center = center + delta;
-    glm::vec2 pos = new_center;
-
-    m_zindex += 0.01f;
-
-    _renderQuad(pos.x, pos.y, size.x/2.0f + 4, size.y/2.0f + 4, 2.0f*P->m_style.bg);
-    m_zindex += 0.01f;
-
-    _renderQuad(pos.x, pos.y, size.x/2.0f, size.y/2.0f, P->m_style.bg);
-    m_zindex += 0.01f;
-
-    glm::vec2 offset = glm::vec2(-size/4.0f) + 16.0f;
-
-    for (Button &b: P->m_buttons)
-    {
-        _renderButton(b, new_center + offset, size/4.0f);
-        offset.y += 2*m_glyph_w;
-    }
-
-    m_zindex += 0.01f;
-
-    for (Panel *child: P->m_children)
-    {
-        _renderPanel(child, new_center, size);
+        for (ElementBase *child: row)
+        {
+            if (child != nullptr)
+            {
+                child->update(glm::vec2(x, y), child_span, depth+1, uiren);
+            }
+            x += child_span.x;
+        }
+        y += child_span.y;
     }
 
 }
+
+
+
+idkui2::Panel*
+idkui2::LayoutManager::createRootPanel( int rows, int cols, const ElementStyle &style )
+{
+    m_root = new Panel("root", style, rows, cols);
+    return m_root;
+}
+
 
 
 void
 idkui2::LayoutManager::update( idk::EngineAPI &api, float dt )
 {
-    m_quad_buffer.clear();
-    m_text_buffer.clear();
+    auto &ren    = api.getRenderer();
+    auto &events = api.getEventSys();
 
-    m_zindex = -0.9f;
+    glm::vec2 size = glm::vec2(ren.resolution());
 
-    for (auto &[key, P]: m_root_panels)
+
+    if (events.mouseCaptured())
     {
-        _renderPanel(P, m_screen_size/2.0f, m_screen_size);
+        mouse_screen  = glm::vec2(-1024.0f);
+        mouse_clicked = false;
+        mouse_down    = false;
     }
 
-}
-
-
-void
-idkui2::LayoutManager::_renderAllQuads( idk::RenderEngine &ren )
-{
-    if (m_quad_buffer.empty())
+    else
     {
-        return;
+        mouse_screen  = events.mousePosition();
+        mouse_clicked = events.mouseClicked(MouseButton::LEFT);
+        mouse_down    = events.mouseDown(MouseButton::LEFT);
     }
 
-    idk::glDrawCmd cmd = {
-        .count           = 6,
-        .instanceCount   = uint32_t(m_quad_buffer.size()),
-        .firstIndex      = 0,
-        .baseVertex      = 0,
-        .baseInstance    = 0
-    };
-
-
-    m_cmdbuffer.bufferSubData(0, sizeof(idk::glDrawCmd), (const void *)(&cmd));
-    m_quad_UBO.update(m_quad_buffer.data());
-
-    auto &program = ren.getProgram("ui-quad");
-    program.bind();
-
-    glm::mat4 P = glm::ortho(0.0f, m_screen_size.x, m_screen_size.y, 0.0f, -1.0f, +1.0f);
-    program.set_mat4("un_projection", P);
-
-    gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_cmdbuffer.ID());
-
-    gl::multiDrawElementsIndirect(
-        GL_TRIANGLES,
-        GL_UNSIGNED_INT,
-        nullptr,
-        1,
-        sizeof(idk::glDrawCmd)
-    );
-
-}
-
-
-void
-idkui2::LayoutManager::_renderAllText( idk::RenderEngine &ren )
-{
-    if (m_text_buffer.empty())
-    {
-        return;
-    }
-
-    idk::glDrawCmd cmd = {
-        .count           = 6,
-        .instanceCount   = uint32_t(m_text_buffer.size()),
-        .firstIndex      = 0,
-        .baseVertex      = 0,
-        .baseInstance    = 0
-    };
-
-
-    m_cmdbuffer.bufferSubData(0, sizeof(idk::glDrawCmd), (const void *)(&cmd));
-    m_text_UBO.update(m_text_buffer.data());
-
-    auto &program = ren.getProgram("ui-text");
-    program.bind();
-
-    glm::mat4 P = glm::ortho(0.0f, m_screen_size.x, m_screen_size.y, 0.0f, -1.0f, +1.0f);
-    program.set_mat4("un_projection", P);
-
-    program.set_sampler2D("un_atlas", m_atlas);
-    program.set_int("un_grid_w",  m_grid_w);
-    program.set_int("un_glyph_w", m_glyph_w);
-
-    gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_cmdbuffer.ID());
-
-    gl::multiDrawElementsIndirect(
-        GL_TRIANGLES,
-        GL_UNSIGNED_INT,
-        nullptr,
-        1,
-        sizeof(idk::glDrawCmd)
-    );
-
+    m_root->update(glm::vec2(0.0f), size, 1, m_UIRenderer);
 }
 
 
@@ -494,25 +240,6 @@ idkui2::LayoutManager::renderTexture( idk::EngineAPI &api )
 {
     auto &ren = api.getRenderer();
 
-    int rw = ren.width();
-    int rh = ren.height();
-
-    m_screen_size = glm::vec2(rw, rh);
-    m_mouse   = api.getEventSys().mousePosition();
-    m_clicked = api.getEventSys().mouseClicked(idk::MouseButton::LEFT);
-
-    gl::bindVertexArray(m_VAO);
-    gl::enable(GL_DEPTH_TEST, GL_BLEND);
-    gl::blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    idk::glFramebuffer &buffer = ren.getUIFrameBuffer();
-    buffer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    buffer.bind();
-
-    _renderAllQuads(ren);
-    _renderAllText(ren);
-
-    gl::disable(GL_BLEND);
+    m_UIRenderer.renderTexture(api);
 
 }
-

@@ -240,7 +240,7 @@
 //             b.clicked -= dt;
 //             b.hovered = false;
 
-//             if (geometry::pointInsideRect(mx, my, b.x, b.y, b.w, b.h))
+//             if (geometry::pointInRect(mx, my, b.x, b.y, b.w, b.h))
 //             {
 //                 b.hovered = true;
 

@@ -1,29 +1,30 @@
 #version 460 core
-#extension GL_GOOGLE_include_directive: require
 
 layout (location = 0) out vec4 fsout_frag_color;
 
 in vec2 fsin_texcoord;
-
-flat in vec4  fsin_color;
-flat in vec4  fsin_bounds;
-flat in float fsin_radius;
+flat in vec3 fsin_extents;
+flat in vec4 fsin_color;
 
 
 void main()
 {
-    vec2 texel   = fsin_bounds.zw * fsin_texcoord;
-    vec2 nearest = clamp(texel, vec2(fsin_radius), fsin_bounds.zw-fsin_radius);
+    vec3  color  = fsin_color.rgb;
 
-    float alpha = fsin_color.a;
-    float dist = distance(texel, nearest);
+    float width  = fsin_extents[0];
+    float height = fsin_extents[1];
+    float radius = fsin_extents[2];
 
-    // if (dist <= fsin_radius)
+    ivec2 texel   = ivec2(fsin_extents.xy * fsin_texcoord);
+    vec2  nearest = clamp(texel, vec2(radius), fsin_extents.xy - radius);
+    float dist    = distance(texel, nearest);
+    float alpha   = 1.0 - clamp(dist - radius, 0.0, 1.0);
+
+    // if (dist > radius)
     // {
     //     discard;
     // }
 
-    alpha = (dist <= fsin_radius) ? alpha : 0.0;
-
-    fsout_frag_color = vec4(fsin_color.rgb, alpha);
+    fsout_frag_color = vec4(color, alpha*fsin_color.a);
 }
+

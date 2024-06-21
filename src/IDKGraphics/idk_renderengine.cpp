@@ -144,7 +144,6 @@ idk::RenderEngine::init_framebuffers( int w, int h )
         .datatype       = GL_FLOAT
     };
 
-
     // m_vxgi_buffer.reset(VXGI_TEXTURE_SIZE, VXGI_TEXTURE_SIZE, 1);
     // m_vxgi_buffer.colorAttachment(0, config);
     // m_vxgi_buffer.depthAttachment(depth_config);
@@ -185,11 +184,11 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     };
 
     idk::glTextureConfig normal_config = {
-        .internalformat = GL_RGB32F,
+        .internalformat = GL_RGB_SNORM,
         .format         = GL_RGB,
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
-        .datatype       = GL_FLOAT,
+        .datatype       = GL_UNSIGNED_BYTE,
         .genmipmap      = GL_FALSE
     };
 
@@ -829,10 +828,10 @@ idk::RenderEngine::updateLightsourcesUBO( idk::UBORenderData &data )
     offset = 0;
     for (IDK_Dirlight &light: m_dirlights)
     {
-        glm::mat4 P = glm::ortho(-20.0f, +20.0f, -20.0f, +20.0f, 0.25f, 50.0f);
+        glm::mat4 P = glm::ortho(-10.0f, +10.0f, -10.0f, +10.0f, -10.0f, 10.0f);
 
         glm::mat4 V = glm::lookAt(
-            cam.position - 25.0f*glm::vec3(light.direction),
+            cam.position - glm::vec3(light.direction),
             cam.position,
             glm::vec3(0.0f, 1.0f, 0.0f)
         );

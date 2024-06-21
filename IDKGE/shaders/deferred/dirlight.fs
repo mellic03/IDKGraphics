@@ -27,54 +27,121 @@ uniform sampler2D un_BRDF_LUT;
 uniform samplerCube un_skybox_diffuse;
 uniform samplerCube un_skybox_specular;
 
-uniform sampler2DShadow un_shadowmap;
+uniform sampler2D un_shadowmap;
 
 
 
 
-float sampleDepthMap_2( vec3 uv, float bias )
+// float sampleDepthMap_2( vec3 uv, float bias )
+// {
+//     const int KERNEL_HW = 3;
+
+//     vec2 texelSize = 0.5 / textureSize(un_shadowmap, 0).xy;
+
+//     float shadow = 0.0;
+
+//     for(int x = -KERNEL_HW; x <= KERNEL_HW; ++x)
+//     {
+//         for(int y = -KERNEL_HW; y <= KERNEL_HW; ++y)
+//         {
+//             vec2 sample_uv    = uv.xy + vec2(x, y) * texelSize;
+//             // vec2 sample_uv    = uv.xy;
+//             vec3 sample_coord = vec3(sample_uv, uv.z - bias);
+
+//             float depth = texture(un_shadowmap, sample_coord.xy).r;
+
+//             shadow += (depth - bias > )
+//         }
+//     }
+
+//     // return shadow;
+//     return shadow / ((2*KERNEL_HW+1)*(2*KERNEL_HW+1));
+// }
+
+
+
+float dirlight_shadow_2( IDK_Camera camera, IDK_Dirlight light, mat4 view_matrix, vec3 position, vec3 N )
 {
-    const int KERNEL_HW = 3;
+    vec3 L = normalize(-light.direction.xyz);
 
-    vec2 texelSize = 0.5 / textureSize(un_shadowmap, 0).xy;
+    vec3  fragpos_viewspace  = (view_matrix * vec4(position, 1.0)).xyz;
+    vec4  fragpos_lightspace = light.transform * vec4(position, 1.0);
 
+    vec3  projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
+          projCoords = projCoords * 0.5 + 0.5;
+
+    float frag_depth = projCoords.z;
+    float bias   = 0.01; // * max(dot(N, L), 0.001);
+
+
+    const int KERNEL_HW = 9;
+    vec2 texelSize = 1.0 / textureSize(un_shadowmap, 0).xy;
     float shadow = 0.0;
 
     for(int x = -KERNEL_HW; x <= KERNEL_HW; ++x)
     {
         for(int y = -KERNEL_HW; y <= KERNEL_HW; ++y)
         {
-            vec2 sample_uv    = uv.xy + vec2(x, y) * texelSize;
-            // vec2 sample_uv    = uv.xy;
-            vec3 sample_coord = vec3(sample_uv, uv.z - bias);
+            vec2 sample_uv = projCoords.xy + vec2(x, y) * texelSize;
+            float depth = texture(un_shadowmap, sample_uv).r;
 
-            shadow += texture(un_shadowmap, sample_coord); 
+            shadow += (frag_depth - bias > depth) ? 1.0 : 0.0;
         }
     }
 
-    // return shadow;
-    return shadow / ((2*KERNEL_HW+1)*(2*KERNEL_HW+1));
+    return 1.0 - shadow / ((2*KERNEL_HW+1)*(2*KERNEL_HW+1));
 }
 
 
 
-float dirlight_shadow_2( IDK_Dirlight light, mat4 view_matrix, vec3 position, vec3 N )
+float ScreenspaceShadow( IDK_Camera camera, IDK_PBRSurfaceData surface, IDK_Dirlight light )
 {
-    vec3 L = normalize(-light.direction.xyz);
+    vec3 ray_pos = surface.position.xyz;
+    vec3 ray_dir = normalize(-light.direction.xyz);
+    mat4 PV = camera.PV;
 
-    vec3  fragpos_viewspace  = (view_matrix * vec4(position, 1.0)).xyz;
-    float frag_depth         = abs(fragpos_viewspace.z);
-    vec4  fragpos_lightspace = light.transform * vec4(position, 1.0);
+    float occlusion = 0.0;
 
-    vec3  projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
-          projCoords = projCoords * 0.5 + 0.5;
+    const float RAY_RANGE = 0.25;
+    const int   RAY_STEPS = 32;
+    const float RAY_STEP  = (RAY_RANGE / RAY_STEPS);
 
-    float bias   = 0.02 * max(dot(N, L), 0.0001);
-    float shadow = sampleDepthMap_2(projCoords, bias);
+    vec2 uv;
 
-    return clamp(shadow, 0.0, 1.0);
+
+    for (int i=0; i<RAY_STEPS; i++)
+    {
+        ray_pos += RAY_STEP*ray_dir;
+
+        // Project ray into UV space
+        // ---------------------------------------------------------------------------
+        vec4 projected = PV * vec4(ray_pos, 1.0);
+        projected.xy /= projected.w;
+        projected.xy = projected.xy * 0.5 + 0.5;
+
+        ivec2 tx = ivec2(projected.xy * camera.image_size.xy);
+              uv = projected.xy;
+
+
+        // float frag_depth = (PV * imageLoad(un_position, tx)).z;
+        vec3 pos = IDK_WorldFromDepth(un_fragdepth, uv, camera.P, camera.V);
+
+        float frag_depth = (PV * vec4(pos, 1.0)).z;
+        float ray_depth  = IDK_WorldToUV(ray_pos, PV).z;
+        // ---------------------------------------------------------------------------
+
+        if (ray_depth >= frag_depth && (ray_depth-frag_depth < 0.01))
+        {
+            occlusion = 1.0;
+            break;
+        }
+    }
+
+    float dist = distance(uv, vec2(0.5));
+          dist = (dist / camera.image_size.x);
+
+    return (0.5 - dist) * (1.0 - occlusion);
 }
-
 
 
 
@@ -98,7 +165,10 @@ void main()
     );
 
 
-    float shadow  = dirlight_shadow_2(light, camera.V, worldpos, surface.N);
+    float shadow  = dirlight_shadow_2(camera, light, camera.V, worldpos, surface.N);
+    // float sss     = ScreenspaceShadow(camera, surface, light);
+    //       shadow  = min(shadow, sss);
+
     vec3  result  = shadow * IDK_PBR_Dirlight2(light, surface, worldpos);
           result += light.ambient.rgb * surface.albedo.rgb;
 
