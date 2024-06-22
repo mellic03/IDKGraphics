@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include <SDL2/SDL_ttf.h>
+#include <array>
 #include <functional>
 
 #include <glm/glm.hpp>
@@ -35,14 +36,21 @@ namespace idk::ui
 
         glm::vec4 fg = glm::vec4(1.0f);
         glm::vec4 bg = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+        glm::vec4 fg2 = glm::vec4(1.0f);
+        glm::vec4 bg2 = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+        bool uniform_size = false;
     };
 
 
     struct ElementBase;
-    struct Panel;
-    struct Button;
+    struct Grid;
     struct List;
     struct Title;
+    struct Button;
+    struct Slider;
+    struct TextInput;
 
     class LayoutManager;
     class UIRenderer;
@@ -55,32 +63,47 @@ namespace idkui2 = idk::ui;
 
 struct idkui2::ElementBase
 {
-    std::string  m_label;
-    bool         m_visible = true;
-    ElementStyle m_style;
+public:
+    std::string          m_label;
+    bool                 m_visible;
+    ElementStyle         m_style;
+    ElementStyle         m_invstyle;
+    std::array<float, 4> m_bounds;
+    bool                 m_focused = false;
 
     ElementBase( const std::string &label, const ElementStyle &style )
     :   m_label     (label),
-        m_style     (style)
+        m_style     (style),
+        m_visible   (false)
     {
+        m_invstyle = m_style;
 
+        std::swap(m_invstyle.fg,  m_invstyle.bg);
+        std::swap(m_invstyle.fg2, m_invstyle.bg2);
     }
 
-    virtual void update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& ) {  };
+    virtual void on_down()  {  };
+    virtual void on_click() {  };
+    virtual void on_focus() {  };
+
+    virtual void _update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& ) = 0;
+
+    void update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& );
+
 };
 
 
 
-struct idkui2::Panel: public idkui2::ElementBase
+struct idkui2::Grid: public idkui2::ElementBase
 {
     int m_rows;
     int m_cols;
     std::vector<std::vector<ElementBase*>> m_children;
 
-    Panel( const std::string&, const ElementStyle&, int, int );
+    Grid( const std::string&, const ElementStyle&, int, int );
 
-    void update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& );
-    void giveChild( int row, int col, ElementBase *element );
+    virtual void _update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& );
+    void setChild( int row, int col, ElementBase *element );
 
     void open()   { m_visible = true;  };
     void close()  { m_visible = false; };
@@ -99,7 +122,51 @@ struct idkui2::Button: public idkui2::ElementBase
         m_callback = callback;
     }
 
-    void update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& );
+    virtual void on_down()  {  };
+    virtual void on_click() { m_callback(); };
+    virtual void on_focus() {  };
+
+    virtual void _update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& );
+
+};
+
+
+struct idkui2::Slider: public idkui2::ElementBase
+{
+    float &m_data;
+    float  m_min, m_max, m_step;
+    float  m_alpha = 0.5f;
+
+    Slider( const std::string &name, const ElementStyle &style,
+            float &data, float minvalue, float maxvalue, float step = 0.0f )
+    :   ElementBase (name, style),
+        m_data      (data),
+        m_min       (minvalue),
+        m_max       (maxvalue),
+        m_step      (step)
+    {
+
+    }
+
+    virtual void on_down();
+    virtual void _update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& );
+
+};
+
+
+struct idkui2::TextInput: public idkui2::ElementBase
+{
+    std::string &m_text;
+    bool         m_focused = false;
+
+    TextInput( const std::string &name, const ElementStyle &style, std::string &text )
+    :   ElementBase (name, style),
+        m_text      (text)
+    {
+        
+    }
+
+    virtual void _update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& );
 
 };
 
@@ -113,7 +180,7 @@ struct idkui2::Title: public idkui2::ElementBase
 
     }
 
-    void update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& );
+    virtual void _update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& );
 };
 
 
@@ -129,7 +196,7 @@ struct idkui2::List: public idkui2::ElementBase
 
     }
 
-    void update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& );
+    virtual void _update( glm::vec2, glm::vec2, int, idkui2::UIRenderer& );
 
     void pushChildFront( ElementBase *element )
     {
@@ -189,18 +256,16 @@ public:
 
     UIRenderer( const std::string &font, int size );
 
-    void renderQuad   ( int x, int y, int z, int w, int h, float r, const glm::vec4& );
-    void renderGlyph  ( int x, int y, int z, char c, const glm::vec4& );
-    void renderText   ( int x, int y, int z, const std::string&, const glm::vec4& );
-    void renderTextCentered ( int x, int y, int z, const std::string&, const glm::vec4& );
-    void renderTextCenteredX( int x, int y, int z, const std::string&, const glm::vec4& );
+    void renderQuad          ( int x, int y, int z, int w, int h, float r, const glm::vec4& );
+    void renderQuadCentered  ( int x, int y, int z, int w, int h, float r, const glm::vec4& );
 
-    // void renderButton ( int x, int y, int z, const std::string&, const glm::vec3&, const glm::vec3& );
-    // void renderButtonCentered ( int x, int y, int z, const std::string&, const glm::vec3&, const glm::vec3& );
-    // void renderButtonCenteredX( int x, int y, int z, const std::string&, const glm::vec3&, const glm::vec3& );
+    void renderGlyph         ( int x, int y, int z, char c, const glm::vec4& );
+    void renderGlyphCentered ( int x, int y, int z, char c, const glm::vec4& );
+    void renderText          ( int x, int y, int z, const std::string&, const glm::vec4& );
+    void renderTextCentered  ( int x, int y, int z, const std::string&, const glm::vec4& );
+    void renderTextCenteredX ( int x, int y, int z, const std::string&, const glm::vec4& );
 
     void renderTexture( idk::EngineAPI &api );
-
 
 };
 
@@ -211,22 +276,22 @@ class idkui2::LayoutManager
 {
 private:
     friend class ElementBase;
-    friend class Panel;
+    friend class Grid;
     friend class Button;
 
-    UIRenderer     m_UIRenderer;
-    idkui2::Panel *m_root;
+    UIRenderer    m_UIRenderer;
+    idkui2::Grid *m_root;
 
-    void _updatePanel( Panel&, int depth, const glm::vec2&, const glm::vec2& );
+    void _updatePanel( Grid&, int depth, const glm::vec2&, const glm::vec2& );
 
 
 public:
 
     LayoutManager( const std::string &font, int size ): m_UIRenderer(font, size) {  };
 
-    Panel *createRootPanel( int rows, int cols, const ElementStyle& );
-    void   update( idk::EngineAPI &api, float dt );
-    void   renderTexture( idk::EngineAPI &api );
+    Grid *createRootPanel( int rows, int cols, const ElementStyle& );
+    void  update( idk::EngineAPI &api, float dt );
+    void  renderTexture( idk::EngineAPI &api );
 
 
 };

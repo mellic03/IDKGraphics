@@ -132,6 +132,14 @@ idkui2::UIRenderer::renderQuad( int x, int y, int z, int w, int h, float r, cons
 }
 
 
+void
+idkui2::UIRenderer::renderQuadCentered( int x, int y, int z, int w, int h, float r,
+                                        const glm::vec4 &color )
+{
+    renderQuad(x-w/2, y-h/2, z, w, h, r, color);
+}
+
+
 
 
 glm::vec2 atlas_uv( int row, int col, int glyph_w, int atlas_w, glm::vec2 texcoord )
