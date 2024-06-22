@@ -1,6 +1,9 @@
 #version 460 core
-#extension GL_ARB_bindless_texture: require
+
 #extension GL_GOOGLE_include_directive: require
+#include "./include/storage.glsl"
+#include "./include/util.glsl"
+#include "./include/pbr.glsl"
 
 
 layout (
@@ -10,11 +13,6 @@ layout (
 ) in;
 
 layout (binding = 0, rg16f) writeonly uniform image2D un_output;
-
-
-#include "./include/UBOs.glsl"
-#include "./include/util.glsl"
-#include "./include/pbr.glsl"
 
 
 #define LUT_TEXTURE_SIZE 512

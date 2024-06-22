@@ -1,5 +1,8 @@
 #version 460 core
+
 #extension GL_GOOGLE_include_directive: require
+#include "./include/storage.glsl"
+
 
 layout (
     local_size_x = 8,
@@ -10,18 +13,17 @@ layout (
 
 layout (binding = 0, rgba16f) uniform image2D un_output;
 
-#include "./include/UBOs.glsl"
 
 uniform sampler2D un_text;
 
 void main()
 {
-    IDK_Camera camera = IDK_RenderData_GetCamera();
+    IDK_Camera camera = IDK_UBO_cameras[0];
 
     ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
     vec4  color = texelFetch(un_text, texel, 0);
 
-    texel.y = int(camera.image_size.y) - texel.y;
+    texel.y = int(camera.height) - texel.y;
 
     vec4 dst = imageLoad(un_output, texel);
     vec4 src = color;

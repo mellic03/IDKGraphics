@@ -1,7 +1,7 @@
 #version 460 core
 #extension GL_GOOGLE_include_directive: require
 
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 #include "../include/util.glsl"
 #include "../include/lightsource.glsl"
 
@@ -23,10 +23,10 @@ layout (binding=30, rg8i) readonly uniform iimage2D un_velocity;
 
 void main()
 {
-    vec2  size = IDK_RenderData_GetCamera().image_size.xy;
+    vec2  size = IDK_RenderData_GetCamera().vec2(camera.near, camera.far);
 
     ivec2 texel    = ivec2(gl_GlobalInvocationID.xy);
-    vec2  texcoord = texel / IDK_RenderData_GetCamera().image_size.xy;
+    vec2  texcoord = texel / IDK_RenderData_GetCamera().vec2(camera.near, camera.far);
     float strength = 1.0; // 0.25 + distance(texcoord, vec2(0.5));
 
 

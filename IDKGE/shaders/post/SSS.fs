@@ -2,7 +2,7 @@
 
 #extension GL_GOOGLE_include_directive: require
 
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 #include "../include/util.glsl"
 #include "../include/pbr.glsl"
 
@@ -66,16 +66,16 @@ void main()
 
 
     vec3 ray_pos = position + RAY_OFFSET*surface.N;
-    float initial_depth = IDK_WorldToUV(ray_pos, camera.PV).z;
+    float initial_depth = IDK_WorldToUV(ray_pos, (camera.P * camera.V)).z;
 
-    vec3 view_dir = inverse(mat3(camera.PV)) * vec3(fsin_texcoords * 2.0 - 1.0, 1.0);
+    vec3 view_dir = inverse(mat3((camera.P * camera.V))) * vec3(fsin_texcoords * 2.0 - 1.0, 1.0);
     vec3 ray_dir  = surface.R;
 
     vec4  result  = vec4(0.0, 0.0, 0.0, 1.0);
     int   count   = 0;
     float cumdist = 0.0;
 
-    const mat4 PV = camera.PV;
+    const mat4 PV = (camera.P * camera.V);
 
     for (float i=0; i<RAY_MAX_STEPS; i++)
     {
@@ -85,7 +85,7 @@ void main()
         projected.xy /= projected.w;
         projected.xy = projected.xy * 0.5 + 0.5;
 
-        ivec2 tx = ivec2(projected.xy * camera.image_size.xy);
+        ivec2 tx = ivec2(projected.xy * vec2(camera.width, camera.height));
         vec2  uv = projected.xy;
 
 
@@ -128,7 +128,7 @@ void main()
 
 // #extension GL_GOOGLE_include_directive: require
 
-// #include "../include/UBOs.glsl"
+// #include "../include/storage.glsl"
 // #include "../include/util.glsl"
 // #include "../include/pbr.glsl"
 
@@ -187,9 +187,9 @@ void main()
 
 
 //     vec3 ray_pos = position + RAY_OFFSET*surface.N;
-//     float initial_depth = IDK_WorldToUV(ray_pos, camera.PV).z;
+//     float initial_depth = IDK_WorldToUV(ray_pos, (camera.P * camera.V)).z;
 
-//     vec3 view_dir = inverse(mat3(camera.PV)) * vec3(fsin_texcoords * 2.0 - 1.0, 1.0);
+//     vec3 view_dir = inverse(mat3((camera.P * camera.V))) * vec3(fsin_texcoords * 2.0 - 1.0, 1.0);
 //     vec3 ray_dir  = surface.R;
 
 //     if (dot(view_dir, ray_dir) < 0.3)
@@ -204,7 +204,7 @@ void main()
 //     int   count   = 0;
 //     float cumdist = 0.0;
 
-//     const mat4 PV = camera.PV;
+//     const mat4 PV = (camera.P * camera.V);
 
 //     for (float i=0; i<RAY_MAX_STEPS; i++)
 //     {
@@ -214,7 +214,7 @@ void main()
 //         projected.xy /= projected.w;
 //         projected.xy = projected.xy * 0.5 + 0.5;
 
-//         ivec2 tx = ivec2(projected.xy * camera.image_size.xy);
+//         ivec2 tx = ivec2(projected.xy * vec2(camera.near, camera.far));
 //         vec2  uv = projected.xy;
 
 

@@ -69,12 +69,7 @@ idk::RenderEngine::compileShaders()
     createProgram("background", "IDKGE/shaders/", "screenquad.vs", "deferred/background.fs");
 
     createProgram("gpass-particle", "IDKGE/shaders/deferred/", "gpass-particle.vs", "gpass-particle.fs");
-
     createProgram("gpass", "IDKGE/shaders/deferred/", "gpass.vs", "gpass.fs");
-    createProgram("lpass", "IDKGE/shaders/", "screenquad.vs", "deferred/light-pass.fs");
-
-
-    // createProgram("planet-gen", glShaderProgram("IDKGE/shaders/generative/planet-gen.comp"));
 
 
 
@@ -90,13 +85,7 @@ idk::RenderEngine::compileShaders()
     idk::glShaderStage FS_Spotlight("IDKGE/shaders/deferred/spotlight.fs");
     createProgram("deferred-spotlight", idk::glShaderProgram(VS_Spotlight, FS_Spotlight));
 
-
-    // idk::glShaderStage VS_Atmosphere("IDKGE/shaders/deferred/atmosphere.vs");
-    // idk::glShaderStage FS_Atmosphere("IDKGE/shaders/deferred/atmosphere.fs");
-    // createProgram("atmosphere", idk::glShaderProgram(VS_Atmosphere, FS_Atmosphere));
-
     createProgram("dirshadow-indirect", "IDKGE/shaders/", "dirshadow-indirect.vs", "dirshadow.fs");
-    // createProgram("dir-volumetric", "IDKGE/shaders/", "screenquad.vs", "deferred/volumetric_dirlight.fs");
     createProgram("SSR", "IDKGE/shaders/", "screenquad.vs", "post/SSR.fs");
 
     createProgram("bloom-first", "IDKGE/shaders/", "screenquad.vs", "post/bloom-first.fs");
@@ -105,12 +94,9 @@ idk::RenderEngine::compileShaders()
 
     createProgram("screenquad", "IDKGE/shaders/", "screenquad.vs", "screenquad.fs");
 
-    createProgram("alpha-0-1",       "IDKGE/shaders/", "screenquad.vs", "post/alpha-0-1.fs");
-    // createProgram("additive",       "IDKGE/shaders/", "screenquad.vs", "post/additive.fs");
-    // createProgram("blit",           "IDKGE/shaders/", "screenquad.vs", "post/blit.fs");
     createProgram("fxaa",           "IDKGE/shaders/", "screenquad.vs", "post/fxaa.fs");
     createProgram("colorgrade",     "IDKGE/shaders/", "screenquad.vs", "post/colorgrade.fs");
-    // createProgram("dir_shadow",     "IDKGE/shaders/", "dirshadow.vs",  "dirshadow.fs");
+    createProgram("alpha-0-1",      "IDKGE/shaders/", "screenquad.vs", "post/alpha-0-1.fs");
 
 }
 
@@ -241,15 +227,14 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     m_GI_RQ        = m_render_queues.create();
 
 
+    // // Initialize GL_DRAW_INDIRECT_BUFFER for glMultiDrawElementsIndirect
+    // // -----------------------------------------------------------------------------------------
+    // m_DrawCommandBuffer.init();
+    // m_DrawCommandBuffer.bufferData(512 * sizeof(idk::glDrawCmd), nullptr, GL_DYNAMIC_COPY);
 
-    // Initialize GL_DRAW_INDIRECT_BUFFER for glMultiDrawElementsIndirect
-    // -----------------------------------------------------------------------------------------
-    m_DrawCommandBuffer.init();
-    m_DrawCommandBuffer.bufferData(512 * sizeof(idk::glDrawCmd), nullptr, GL_DYNAMIC_COPY);
-
-    m_DrawIndirectData = new idk::DrawIndirectData;
-    m_DrawIndirectSSBO.init(0);
-    // -----------------------------------------------------------------------------------------
+    // m_DrawIndirectData = new idk::DrawIndirectData;
+    // m_DrawIndirectSSBO.init(0);
+    // // -----------------------------------------------------------------------------------------
 
 
     // Primitive shapes
@@ -262,7 +247,23 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     m_unit_cylinder_FF = modelAllocator().loadModel("IDKGE/resources/unit-cylinder-FF.idkvi");
     // -----------------------------------------------------------------------------------------
 
-    m_UBO_RenderData.init(3);
+
+
+    // Initialize buffers for indirect draw
+    // -----------------------------------------------------------------------------------------
+    m_SSBO.init(0);
+    m_SSBO.bufferData(sizeof(idk::SSBO_Buffer), nullptr, GL_DYNAMIC_DRAW);
+
+    m_UBO.init(0);
+    m_UBO.bufferData(sizeof(idk::UBO_Buffer),  nullptr, GL_DYNAMIC_DRAW);
+
+    m_DIB.init();
+    m_DIB.bufferData(draw_buffer::MAX_DRAW_CALLS*sizeof(glDrawCmd), nullptr, GL_DYNAMIC_DRAW);
+
+    m_lightsource_DIB.init();
+    m_lightsource_DIB.bufferData(sizeof(glDrawCmd), nullptr, GL_DYNAMIC_DRAW);
+    // -----------------------------------------------------------------------------------------
+
 
 
     // Compute BRDF LUT
@@ -530,8 +531,8 @@ idk::RenderEngine::getRenderSetting( idk::RenderSetting flag )
 int
 idk::RenderEngine::createCamera()
 {
-    int camera_id = m_camera_allocator.create();
-    m_camera_allocator.get(camera_id).aspect = float(m_resolution.x) / float(m_resolution.y);
+    int camera_id = m_cameras.create();
+    m_cameras.get(camera_id).aspect = float(m_resolution.x) / float(m_resolution.y);
     return camera_id;
 }
 
@@ -738,48 +739,33 @@ idk::RenderEngine::getParticleEmitter( int emitter )
 }
 
 
+
 void
-idk::RenderEngine::update_UBO_camera()
+idk::RenderEngine::update_UBO_camera( idk::UBO_Buffer &buffer )
 {
-    idk::Camera &camera = getCamera();
+    uint32_t offset = 0;
 
-    static glm::mat4 prev_v, prev_p, prev_pv;
-    static glm::vec3 prev_position;
+    for (IDK_Camera &camera: m_cameras)
+    {
+        camera.width    = m_resolution.x;
+        camera.height   = m_resolution.y;
+        camera.aspect   = camera.width / camera.height;
+        camera.position = glm::inverse(camera.V)[3];
 
-    glm::mat4 P = camera.P();
-    glm::mat4 V = camera.V();
+        camera.P = glm::perspective(
+            glm::radians(camera.fov),
+            camera.aspect,
+            camera.near,
+            camera.far
+        );
 
-    m_RenderData.cameras[0].position = glm::vec4(camera.position, 1.0f);
-    m_RenderData.cameras[0].V  = V;
-    m_RenderData.cameras[0].P  = P;
-    m_RenderData.cameras[0].PV = P * V;
+        buffer.cameras[offset++] = camera;
 
-    glm::mat4 P_far = glm::perspective(glm::radians(camera.fov), camera.aspect, camera.near, 10000.0f);
-    m_RenderData.cameras[0].P_far = P_far;
-    m_RenderData.cameras[0].PV_far = P_far * V;
-
-    m_RenderData.cameras[0].image_size  = glm::vec4(width(), height(), 0.0f, 0.0f);
-    m_RenderData.cameras[0].image_plane = glm::vec4(camera.near, camera.far, 0.0f, 0.0f);
-    m_RenderData.cameras[0].bloom       = camera.bloom;
-
-
-    m_RenderData.cameras[0].bloom       = camera.bloom;
-    m_RenderData.cameras[0].chromatic_r = camera.chromatic_r;
-    m_RenderData.cameras[0].chromatic_g = camera.chromatic_g;
-    m_RenderData.cameras[0].chromatic_b = camera.chromatic_b;
-    m_RenderData.cameras[0].chromatic_strength = camera.chromatic_strength;
-
-
-    m_RenderData.cameras[0].prev_position = glm::vec4(prev_position, 1.0f);
-    m_RenderData.cameras[0].prev_V  = prev_v;
-    m_RenderData.cameras[0].prev_P  = prev_p;
-    m_RenderData.cameras[0].prev_PV = prev_pv;
-
-    prev_position = camera.position;
-    prev_v  = V;
-    prev_p  = P;
-    prev_pv = prev_p * prev_v;
-    
+        if (offset >= m_cameras.size())
+        {
+            break;
+        }
+    }
 }
 
 
@@ -801,29 +787,12 @@ idk::RenderEngine::genLightsourceDrawCommand( int model, uint32_t num_lights, id
 }
 
 
-idk::glDrawCmd
-idk::RenderEngine::genAtmosphereDrawCommand( idk::ModelAllocator &MA )
-{
-    MeshDescriptor &mesh = MA.getModel(m_unit_sphere).meshes[0];
-
-    idk::glDrawCmd cmd = {
-        .count         = mesh.numIndices,
-        .instanceCount = uint32_t(m_atmospheres.size()),
-        .firstIndex    = mesh.firstIndex,
-        .baseVertex    = mesh.baseVertex,
-        .baseInstance  = 0
-    };
-
-    return cmd;
-}
-
-
 void
-idk::RenderEngine::updateLightsourcesUBO( idk::UBORenderData &data )
+idk::RenderEngine::update_UBO_lightsources( idk::UBO_Buffer &buffer )
 {
     static uint32_t offset;
 
-    auto &cam = getCamera();
+    IDK_Camera &camera = getCamera();
 
     offset = 0;
     for (IDK_Dirlight &light: m_dirlights)
@@ -831,65 +800,65 @@ idk::RenderEngine::updateLightsourcesUBO( idk::UBORenderData &data )
         glm::mat4 P = glm::ortho(-10.0f, +10.0f, -10.0f, +10.0f, -10.0f, 10.0f);
 
         glm::mat4 V = glm::lookAt(
-            cam.position - glm::vec3(light.direction),
-            cam.position,
+            glm::vec3(camera.position) - glm::vec3(light.direction),
+            glm::vec3(camera.position),
             glm::vec3(0.0f, 1.0f, 0.0f)
         );
 
         light.transform = P*V;
 
-        data.dirlights[offset++] = light;
+        buffer.dirlights[offset++] = light;
     }
 
     offset = 0;
     for (IDK_Pointlight &light: m_pointlights)
     {
-        glm::mat4 T = glm::translate(glm::mat4(1.0f), glm::vec3(light.position));
-        glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f*light.radius));
+        // glm::mat4 T = glm::translate(glm::mat4(1.0f), glm::vec3(light.position));
+        // glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f*light.radius));
 
-        light.transform = T * S;
+        // light.transform = T * S;
 
-        data.pointlights[offset++] = light;
+        buffer.pointlights[offset++] = light;
     }
 
     offset = 0;
     for (IDK_Spotlight &light: m_spotlights)
     {
-        float h      = light.radius;
-        float alpha  = light.angle[0];
-        float radius = h * tan(alpha);
+        // float h      = light.radius;
+        // float alpha  = light.angle[0];
+        // float radius = h * tan(alpha);
 
-        glm::mat4 T = glm::translate(glm::mat4(1.0f), glm::vec3(light.position));
-        glm::mat4 R = glm::mat4_cast(light.orientation);
-        glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f*radius));
+        // glm::mat4 T = glm::translate(glm::mat4(1.0f), glm::vec3(light.position));
+        // glm::mat4 R = glm::mat4_cast(light.orientation);
+        // glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f*radius));
 
-        light.transform = T * R * S;
-        light.direction = light.orientation * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f);
+        // light.transform = T * R * S;
+        // light.direction = light.orientation * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f);
 
-        data.spotlights[offset++] = light;
+        buffer.spotlights[offset++] = light;
     }
 }
 
 
-void
-idk::RenderEngine::updateAtmosphereUBO( idk::UBORenderData &data )
-{
-    static uint32_t offset;
+// void
+// idk::RenderEngine::updateAtmosphereUBO( idk::UBORenderData &data )
+// {
+//     static uint32_t offset;
 
-    offset = 0;
-    for (IDK_Atmosphere &atmosphere: m_atmospheres)
-    {
-        glm::mat4 T = glm::translate(glm::mat4(1.0f), glm::vec3(atmosphere.position));
-        glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f * atmosphere.radius * atmosphere.atmosphere_scale));
+//     offset = 0;
+//     for (IDK_Atmosphere &atmosphere: m_atmospheres)
+//     {
+//         glm::mat4 T = glm::translate(glm::mat4(1.0f), glm::vec3(atmosphere.position));
+//         glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f * atmosphere.radius * atmosphere.atmosphere_scale));
 
-        atmosphere.transform = T * S;
+//         atmosphere.transform = T * S;
 
-        // data.atmospheres[offset++] = atmosphere;
-    }
+//         // data.atmospheres[offset++] = atmosphere;
+//     }
 
-    std::memcpy(data.atmospheres, m_atmospheres.data(), m_atmospheres.size() * sizeof(IDK_Atmosphere));
+//     std::memcpy(data.atmospheres, m_atmospheres.data(), m_atmospheres.size() * sizeof(IDK_Atmosphere));
 
-}
+// }
 
 
 
@@ -910,26 +879,41 @@ idk::RenderEngine::endFrame( float dt )
 {
     delta_time = dt;
 
-    m_DrawCommandBuffer.bind();
-    gl::bindVertexArray(m_model_allocator.getVAO());
+    {
+        if (m_overlays.empty() == false)
+        {
+            m_overlays.front().advance(dt);
 
-    // Update SSBO data
+            if (m_overlays.front().finished())
+            {
+                LOG_INFO() << "Overlay texture " << m_overlays.front().texture.ID() << " finished";
+                m_overlays.pop();
+            }
+        }
+
+
+        if (m_overlayfills.empty() == false)
+        {
+            m_overlayfills.front().advance(dt);
+
+            if (m_overlayfills.front().finished())
+            {
+                m_overlayfills.pop();
+            }
+        }
+    }
+
+
+    // Render text
     // -----------------------------------------------------------------------------------------
-    // m_DrawIndirectSSBO.update(*m_DrawIndirectData);
-    // -----------------------------------------------------------------------------------------
-
-    // Update UBO data
-    // -----------------------------------------------------------------------------------------
-    update_UBO_camera();
-
-    updateLightsourcesUBO(m_RenderData);
-    // updateAtmosphereUBO(m_RenderData);
-    m_UBO_RenderData.update(m_RenderData);
+    idkui::TextManager::render(m_textsurface);
     // -----------------------------------------------------------------------------------------
 
 
 
-    idk::Camera &camera = getCamera();
+    // Update particle emitters
+    // -----------------------------------------------------------------------------------------
+    IDK_Camera &camera = getCamera();
 
     for (auto &P: m_particle_emitters)
     {
@@ -941,55 +925,117 @@ idk::RenderEngine::endFrame( float dt )
             _getRenderQueue(m_viewspace_RQ).enque(P.model_id, M);
         }
     }
+    // -----------------------------------------------------------------------------------------
 
 
 
-    gl::disable(GL_CULL_FACE);
-    this->shadowpass();
-    gl::enable(GL_CULL_FACE);
+    // Update UBO data
+    // -----------------------------------------------------------------------------------------
+    update_UBO_camera(m_UBO_buffer);
+    update_UBO_lightsources(m_UBO_buffer);
+    // -----------------------------------------------------------------------------------------
+
+
+    // Update SSBO data
+    // -----------------------------------------------------------------------------------------
+    {
+        auto &MA = m_model_allocator;
+
+        size_t texture_offset   = 0;
+        size_t transform_offset = 0;
+        size_t drawID_offset    = 0;
+
+        for (auto &queue: m_render_queues)
+        {
+            queue.genDrawCommands(
+                MA,
+                texture_offset,
+                transform_offset,
+                drawID_offset,
+                m_SSBO_buffer,
+                m_DIB_buffer
+            );
+        }
+
+        for (auto &queue: m_user_render_queues)
+        {
+            queue.genDrawCommands(
+                MA,
+                texture_offset,
+                transform_offset,
+                drawID_offset,
+                m_SSBO_buffer,
+                m_DIB_buffer
+            );
+        }
+
+        for (auto &queue: m_user_shadow_queues)
+        {
+            queue.genDrawCommands(
+                MA,
+                texture_offset,
+                transform_offset,
+                drawID_offset,
+                m_SSBO_buffer,
+                m_DIB_buffer
+            );
+        }
+    }
+    // -----------------------------------------------------------------------------------------
+
+
+    IDK_ASSERT("m_DIB_buffer.size() > 512", m_DIB_buffer.size() <= draw_buffer::MAX_DRAW_CALLS);
+
+    m_UBO.bufferSubData(0, sizeof(m_UBO_buffer), (const void *)(&m_UBO_buffer));
+    m_SSBO.bufferSubData(0, sizeof(m_SSBO_buffer), (const void *)(&m_SSBO_buffer));
+    m_DIB.bufferSubData(0, sizeof(idk::glDrawCmd)*m_DIB_buffer.size(), m_DIB_buffer.data());
+    gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_DIB.ID());
+
+
+    gl::bindVertexArray(m_model_allocator.getVAO());
+    gl::disable(GL_BLEND);
 
 
 
-    m_mainbuffer_0.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    m_finalbuffer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // Render G-Buffer
+    // -----------------------------------------------------------------------------------------
+    gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
+
+    m_geom_buffer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    m_geom_buffer.bind();
 
     RenderStage_geometry(camera, dt, m_geom_buffer);
+    // -----------------------------------------------------------------------------------------
+
+
+    // Render depth maps
+    // -----------------------------------------------------------------------------------------
+    gl::disable(GL_CULL_FACE);
+
+    shadowpass_dirlights();
+    shadowpass_pointlights();
+    shadowpass_spotlights();
+    // -----------------------------------------------------------------------------------------
+
+
+    // Lighting pass
+    // -----------------------------------------------------------------------------------------
+    m_mainbuffer_0.clear(GL_COLOR_BUFFER_BIT);
+    m_mainbuffer_0.bind();
+
     RenderStage_lighting(camera, dt, m_geom_buffer, m_mainbuffer_0);
-
-
-    if (m_overlays.empty() == false)
-    {
-        m_overlays.front().advance(dt);
-
-        if (m_overlays.front().finished())
-        {
-            LOG_INFO() << "Overlay texture " << m_overlays.front().texture.ID() << " finished";
-            m_overlays.pop();
-        }
-    }
-
-
-    if (m_overlayfills.empty() == false)
-    {
-        m_overlayfills.front().advance(dt);
-
-        if (m_overlayfills.front().finished())
-        {
-            m_overlayfills.pop();
-        }
-    }
-
-
-
-    // Render text
     // -----------------------------------------------------------------------------------------
-    idkui::TextManager::render(m_textsurface);
+
+
+    // Post processing pass
     // -----------------------------------------------------------------------------------------
+    gl::disable(GL_DEPTH_TEST, GL_CULL_FACE);
+
+    m_finalbuffer.clear(GL_COLOR_BUFFER_BIT);
 
     RenderStage_postprocessing(camera, m_mainbuffer_0, m_finalbuffer);
+    // -----------------------------------------------------------------------------------------
 
-
-    gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
 
 
     // Clear render queues
@@ -1008,6 +1054,8 @@ idk::RenderEngine::endFrame( float dt )
     {
         queue.clear();
     }
+
+    m_DIB_buffer.clear();
     // -----------------------------------------------------------------------------------------
 
 }

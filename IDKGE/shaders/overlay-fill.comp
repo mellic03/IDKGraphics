@@ -1,5 +1,8 @@
 #version 460 core
+
 #extension GL_GOOGLE_include_directive: require
+#include "./include/storage.glsl"
+
 
 layout (
     local_size_x = 8,
@@ -9,8 +12,6 @@ layout (
 
 
 layout (binding = 0, rgba16f) uniform image2D un_output;
-
-#include "./include/UBOs.glsl"
 
 uniform float un_alpha;
 uniform vec3  un_color;

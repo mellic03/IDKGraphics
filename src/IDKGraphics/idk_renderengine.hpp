@@ -8,7 +8,9 @@
 #include "batching/idk_model_allocator.hpp"
 #include "batching/idk_render_queue.hpp"
 
-#include "storage/idk_ubo_general.hpp"
+// #include "storage/idk_ubo_general.hpp"
+#include "storage/buffers.hpp"
+
 #include "idk_overlay.hpp"
 #include "render/particle.hpp"
 
@@ -84,42 +86,41 @@ private:
 
 
 
-    static constexpr int                BLOOM_MAX_LEVEL = 6;
-    glFramebuffer                       m_bloom_buffers[BLOOM_MAX_LEVEL+1];
-    GLuint                              m_velocitybuffer;
-    GLuint                              m_positionbuffer;
+    static constexpr int                            BLOOM_MAX_LEVEL = 6;
+    glFramebuffer                                   m_bloom_buffers[BLOOM_MAX_LEVEL+1];
+    GLuint                                          m_velocitybuffer;
+    GLuint                                          m_positionbuffer;
     // -----------------------------------------------------------------------------------------
 
     // Shaders
     // -----------------------------------------------------------------------------------------
-    idk::Allocator<glShaderProgram>         m_programs;
-    std::map<std::string, int>              m_program_ids;
+    idk::Allocator<glShaderProgram>                 m_programs;
+    std::map<std::string, int>                      m_program_ids;
     // -----------------------------------------------------------------------------------------
 
-    // UBO
+    // Shader buffer objects
     // -----------------------------------------------------------------------------------------
-    using UBO_type = idk::glTemplatedBufferObject<GL_UNIFORM_BUFFER, idk::UBORenderData>;
-    idk::UBORenderData                  m_RenderData;
-    UBO_type                            m_UBO_RenderData;
+    idk::glBufferObject<GL_UNIFORM_BUFFER>          m_UBO;
+    idk::UBO_Buffer                                 m_UBO_buffer;
+
+    idk::glBufferObject<GL_SHADER_STORAGE_BUFFER>   m_SSBO;
+    idk::SSBO_Buffer                                m_SSBO_buffer;
+
+    idk::glBufferObject<GL_DRAW_INDIRECT_BUFFER>    m_DIB;
+    std::vector<idk::glDrawCmd>                     m_DIB_buffer;
+
+    idk::glBufferObject<GL_DRAW_INDIRECT_BUFFER>    m_lightsource_DIB;
     // -----------------------------------------------------------------------------------------
 
 
     int                                 m_active_camera_id;
-    idk::Allocator<Camera>              m_camera_allocator;
-    // idk::LightSystem                    m_lightsystem;
+    idk::Allocator<IDK_Camera>          m_cameras;
     idk::ModelAllocator                 m_model_allocator;
 
     idk::Allocator<idk::RenderQueue>    m_render_queues;
     idk::Allocator<idk::RenderQueue>    m_user_render_queues;
     idk::Allocator<idk::RenderQueue>    m_user_shadow_queues;
     int                                 m_RQ, m_viewspace_RQ, m_shadow_RQ, m_GI_RQ;
-
-
-    using SSBO_type = idk::glTemplatedBufferObject<GL_SHADER_STORAGE_BUFFER, idk::DrawIndirectData>;
-
-    idk::glBufferObject<GL_DRAW_INDIRECT_BUFFER>   m_DrawCommandBuffer;
-    idk::DrawIndirectData                         *m_DrawIndirectData;
-    SSBO_type                                      m_DrawIndirectSSBO;
 
     // // VXGI
     // // -----------------------------------------------------------------------------------------
@@ -142,7 +143,9 @@ private:
     idk::Allocator<IDK_Dirlight>        m_dirlights;
     idk::Allocator<IDK_Pointlight>      m_pointlights;
     idk::Allocator<IDK_Spotlight>       m_spotlights;
-    idk::Allocator<IDK_Atmosphere>      m_atmospheres;
+    size_t                              m_light_cmd_offsets[3];
+
+    // idk::Allocator<IDK_Atmosphere>      m_atmospheres;
 
     int                                 m_unit_line;
     int                                 m_unit_cube;
@@ -154,22 +157,17 @@ private:
 
 
 
-    void                                update_UBO_camera();
-    void                                update_UBO_dirlights( idk::UBORenderData &data );
-
-
-    void                                updateLightsourcesUBO( idk::UBORenderData &data );
-    void                                updateAtmosphereUBO( idk::UBORenderData &data );
+    void                                update_UBO_camera( idk::UBO_Buffer& );
+    void                                update_UBO_lightsources( idk::UBO_Buffer& );
 
     idk::glDrawCmd                      genDirlightDrawCommand   ( idk::ModelAllocator & );
     idk::glDrawCmd                      genLightsourceDrawCommand( int, uint32_t, idk::ModelAllocator & );
-    idk::glDrawCmd                      genAtmosphereDrawCommand( idk::ModelAllocator & );
+    // idk::glDrawCmd                      genAtmosphereDrawCommand( idk::ModelAllocator & );
 
 
     void                                shadowpass_dirlights();
     void                                shadowpass_pointlights();
     void                                shadowpass_spotlights();
-    void                                shadowpass();
     // -----------------------------------------------------------------------------------------
 
 
@@ -178,17 +176,17 @@ private:
 
     // Render stages    
     // ------------------------------------------------------------------------------------
-    void RenderStage_geometry( idk::Camera &, float dtime,
+    void RenderStage_geometry( IDK_Camera &, float dtime,
                                glFramebuffer &buffer_out );
 
 
-    void RenderStage_volumetrics( idk::Camera &,
+    void RenderStage_volumetrics( IDK_Camera &,
                                   glFramebuffer &buffer_in,
                                   glFramebuffer &buffer_out );
 
-    void RenderStage_atmospheres( idk::Camera &,
-                                  glFramebuffer &buffer_in,
-                                  glFramebuffer &buffer_out );
+    // void RenderStage_atmospheres( IDK_Camera &,
+    //                               glFramebuffer &buffer_in,
+    //                               glFramebuffer &buffer_out );
 
 
     void RenderStage_dirlights();
@@ -196,7 +194,7 @@ private:
     void RenderStage_spotlights();
 
 
-    void RenderStage_lighting( idk::Camera &, float dtime,
+    void RenderStage_lighting( IDK_Camera &, float dtime,
                                glFramebuffer &buffer_in,
                                glFramebuffer &buffer_out );
 
@@ -208,7 +206,7 @@ private:
 
     void PostProcess_SSR( glFramebuffer &buffer_in, glFramebuffer &buffer_out );
 
-    void PostProcess_colorgrading( idk::Camera &,
+    void PostProcess_colorgrading( IDK_Camera &,
                                    glFramebuffer &buffer_in,
                                    glFramebuffer &buffer_out );
 
@@ -218,7 +216,7 @@ private:
     void PostProcess_overlay( glFramebuffer &buffer_out );
 
 
-    void RenderStage_postprocessing( idk::Camera &,
+    void RenderStage_postprocessing( IDK_Camera &,
                                      glFramebuffer &buffer_in,
                                      glFramebuffer &buffer_out );
     // ------------------------------------------------------------------------------------
@@ -272,16 +270,16 @@ public:
 
     int                                 createCamera();
     void                                useCamera( int cam_id ) { m_active_camera_id = cam_id; };
-    idk::Camera &                       getCamera( int cam_id ) { return m_camera_allocator.get(cam_id); };
-    idk::Camera &                       getCamera(            ) { return getCamera(m_active_camera_id);  };
+    IDK_Camera &                        getCamera( int cam_id ) { return m_cameras.get(cam_id); };
+    IDK_Camera &                        getCamera(            ) { return getCamera(m_active_camera_id);  };
     int                                 activeCamera() { return m_active_camera_id; };
-    idk::Allocator<Camera> &            getCameras() { return m_camera_allocator; };
+    idk::Allocator<IDK_Camera> &        getCameras() { return m_cameras; };
 
 
                                         IDK_ALLOCATOR_ACCESS(Dirlight,   IDK_Dirlight,   m_dirlights);
                                         IDK_ALLOCATOR_ACCESS(Pointlight, IDK_Pointlight, m_pointlights);
                                         IDK_ALLOCATOR_ACCESS(Spotlight,  IDK_Spotlight,  m_spotlights);
-                                        IDK_ALLOCATOR_ACCESS(Atmosphere, IDK_Atmosphere, m_atmospheres);
+                                        // IDK_ALLOCATOR_ACCESS(Atmosphere, IDK_Atmosphere, m_atmospheres);
 
     int                                 createRenderQueue( const std::string &program );
     void                                destroyRenderQueue( int RQ );

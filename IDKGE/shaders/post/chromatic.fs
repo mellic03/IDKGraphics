@@ -2,8 +2,7 @@
 #extension GL_ARB_bindless_texture: require
 #extension GL_GOOGLE_include_directive: require
 
-#include "../include/SSBO_indirect.glsl"
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 #include "../include/util.glsl"
 #include "../include/pbr.glsl"
 

@@ -2,7 +2,7 @@
 
 #extension GL_GOOGLE_include_directive: require
 
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 #include "../include/util.glsl"
 #include "../include/pbr.glsl"
 

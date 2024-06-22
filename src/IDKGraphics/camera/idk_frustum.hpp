@@ -21,7 +21,7 @@ public:
     const glm::mat4              &getView( const glm::vec3 &L );
     const glm::mat4              &getProjection( const glm::vec3 &L, const std::vector<glm::vec4> &corners );
 
-    std::vector<glm::mat4>        getCascades( idk::Camera &camera, const glm::vec3 &L );
+    std::vector<glm::mat4>        getCascades( IDK_Camera &camera, const glm::vec3 &L );
 
 };
 

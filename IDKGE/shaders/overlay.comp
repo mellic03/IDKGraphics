@@ -1,5 +1,8 @@
 #version 460 core
+
 #extension GL_GOOGLE_include_directive: require
+#include "./include/storage.glsl"
+
 
 layout (
     local_size_x = 8,
@@ -10,16 +13,15 @@ layout (
 
 layout (binding = 0, rgba16f) uniform image2D un_output;
 
-#include "./include/UBOs.glsl"
 
 uniform float     un_alpha;
 uniform sampler2D un_input;
 
 void main()
 {
-    IDK_Camera camera = IDK_RenderData_GetCamera();
+    IDK_Camera camera = IDK_UBO_cameras[0];
 
-    vec2  dst_size = camera.image_size.xy;
+    vec2  dst_size = vec2(camera.width, camera.height);
     vec2  src_size = textureSize(un_input, 0);
 
     ivec2 dst_texel    = ivec2(gl_GlobalInvocationID.xy);

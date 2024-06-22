@@ -1,15 +1,13 @@
 #version 460 core
-#extension GL_ARB_bindless_texture: require
+
 #extension GL_GOOGLE_include_directive: require
-
-layout (location = 0) out vec4 fsout_frag_color;
-
-
-#include "../include/SSBO_indirect.glsl"
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 #include "../include/util.glsl"
 #include "../include/pbr.glsl"
 
+
+
+layout (location = 0) out vec4 fsout_frag_color;
 
 in vec3 fsin_fragpos;
 flat in int idk_LightID;

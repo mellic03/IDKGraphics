@@ -1,7 +1,7 @@
 #version 460 core
 #extension GL_GOOGLE_include_directive: require
 
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 #include "./vxgi.glsl"
 #include "../include/lightsource.glsl"
 

@@ -3,8 +3,7 @@
 #extension GL_GOOGLE_include_directive: require
 #extension GL_ARB_bindless_texture: require
 
-#include "../include/SSBO_indirect.glsl"
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 #include "../include/util.glsl"
 
 layout (location = 0) out vec4 fsout_albedo;
@@ -28,20 +27,20 @@ void main()
 {
     vec2 texcoords = fsin_texcoords;
 
-    uint offset = un_IndirectDrawData.texture_offsets[draw_id];
+    uint offset = IDK_SSBO_texture_offsets[draw_id];
 
-    vec4  albedo = texture(un_IndirectDrawData.textures[offset+0], texcoords).rgba;
-    vec3  normal = texture(un_IndirectDrawData.textures[offset+1], texcoords).xyz * 2.0 - 1.0;
-    vec3  ao_r_m = texture(un_IndirectDrawData.textures[offset+2], texcoords).rgb;
-    float noidea = texture(un_IndirectDrawData.textures[offset+3], texcoords).r;
-    float emissv = texture(un_IndirectDrawData.textures[offset+4], texcoords).r;
+    vec4  albedo = texture(IDK_SSBO_textures[offset+0], texcoords).rgba;
+    vec3  normal = texture(IDK_SSBO_textures[offset+1], texcoords).xyz * 2.0 - 1.0;
+    vec3  ao_r_m = texture(IDK_SSBO_textures[offset+2], texcoords).rgb;
+    float noidea = texture(IDK_SSBO_textures[offset+3], texcoords).r;
+    float emissv = texture(IDK_SSBO_textures[offset+4], texcoords).r;
     float ao        = ao_r_m.r;
     float roughness = ao_r_m.g;
     float metallic  = ao_r_m.b;
 
     if (albedo.a < 0.9)
     {
-        // ivec2 texel = ivec2(fsin_texcoords * IDK_RenderData_GetCamera().image_size.xy);
+        // ivec2 texel = ivec2(fsin_texcoords * IDK_RenderData_GetCamera().vec2(camera.near, camera.far));
 
         // int a = texel.x % 32;
         // int b = texel.y % 32;

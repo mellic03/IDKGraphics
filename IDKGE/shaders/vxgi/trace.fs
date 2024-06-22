@@ -4,7 +4,7 @@
 layout (location = 0) out vec4 fsout_frag_color;
 
 
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 #include "./vxgi.glsl"
 
 

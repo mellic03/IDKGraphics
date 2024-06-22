@@ -67,7 +67,7 @@ idk::VXGI::allocateNormalTexture( size_t w )
 static glm::mat4 light_matrix;
 
 void
-idk::VXGI::shadowPass( idk::glFramebuffer &buffer_out, idk::Camera &camera, glm::vec3 light_dir,
+idk::VXGI::shadowPass( idk::glFramebuffer &buffer_out, IDK_Camera &camera, glm::vec3 light_dir,
                        idk::glShaderProgram &program, GLuint draw_indirect_buffer,
                        const std::vector<idk::glDrawCmd> &commands )
 {
@@ -104,7 +104,7 @@ idk::VXGI::shadowPass( idk::glFramebuffer &buffer_out, idk::Camera &camera, glm:
 
 
 void
-idk::VXGI::renderTexture( idk::glFramebuffer &buffer_out, idk::Camera &camera, idk::glShaderProgram &program,
+idk::VXGI::renderTexture( idk::glFramebuffer &buffer_out, IDK_Camera &camera, idk::glShaderProgram &program,
                            GLuint draw_indirect_buffer, const std::vector<idk::glDrawCmd> &commands,
                            idk::glDepthCascade &depthcascade )
 {
@@ -142,7 +142,7 @@ idk::VXGI::renderTexture( idk::glFramebuffer &buffer_out, idk::Camera &camera, i
 
 
 void
-idk::VXGI::injectRadiance( idk::glShaderProgram &program, idk::Camera &camera, idk::glFramebuffer &buffer_out,
+idk::VXGI::injectRadiance( idk::glShaderProgram &program, IDK_Camera &camera, idk::glFramebuffer &buffer_out,
                            glm::vec3 light_dir, idk::glDepthCascade &depthcascade )
 {
     program.bind();

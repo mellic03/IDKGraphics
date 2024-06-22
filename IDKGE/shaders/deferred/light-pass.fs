@@ -9,13 +9,13 @@ layout (location = 0) out vec4 fsout_frag_color;
 // layout (binding=30, rg8i) writeonly uniform iimage2D un_velocity;
 
 
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 
 #include "../include/util.glsl"
 #include "../include/pbr.glsl"
 #include "../include/lightsource.glsl"
 
-#include "../include/SSBO_indirect.glsl"
+#include "../include/storage.glsl"
 
 
 

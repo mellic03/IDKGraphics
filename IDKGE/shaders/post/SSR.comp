@@ -1,7 +1,7 @@
 #version 460 core
 #extension GL_GOOGLE_include_directive: require
 
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 #include "../include/util.glsl"
 #include "../include/pbr.glsl"
 
@@ -36,7 +36,7 @@ void main()
     vec3 viewpos = camera.position.xyz;
 
     ivec2 texel    = ivec2(gl_GlobalInvocationID.xy);
-    vec2  texcoord = vec2(texel) / camera.image_size.xy;
+    vec2  texcoord = vec2(texel) / vec2(camera.width, camera.height);
     vec3  position = IDK_WorldFromDepth(un_fragdepth, texcoord, camera.P, camera.V);
 
     IDK_PBRSurfaceData surface = IDK_PBRSurfaceData_load(
@@ -72,7 +72,7 @@ void main()
 
 
     vec3  ray_pos = position + RAY_OFFSET*surface.N;
-    float initial_depth = IDK_WorldToUV(ray_pos, camera.PV).z;
+    float initial_depth = IDK_WorldToUV(ray_pos, (camera.P * camera.V)).z;
 
 
     vec3 cam_to_frag = normalize(ray_pos - viewpos);
@@ -82,7 +82,7 @@ void main()
     int   count    = 0;
     float cumdist = 0.0;
 
-    const mat4 PV = camera.PV;
+    const mat4 PV = (camera.P * camera.V);
 
     for (float i=0; i<RAY_MAX_STEPS; i++)
     {
@@ -92,7 +92,7 @@ void main()
         projected.xy /= projected.w;
         projected.xy = projected.xy * 0.5 + 0.5;
 
-        ivec2 tx = ivec2(projected.xy * camera.image_size.xy);
+        ivec2 tx = ivec2(projected.xy * vec2(camera.near, camera.far));
         vec2  uv = projected.xy;
 
 

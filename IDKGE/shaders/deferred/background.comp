@@ -10,7 +10,7 @@ layout (
 
 layout (binding = 0, rg16f) writeonly uniform image2D un_output;
 
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 #include "../include/util.glsl"
 
 uniform sampler2D   un_fragdepth;
@@ -24,7 +24,7 @@ void main()
 
     vec3 position = IDK_WorldFromDepth(
         un_fragdepth,
-        vec2(texel) / camera.image_size.xy,
+        vec2(texel) / vec2(camera.width, camera.height),
         camera.P,
         camera.V
     );

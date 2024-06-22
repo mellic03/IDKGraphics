@@ -1,20 +1,19 @@
 #version 460 core
-#extension GL_ARB_bindless_texture: require
+
 #extension GL_GOOGLE_include_directive: require
+#include "../include/storage.glsl"
+#include "../include/util.glsl"
+#include "../include/pbr.glsl"
+
 
 layout (location = 0) out vec4 fsout_frag_color;
 
-
-#include "../include/SSBO_indirect.glsl"
-#include "../include/UBOs.glsl"
-#include "../include/util.glsl"
-#include "../include/pbr.glsl"
 
 #define MIPLEVEL_SPECULAR 4.0
 #define SKYBOX_IBL_STRENGTH 1.0
 
 in vec3 fsin_fragpos;
-flat in int idk_LightID;
+flat in uint lightID;
 
 
 uniform sampler2D un_texture_0;
@@ -28,7 +27,6 @@ uniform samplerCube un_skybox_diffuse;
 uniform samplerCube un_skybox_specular;
 
 uniform sampler2D un_shadowmap;
-
 
 
 
@@ -98,13 +96,13 @@ float ScreenspaceShadow( IDK_Camera camera, IDK_PBRSurfaceData surface, IDK_Dirl
 {
     vec3 ray_pos = surface.position.xyz;
     vec3 ray_dir = normalize(-light.direction.xyz);
-    mat4 PV = camera.PV;
+    mat4 PV = (camera.P * camera.V);
 
     float occlusion = 0.0;
 
     const float RAY_RANGE = 0.25;
-    const int   RAY_STEPS = 32;
-    const float RAY_STEP  = (RAY_RANGE / RAY_STEPS);
+    const int   RAY_STEPS = 16;
+    const float RAY_STEP  = 0.01;
 
     vec2 uv;
 
@@ -119,7 +117,7 @@ float ScreenspaceShadow( IDK_Camera camera, IDK_PBRSurfaceData surface, IDK_Dirl
         projected.xy /= projected.w;
         projected.xy = projected.xy * 0.5 + 0.5;
 
-        ivec2 tx = ivec2(projected.xy * camera.image_size.xy);
+        ivec2 tx = ivec2(projected.xy * vec2(camera.width, camera.height));
               uv = projected.xy;
 
 
@@ -130,7 +128,7 @@ float ScreenspaceShadow( IDK_Camera camera, IDK_PBRSurfaceData surface, IDK_Dirl
         float ray_depth  = IDK_WorldToUV(ray_pos, PV).z;
         // ---------------------------------------------------------------------------
 
-        if (ray_depth >= frag_depth && (ray_depth-frag_depth < 0.01))
+        if (ray_depth >= frag_depth)
         {
             occlusion = 1.0;
             break;
@@ -138,7 +136,7 @@ float ScreenspaceShadow( IDK_Camera camera, IDK_PBRSurfaceData surface, IDK_Dirl
     }
 
     float dist = distance(uv, vec2(0.5));
-          dist = (dist / camera.image_size.x);
+          dist = (dist / camera.width);
 
     return (0.5 - dist) * (1.0 - occlusion);
 }
@@ -147,8 +145,8 @@ float ScreenspaceShadow( IDK_Camera camera, IDK_PBRSurfaceData surface, IDK_Dirl
 
 void main()
 {
-    IDK_Camera   camera = IDK_RenderData_GetCamera();
-    IDK_Dirlight light  = IDK_RenderData_GetDirlight(idk_LightID);
+    IDK_Camera   camera = IDK_UBO_cameras[0];
+    IDK_Dirlight light  = IDK_UBO_dirlights[lightID];
 
     vec2 texcoord = IDK_WorldToUV(fsin_fragpos, camera.P * camera.V).xy;
     vec3 worldpos = IDK_WorldFromDepth(un_fragdepth, texcoord, camera.P, camera.V);
@@ -167,7 +165,7 @@ void main()
 
     float shadow  = dirlight_shadow_2(camera, light, camera.V, worldpos, surface.N);
     // float sss     = ScreenspaceShadow(camera, surface, light);
-    //       shadow  = min(shadow, sss);
+    //       shadow  = min(sss, sss);
 
     vec3  result  = shadow * IDK_PBR_Dirlight2(light, surface, worldpos);
           result += light.ambient.rgb * surface.albedo.rgb;

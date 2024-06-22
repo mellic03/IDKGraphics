@@ -20,15 +20,15 @@ namespace idk::VXGI
     GLuint  allocateAlbedoTexture( size_t w );
     GLuint  allocateNormalTexture( size_t w );
 
-    void    shadowPass( idk::glFramebuffer &buffer_out, idk::Camera &camera, glm::vec3 light_dir,
+    void    shadowPass( idk::glFramebuffer &buffer_out, IDK_Camera &camera, glm::vec3 light_dir,
                         idk::glShaderProgram &program, GLuint draw_indirect_buffer,
                         const std::vector<idk::glDrawCmd> &commands );
 
-    void    renderTexture( idk::glFramebuffer &buffer_out, idk::Camera &camera, idk::glShaderProgram &program,
+    void    renderTexture( idk::glFramebuffer &buffer_out, IDK_Camera &camera, idk::glShaderProgram &program,
                            GLuint draw_indirect_buffer, const std::vector<idk::glDrawCmd> &commands,
                            idk::glDepthCascade &depthcascade );
 
-    void    injectRadiance( idk::glShaderProgram &program, idk::Camera &camera, idk::glFramebuffer &buffer_out,
+    void    injectRadiance( idk::glShaderProgram &program, IDK_Camera &camera, idk::glFramebuffer &buffer_out,
                            glm::vec3 light_dir, idk::glDepthCascade &depthcascade );
 
 

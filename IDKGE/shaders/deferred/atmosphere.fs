@@ -5,8 +5,7 @@
 
 layout (location = 0) out vec4 fsout_frag_color;
 
-#include "../include/UBOs.glsl"
-#include "../include/SSBO_indirect.glsl"
+#include "../include/storage.glsl"
 
 #include "../include/util.glsl"
 #include "../include/pbr.glsl"
@@ -343,7 +342,7 @@ void main()
     float frag_dist = distance(viewpos, frag_pos);
     vec3  ray_dir   = normalize(frag_pos - viewpos);
 
-    vec2 texcoord = IDK_WorldToUV(frag_pos, camera.PV).xy;
+    vec2 texcoord = IDK_WorldToUV(frag_pos, (camera.P * camera.V)).xy;
     vec3 sampled_pos = IDK_WorldFromDepth(un_fragdepth, texcoord, camera.P, camera.V);
 
     vec3  L        = -normalize(atmosphere.position.xyz - atmosphere.sun_position.xyz);

@@ -3,8 +3,7 @@
 #extension GL_GOOGLE_include_directive: require
 #extension GL_ARB_bindless_texture: require
 
-#include "../include/SSBO_indirect.glsl"
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 
 layout (location = 0) in vec3 vsin_pos;
 layout (location = 1) in vec3 vsin_normal;
@@ -23,14 +22,17 @@ out mat3 TBN;
 out mat3 TBNT;
 
 
+uniform int un_draw_offset;
+
+
 void main()
 {
-    draw_id = gl_DrawID;
+    draw_id = gl_DrawID + un_draw_offset;
 
     IDK_Camera camera = IDK_RenderData_GetCamera();
 
-    const uint offset = un_IndirectDrawData.transform_offsets[gl_DrawID];
-    mat4 model  = un_IndirectDrawData.transforms[offset + gl_InstanceID];
+    const uint offset = IDK_SSBO_transform_offsets[draw_id];
+    mat4 model  = IDK_SSBO_transforms[offset + gl_InstanceID];
          model  = model;
 
     vec4 position = model * vec4(vsin_pos,     1.0);

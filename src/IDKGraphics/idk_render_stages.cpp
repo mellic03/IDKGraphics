@@ -5,135 +5,115 @@
 
 
 void
-idk::RenderEngine::RenderStage_geometry( idk::Camera &camera, float dtime,
+idk::RenderEngine::RenderStage_geometry( IDK_Camera &camera, float dtime,
                                          glFramebuffer &buffer_out )
 {
-    buffer_out.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    buffer_out.bind();
-
-    gl::enable(GL_CULL_FACE);
-
     // Internal geometry pass render queue
     // -----------------------------------------------------------------------------------------
     {
         idk::RenderQueue &queue = _getRenderQueue(m_RQ);
 
-        const auto &commands = queue.genDrawCommands(*m_DrawIndirectData, m_model_allocator);
-
-        if (commands.empty() == false)
+        if (queue.numDrawCommands() > 0)
         {
-            m_DrawCommandBuffer.bufferSubData(0, commands.size()*sizeof(idk::glDrawCmd), commands.data());
-            m_DrawIndirectSSBO.update(*m_DrawIndirectData);
-
             auto &program = getProgram("gpass");
             program.bind();
+            program.set_uint("un_draw_offset", uint32_t(queue.getDrawCommandOffset()));
 
             gl::multiDrawElementsIndirect(
                 GL_TRIANGLES,
                 GL_UNSIGNED_INT,
-                nullptr,
-                commands.size(),
+                (const void *)(sizeof(idk::glDrawCmd) * queue.getDrawCommandOffset()),
+                queue.numDrawCommands(),
                 sizeof(idk::glDrawCmd)
             );
         }
     }
     // -----------------------------------------------------------------------------------------
 
-
     // User-created render queues
     // -----------------------------------------------------------------------------------------
     for (idk::RenderQueue &queue: m_user_render_queues)
     {
-        const auto &commands = queue.genDrawCommands(*m_DrawIndirectData, m_model_allocator);
-
-        if (commands.empty())
+        if (queue.numDrawCommands() == 0)
         {
             continue;
         }
 
-        m_DrawCommandBuffer.bufferSubData(0, commands.size()*sizeof(idk::glDrawCmd), commands.data());
-        m_DrawIndirectSSBO.update(*m_DrawIndirectData);
-
         auto &program = getProgram(queue.name);
         program.bind();
+        program.set_uint("un_draw_offset", uint32_t(queue.getDrawCommandOffset()));
 
         gl::multiDrawElementsIndirect(
             GL_TRIANGLES,
             GL_UNSIGNED_INT,
-            nullptr,
-            commands.size(),
+            (const void *)(sizeof(idk::glDrawCmd) * queue.getDrawCommandOffset()),
+            queue.numDrawCommands(),
             sizeof(idk::glDrawCmd)
         );
     }
     // -----------------------------------------------------------------------------------------
-
 
 
     // Particles
     // -----------------------------------------------------------------------------------------
-    // gl::enable(GL_BLEND);
-    // IDK_GLCALL( glDepthMask(GL_FALSE); )
-    // gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
     {
         idk::RenderQueue &queue = _getRenderQueue(m_viewspace_RQ);
 
-        const auto &commands = queue.genDrawCommands(*m_DrawIndirectData, m_model_allocator);
-        m_DrawCommandBuffer.bufferSubData(0, commands.size()*sizeof(idk::glDrawCmd), commands.data());
-        m_DrawIndirectSSBO.update(*m_DrawIndirectData);
+        if (queue.numDrawCommands() > 0)
+        {
+            auto &program = getProgram("gpass-particle");
+            program.bind();
 
-        auto &program = getProgram("gpass-particle");
-        program.bind();
-
-        gl::multiDrawElementsIndirect(
-            GL_TRIANGLES,
-            GL_UNSIGNED_INT,
-            nullptr,
-            commands.size(),
-            sizeof(idk::glDrawCmd)
-        );
+            gl::multiDrawElementsIndirect(
+                GL_TRIANGLES,
+                GL_UNSIGNED_INT,
+                (const void *)(sizeof(idk::glDrawCmd) * queue.getDrawCommandOffset()),
+                queue.numDrawCommands(),
+                sizeof(idk::glDrawCmd)
+            );
+        }
     }
-    // glDepthMask(GL_TRUE);
     // -----------------------------------------------------------------------------------------
 
 }
 
 
 
+// void
+// idk::RenderEngine::RenderStage_atmospheres( IDK_Camera   &camera,
+//                                             glFramebuffer &buffer_in,
+//                                             glFramebuffer &buffer_out )
+// {
+//     idk::glDrawCmd cmd = genAtmosphereDrawCommand(modelAllocator());
+//     if (cmd.instanceCount == 0)
+//     {
+//         return;
+//     }
+//     m_DrawCommandBuffer.bufferSubData(0, sizeof(idk::glDrawCmd), &cmd);
+
+//     auto &program = getProgram("atmosphere");
+//     program.bind();
+
+//     program.set_sampler2D("un_texture_0", m_geom_buffer.attachments[0]);
+//     program.set_sampler2D("un_texture_1", m_geom_buffer.attachments[1]);
+//     program.set_sampler2D("un_texture_2", m_geom_buffer.attachments[2]);
+
+//     program.set_sampler2D("un_fragdepth", m_geom_buffer.depth_attachment);
+//     program.set_sampler2D("un_BRDF_LUT", BRDF_LUT);
+
+//     gl::multiDrawElementsIndirect(
+//         GL_TRIANGLES,
+//         GL_UNSIGNED_INT,
+//         nullptr,
+//         1,
+//         sizeof(idk::glDrawCmd)
+//     );
+
+// }
+
+
 void
-idk::RenderEngine::RenderStage_atmospheres( idk::Camera   &camera,
-                                            glFramebuffer &buffer_in,
-                                            glFramebuffer &buffer_out )
-{
-    idk::glDrawCmd cmd = genAtmosphereDrawCommand(modelAllocator());
-    if (cmd.instanceCount == 0)
-    {
-        return;
-    }
-    m_DrawCommandBuffer.bufferSubData(0, sizeof(idk::glDrawCmd), &cmd);
-
-    auto &program = getProgram("atmosphere");
-    program.bind();
-
-    program.set_sampler2D("un_texture_0", m_geom_buffer.attachments[0]);
-    program.set_sampler2D("un_texture_1", m_geom_buffer.attachments[1]);
-    program.set_sampler2D("un_texture_2", m_geom_buffer.attachments[2]);
-
-    program.set_sampler2D("un_fragdepth", m_geom_buffer.depth_attachment);
-    program.set_sampler2D("un_BRDF_LUT", BRDF_LUT);
-
-    gl::multiDrawElementsIndirect(
-        GL_TRIANGLES,
-        GL_UNSIGNED_INT,
-        nullptr,
-        1,
-        sizeof(idk::glDrawCmd)
-    );
-
-}
-
-
-void
-idk::RenderEngine::RenderStage_volumetrics( idk::Camera   &camera,
+idk::RenderEngine::RenderStage_volumetrics( IDK_Camera   &camera,
                                             glFramebuffer &buffer_in,
                                             glFramebuffer &buffer_out )
 {
@@ -156,12 +136,14 @@ void
 idk::RenderEngine::RenderStage_dirlights()
 {
     idk::glDrawCmd cmd = genLightsourceDrawCommand(m_unit_sphere, m_dirlights.size(), modelAllocator());
+
     if (cmd.instanceCount == 0)
     {
         return;
     }
-    m_DrawCommandBuffer.bufferSubData(0, sizeof(idk::glDrawCmd), &cmd);
 
+    m_lightsource_DIB.bufferSubData(0, sizeof(idk::glDrawCmd), &cmd);
+    gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_lightsource_DIB.ID());
 
     auto &program = getProgram("deferred-dirlight");
     program.bind();
@@ -174,7 +156,6 @@ idk::RenderEngine::RenderStage_dirlights()
 
     program.set_samplerCube("un_skybox_diffuse", skyboxes_IBL[current_skybox].first);
     program.set_samplerCube("un_skybox_specular", skyboxes_IBL[current_skybox].second);
-
     program.set_sampler2D("un_shadowmap", m_dirshadow_buffer.depth_attachment);
 
     gl::multiDrawElementsIndirect(
@@ -190,75 +171,74 @@ idk::RenderEngine::RenderStage_dirlights()
 void
 idk::RenderEngine::RenderStage_pointlights()
 {
-    idk::glDrawCmd cmd = genLightsourceDrawCommand(
-        m_unit_sphere, m_pointlights.size(), modelAllocator()
-    );
+    // idk::glDrawCmd cmd = genLightsourceDrawCommand(
+    //     m_unit_sphere, m_pointlights.size(), modelAllocator()
+    // );
 
-    if (cmd.instanceCount == 0)
-    {
-        return;
-    }
-    m_DrawCommandBuffer.bufferSubData(0, sizeof(idk::glDrawCmd), &cmd);
-
-
-    auto &program = getProgram("deferred-pointlight");
-    program.bind();
-
-    program.set_sampler2D("un_texture_0", m_geom_buffer.attachments[0]);
-    program.set_sampler2D("un_texture_1", m_geom_buffer.attachments[1]);
-    program.set_sampler2D("un_texture_2", m_geom_buffer.attachments[2]);
-    program.set_sampler2D("un_fragdepth", m_geom_buffer.depth_attachment);
-    program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
+    // if (cmd.instanceCount == 0)
+    // {
+    //     return;
+    // }
+    // m_DrawCommandBuffer.bufferSubData(0, sizeof(idk::glDrawCmd), &cmd);
 
 
-    gl::multiDrawElementsIndirect(
-        GL_TRIANGLES,
-        GL_UNSIGNED_INT,
-        nullptr,
-        1,
-        sizeof(idk::glDrawCmd)
-    );
+    // auto &program = getProgram("deferred-pointlight");
+    // program.bind();
+
+    // program.set_sampler2D("un_texture_0", m_geom_buffer.attachments[0]);
+    // program.set_sampler2D("un_texture_1", m_geom_buffer.attachments[1]);
+    // program.set_sampler2D("un_texture_2", m_geom_buffer.attachments[2]);
+    // program.set_sampler2D("un_fragdepth", m_geom_buffer.depth_attachment);
+    // program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
+
+
+    // gl::multiDrawElementsIndirect(
+    //     GL_TRIANGLES,
+    //     GL_UNSIGNED_INT,
+    //     nullptr,
+    //     1,
+    //     sizeof(idk::glDrawCmd)
+    // );
 }
 
 
 void
 idk::RenderEngine::RenderStage_spotlights()
 {
-    idk::glDrawCmd cmd = genLightsourceDrawCommand(m_unit_sphere, m_spotlights.size(), modelAllocator());
-    if (cmd.instanceCount == 0)
-    {
-        return;
-    }
-    m_DrawCommandBuffer.bufferSubData(0, sizeof(idk::glDrawCmd), &cmd);
+    // idk::glDrawCmd cmd = genLightsourceDrawCommand(m_unit_sphere, m_spotlights.size(), modelAllocator());
+    // if (cmd.instanceCount == 0)
+    // {
+    //     return;
+    // }
+    // m_DrawCommandBuffer.bufferSubData(0, sizeof(idk::glDrawCmd), &cmd);
 
-    auto &program = getProgram("deferred-spotlight");
-    program.bind();
+    // auto &program = getProgram("deferred-spotlight");
+    // program.bind();
 
-    program.set_sampler2D("un_texture_0", m_geom_buffer.attachments[0]);
-    program.set_sampler2D("un_texture_1", m_geom_buffer.attachments[1]);
-    program.set_sampler2D("un_texture_2", m_geom_buffer.attachments[2]);
-    program.set_sampler2D("un_fragdepth", m_geom_buffer.depth_attachment);
-    program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
+    // program.set_sampler2D("un_texture_0", m_geom_buffer.attachments[0]);
+    // program.set_sampler2D("un_texture_1", m_geom_buffer.attachments[1]);
+    // program.set_sampler2D("un_texture_2", m_geom_buffer.attachments[2]);
+    // program.set_sampler2D("un_fragdepth", m_geom_buffer.depth_attachment);
+    // program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
 
-    gl::multiDrawElementsIndirect(
-        GL_TRIANGLES,
-        GL_UNSIGNED_INT,
-        nullptr,
-        1,
-        sizeof(idk::glDrawCmd)
-    );
+    // gl::multiDrawElementsIndirect(
+    //     GL_TRIANGLES,
+    //     GL_UNSIGNED_INT,
+    //     nullptr,
+    //     1,
+    //     sizeof(idk::glDrawCmd)
+    // );
 }
 
 
 
 void
-idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
+idk::RenderEngine::RenderStage_lighting( IDK_Camera &camera, float dtime,
                                          glFramebuffer &buffer_in,
                                          glFramebuffer &buffer_out )
 {
     m_scratchbuffers2[0].bind();
     m_scratchbuffers2[0].clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    // buffer_out.bind();
 
     gl::bindVertexArray(m_model_allocator.getVAO());
 
@@ -269,8 +249,8 @@ idk::RenderEngine::RenderStage_lighting( idk::Camera &camera, float dtime,
     gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
 
     RenderStage_dirlights();
-    RenderStage_pointlights();
-    RenderStage_spotlights();
+    // RenderStage_pointlights();
+    // RenderStage_spotlights();
 
 
     buffer_out.bind();
@@ -425,7 +405,7 @@ idk::RenderEngine::PostProcess_bloom( glFramebuffer &buffer_in )
 
 
 void
-idk::RenderEngine::PostProcess_colorgrading( idk::Camera &camera,
+idk::RenderEngine::PostProcess_colorgrading( IDK_Camera &camera,
                                              glFramebuffer &buffer_in,
                                              glFramebuffer &buffer_out )
 {
@@ -523,24 +503,23 @@ idk::RenderEngine::PostProcess_overlay( idk::glFramebuffer &buffer_out )
 
 
 void
-idk::RenderEngine::RenderStage_postprocessing( idk::Camera   &camera,
+idk::RenderEngine::RenderStage_postprocessing( IDK_Camera   &camera,
                                                glFramebuffer &buffer_in,
                                                glFramebuffer &buffer_out )
 {
-    idk::glFramebuffer *src = &m_scratchbuffers2[0];
-    idk::glFramebuffer *dst = &buffer_out;
+    // idk::glFramebuffer *src = &m_scratchbuffers2[0];
+    // idk::glFramebuffer *dst = &buffer_out;
 
-    gl::disable(GL_DEPTH_TEST, GL_CULL_FACE);
 
-    PostProcess_SSR(buffer_in, m_scratchbuffers2[0]);
-    PostProcess_bloom(m_scratchbuffers2[0]);
+    // PostProcess_SSR(buffer_in, m_scratchbuffers2[0]);
+    PostProcess_bloom(buffer_in);
     // std::swap(src, dst);
 
-    // PostProcess_chromatic_aberration(*A, *B);
-    // std::swap(src, dst);
+    // // PostProcess_chromatic_aberration(*A, *B);
+    // // std::swap(src, dst);
 
     PostProcess_colorgrading(camera, buffer_in, m_scratchbuffers2[1]);
-    // std::swap(src, dst);
+    // // std::swap(src, dst);
 
 
     buffer_out.bind();

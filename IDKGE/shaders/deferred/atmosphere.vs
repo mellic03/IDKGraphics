@@ -12,8 +12,7 @@ layout (location = 3) in vec2 vsin_texcoords;
 out vec3 fsin_fragpos;
 flat out int idk_AtmosphereID;
 
-#include "../include/SSBO_indirect.glsl"
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 
 
 void main()

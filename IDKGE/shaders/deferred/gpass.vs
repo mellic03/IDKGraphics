@@ -1,10 +1,8 @@
 #version 460 core
 
 #extension GL_GOOGLE_include_directive: require
-#extension GL_ARB_bindless_texture: require
+#include "../include/storage.glsl"
 
-#include "../include/SSBO_indirect.glsl"
-#include "../include/UBOs.glsl"
 
 layout (location = 0) in vec3 vsin_pos;
 layout (location = 1) in vec3 vsin_normal;
@@ -15,22 +13,24 @@ out vec3 fsin_fragpos;
 out vec3 fsin_normal;
 out vec3 fsin_tangent;
 out vec2 fsin_texcoords;
-flat out int draw_id;
+flat out uint drawID;
 
 out vec3 TBN_viewpos;
 out vec3 TBN_fragpos;
 out mat3 TBN;
 out mat3 TBNT;
 
+uniform uint un_draw_offset;
+
 
 void main()
 {
-    draw_id = gl_DrawID;
+    drawID = gl_DrawID + un_draw_offset;
 
-    IDK_Camera camera = IDK_RenderData_GetCamera();
+    IDK_Camera camera = IDK_UBO_cameras[0];
 
-    const uint offset = un_IndirectDrawData.transform_offsets[gl_DrawID];
-    const mat4 model  = un_IndirectDrawData.transforms[offset + gl_InstanceID];
+    const uint offset = IDK_SSBO_transform_offsets[drawID];
+    const mat4 model  = IDK_SSBO_transforms[offset + gl_InstanceID];
 
     vec4 position = model * vec4(vsin_pos,     1.0);
     vec4 normal   = model * vec4(vsin_normal,  0.0);
@@ -54,5 +54,5 @@ void main()
     TBN_fragpos = TBNT * fsin_fragpos;
     TBN_viewpos = TBNT * camera.position.xyz;
 
-    gl_Position = camera.PV * position;
+    gl_Position = (camera.P * camera.V) * position;
 }

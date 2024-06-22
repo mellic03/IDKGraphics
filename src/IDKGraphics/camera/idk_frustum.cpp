@@ -101,35 +101,35 @@ idk::Frustum::getProjection( const glm::vec3 &L, const std::vector<glm::vec4> &c
 
 
 std::vector<glm::mat4>
-idk::Frustum::getCascades( idk::Camera &camera, const glm::vec3 &L )
+idk::Frustum::getCascades( IDK_Camera &camera, const glm::vec3 &L )
 {
     constexpr int CASCADES = 4;
 
     std::vector<glm::mat4> cascades;
 
-    float cam_far  = camera.far;
-    float cam_near = camera.near;
+    // float cam_far  = camera.far;
+    // float cam_near = camera.near;
 
-    float near = cam_near;
-    float far  = cam_far;
+    // float near = cam_near;
+    // float far  = cam_far;
 
-    std::vector<float> C { 0.1f, 0.3f, 0.6f, 1.0f };
+    // std::vector<float> C { 0.1f, 0.3f, 0.6f, 1.0f };
 
-    for (int i=0; i<CASCADES; i++)
-    {
-        far = C[i] * cam_far;
+    // for (int i=0; i<CASCADES; i++)
+    // {
+    //     far = C[i] * cam_far;
 
-        glm::mat4 P = glm::perspective(
-            camera.fov, camera.aspect,
-            near, far
-        );
+    //     glm::mat4 P = glm::perspective(
+    //         camera.fov, camera.aspect,
+    //         near, far
+    //     );
     
-        const auto &corners    = getCorners(P, camera.V());
-        const auto &projection = getProjection(L, corners);
+    //     const auto &corners    = getCorners(P, camera.V());
+    //     const auto &projection = getProjection(L, corners);
 
-        cascades.push_back(projection);
-        near = far;
-    }
+    //     cascades.push_back(projection);
+    //     near = far;
+    // }
 
     return cascades;
 }

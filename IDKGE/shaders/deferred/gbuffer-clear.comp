@@ -13,7 +13,7 @@ layout (binding = 1, rgba16f) writeonly uniform image2D un_normal;
 // layout (binding = 0, rgba16f) writeonly uniform image2D un_pbr;
 
 
-#include "../include/UBOs.glsl"
+#include "../include/storage.glsl"
 #include "../include/util.glsl"
 
 

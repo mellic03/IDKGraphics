@@ -50,44 +50,35 @@ idk::RenderQueue::genDrawCommand( int model_id, idk::MeshDescriptor &desc, size_
 }
 
 
-const std::vector<idk::glDrawCmd> &
-idk::RenderQueue::genDrawCommands( idk::DrawIndirectData &data, idk::ModelAllocator &MA )
+
+void
+idk::RenderQueue::genDrawCommands( idk::ModelAllocator         &MA,
+                                   size_t                      &texture_offset,
+                                   size_t                      &transform_offset,
+                                   size_t                      &drawID_offset,
+                                   idk::SSBO_Buffer            &ssbo_buffer,
+                                   std::vector<idk::glDrawCmd> &commands )
 {
-    static std::vector<idk::glDrawCmd> commands(idk::indirect_draw::MAX_DRAW_CALLS);
-    commands.resize(0);
-
-    // static std::set<GLuint64> resident_handles;
-    // for (GLuint64 handle: resident_handles)
-    // {
-    //     gl::makeTextureHandleNonResidentARB(handle);
-    // }
-    // resident_handles.clear();
-
-
-    size_t texture_offset  = 0;
-    size_t transform_offset = 0;
-    size_t drawID_offset    = 0;
+    m_drawcmd_offset = commands.size();
 
     for (auto &[model_id, model_transforms]: m_drawlist)
     {
         for (MeshDescriptor &mesh: MA.getModel(model_id).meshes)
         {
-            data.transform_offsets[drawID_offset] = transform_offset;
-            data.texture_offsets[drawID_offset]  = texture_offset;
+            ssbo_buffer.transform_offsets[drawID_offset] = transform_offset;
+            ssbo_buffer.texture_offsets[drawID_offset]  = texture_offset;
             drawID_offset += 1;
 
             for (glm::mat4 &T: model_transforms)
             {
                 // Transform will be un_offsets[gl_DrawID] + gl_InstanceID
-                data.transforms[transform_offset] = T;
+                ssbo_buffer.transforms[transform_offset] = T;
                 transform_offset += 1;
             }
 
             for (GLuint64 handle: mesh.handles)
             {
-                // resident_handles.insert(handle);
-                data.textures[texture_offset] = handle;
-
+                ssbo_buffer.textures[texture_offset] = handle;
                 texture_offset += 1;
             }
 
@@ -95,11 +86,6 @@ idk::RenderQueue::genDrawCommands( idk::DrawIndirectData &data, idk::ModelAlloca
         }
     }
 
-    // for (GLuint64 handle: resident_handles)
-    // {
-    //     gl::makeTextureHandleResidentARB(handle);
-    // }
-
-    return commands;
+    m_num_drawcmd = commands.size() - m_drawcmd_offset;
 }
 
