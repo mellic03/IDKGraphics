@@ -43,5 +43,7 @@ void main()
 
     fsout_albedo = vec4(albedo.rgb, 1.0);
     fsout_normal = TBN * normalize(normal);
-    fsout_pbr    = vec4(roughness, metallic, ao, emissv);
+    fsout_pbr    = vec4(roughness, 0.1, ao, emissv);
+    // fsout_pbr    = vec4(0.8, 0.001, 1.0, 0.0);
+
 }

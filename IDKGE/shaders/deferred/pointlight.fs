@@ -10,7 +10,7 @@
 layout (location = 0) out vec4 fsout_frag_color;
 
 in vec3 fsin_fragpos;
-flat in int idk_LightID;
+flat in int lightID;
 
 
 uniform sampler2D un_texture_0;
@@ -26,8 +26,8 @@ uniform sampler2D un_BRDF_LUT;
 
 void main()
 {
-    IDK_Camera     camera = IDK_RenderData_GetCamera();
-    IDK_Pointlight light  = IDK_RenderData_GetPointlight(idk_LightID);
+    IDK_Camera     camera = IDK_UBO_cameras[0];
+    IDK_Pointlight light  = IDK_UBO_pointlights[lightID];
 
     vec2 texcoord = IDK_WorldToUV(fsin_fragpos, camera.P * camera.V).xy;
     vec3 worldpos = IDK_WorldFromDepth(un_fragdepth, texcoord, camera.P, camera.V);

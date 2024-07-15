@@ -47,7 +47,7 @@ idk::ParticleEmitter::_reset( Particle &p )
 
     p.vel = glm::mat3(R) * velA;
 
-    p.timer = 0.0f;
+    p.timer = idk::randf(-0.1f, +0.1f);
     p.scale = m_desc.scale;
 }
 
@@ -69,6 +69,7 @@ idk::ParticleEmitter::_update( float dt, Particle &p )
 
     p.timer += dt;
     p.scale = 1.0f - (p.timer / m_desc.duration);
+    p.scale = glm::max(p.scale, 0.001f);
 
     if (p.timer >= m_desc.duration)
     {

@@ -11,19 +11,15 @@ layout (location = 3) in vec2 vsin_texcoords;
 
 
 out vec3 fsin_fragpos;
-flat out int idk_LightID;
-
+flat out int lightID;
 
 
 void main()
 {
-    // idk_LightID = gl_InstanceID;
+    lightID = gl_InstanceID;
 
-    // IDK_Camera    camera = IDK_RenderData_GetCamera();
-    // IDK_Spotlight light  = IDK_RenderData_GetSpotlight(idk_LightID);
+    IDK_Camera camera = IDK_UBO_cameras[0];
+    fsin_fragpos = (inverse(camera.V) * vec4(vsin_pos, 1.0)).xyz;
 
-    // vec4 position = light.transform * vec4(vsin_pos, 1.0);
-    // fsin_fragpos  = position.xyz;
-
-    // gl_Position = (camera.P * camera.V) * position;
+    gl_Position = camera.P * vec4(vsin_pos, 1.0);
 }

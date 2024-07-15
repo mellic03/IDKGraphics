@@ -10,6 +10,9 @@
 #include "idk_model.hpp"
 #include "idk_mesh_allocator.hpp"
 
+#include <cstddef>
+#include <cstdint>
+
 #include <unordered_set>
 #include <unordered_map>
 
@@ -41,6 +44,7 @@ private:
 
     uint32_t m_default_textures[5];
     uint64_t m_default_handles[5];
+    int      m_default_model;
 
     idk::vector<idk::MeshAllocator>         m_mesh_allocators;
 
@@ -52,7 +56,7 @@ private:
     idk::glTextureConfig                    m_albedo_config;
     idk::glTextureConfig                    m_lightmap_config;
 
-    // idk::Allocator<idk::MaterialDescriptor> m_materials;
+    idk::Allocator<idk::MaterialDescriptor> m_materials;
     idk::Allocator<idk::MeshDescriptor>     m_meshes;
     idk::Allocator<idk::ModelDescriptor>    m_models;
 
@@ -68,20 +72,25 @@ private:
     drawlist_type m_drawlist;
 
 
-    void loadMaterial( uint32_t bitmask, std::string textures[draw_buffer::TEXTURES_PER_MATERIAL],
-                       idk::MeshDescriptor& );
+    int loadMaterial( uint32_t bitmask, std::string textures[draw_buffer::TEXTURES_PER_MATERIAL],
+                      idk::MeshDescriptor& );
 
 
 public:
         ModelAllocator();
 
     // IDK_ALLOCATOR_ACCESS(Texture,  idk::TextureDescriptor,  m_textures);
-    // IDK_ALLOCATOR_ACCESS(Material, idk::MaterialDescriptor, m_materials);
+    IDK_ALLOCATOR_ACCESS(Material, idk::MaterialDescriptor, m_materials);
     IDK_ALLOCATOR_ACCESS(Mesh,     idk::MeshDescriptor,     m_meshes);
-    IDK_ALLOCATOR_ACCESS(Model,    idk::ModelDescriptor,    m_models);
+    // IDK_ALLOCATOR_ACCESS(Model,    idk::ModelDescriptor,    m_models);
+
+
+    int              createModel( const ModelDescriptor& );
+    ModelDescriptor &getModel( int model );
 
     int loadTexture( const std::string &filepath, uint32_t&, uint64_t&, const idk::glTextureConfig& );
     int loadModel( const std::string &filepath, uint32_t format=0 );
+    int loadModelLOD( int model, int level, const std::string &filepath, uint32_t format=0 );
 
     void addUserMaterials( int model, const std::vector<std::string>&, const idk::glTextureConfig& );
 

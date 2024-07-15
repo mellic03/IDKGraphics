@@ -1,6 +1,7 @@
 #pragma once
 
 #include <libidk/idk_glm.hpp>
+
 #include "../storage/buffers.hpp"
 #include "../batching/idk_model_allocator.hpp"
 #include "../camera/idk_camera.hpp"
@@ -9,13 +10,20 @@
 #include <unordered_map>
 
 
-
 namespace idk
 {
-    class RenderQueue;
-    class ModelAllocator;
+    struct Transform;
+
+    struct RenderQueueConfig;
+    class  RenderQueue;
+    class  ModelAllocator;
 };
 
+
+struct idk::RenderQueueConfig
+{
+    bool cull_face = true;
+};
 
 
 
@@ -32,9 +40,11 @@ private:
 
 
 public:
-    std::string name;
+    idk::RenderQueueConfig config;
+    std::string            name;
 
-    void enque( int, const glm::mat4 & );
+    void enque( int, const glm::mat4& );
+    void enque( int, const idk::Transform&, const IDK_Camera&, ModelAllocator& );
     void clear();
     bool empty() { return m_drawlist.empty(); };
 

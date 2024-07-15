@@ -40,21 +40,10 @@ void main()
 
     if (albedo.a < 0.9)
     {
-        // ivec2 texel = ivec2(fsin_texcoords * IDK_RenderData_GetCamera().vec2(camera.near, camera.far));
-
-        // int a = texel.x % 32;
-        // int b = texel.y % 32;
-
-        // if (a < 24 || b < 24)
-        {
-            discard;
-        }
+        discard;
     }
 
-    // vec3 N = normalize(TBN * normalize(normal)); // normalize(fsin_normal);
-    //     //  N = normalize(mix(N, normalize(fsin_normal), 0.5));
-
-    fsout_albedo = vec4(8.0*albedo.rgb, 1.0);
+    fsout_albedo = vec4(albedo.rgb, 1.0);
     fsout_normal = normalize(fsin_normal);
-    fsout_pbr    = vec4(1.0, 0.0, 1.0, emissv);
+    fsout_pbr    = vec4(0.9, 0.0, 1.0, 0.0);
 }

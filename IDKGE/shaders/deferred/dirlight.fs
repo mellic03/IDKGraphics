@@ -5,16 +5,10 @@
 #include "../include/util.glsl"
 #include "../include/pbr.glsl"
 
-
 layout (location = 0) out vec4 fsout_frag_color;
-
-
-#define MIPLEVEL_SPECULAR 4.0
-#define SKYBOX_IBL_STRENGTH 1.0
 
 in vec3 fsin_fragpos;
 flat in uint lightID;
-
 
 uniform sampler2D un_texture_0;
 uniform sampler2D un_texture_1;
@@ -26,120 +20,47 @@ uniform sampler2D un_BRDF_LUT;
 uniform samplerCube un_skybox_diffuse;
 uniform samplerCube un_skybox_specular;
 
-uniform sampler2D un_shadowmap;
+uniform sampler2DArray un_shadowmap;
 
 
 
-// float sampleDepthMap_2( vec3 uv, float bias )
-// {
-//     const int KERNEL_HW = 3;
-
-//     vec2 texelSize = 0.5 / textureSize(un_shadowmap, 0).xy;
-
-//     float shadow = 0.0;
-
-//     for(int x = -KERNEL_HW; x <= KERNEL_HW; ++x)
-//     {
-//         for(int y = -KERNEL_HW; y <= KERNEL_HW; ++y)
-//         {
-//             vec2 sample_uv    = uv.xy + vec2(x, y) * texelSize;
-//             // vec2 sample_uv    = uv.xy;
-//             vec3 sample_coord = vec3(sample_uv, uv.z - bias);
-
-//             float depth = texture(un_shadowmap, sample_coord.xy).r;
-
-//             shadow += (depth - bias > )
-//         }
-//     }
-
-//     // return shadow;
-//     return shadow / ((2*KERNEL_HW+1)*(2*KERNEL_HW+1));
-// }
-
-
-
-float dirlight_shadow_2( IDK_Camera camera, IDK_Dirlight light, mat4 view_matrix, vec3 position, vec3 N )
+float dirlight_shadow_2( IDK_Camera camera, IDK_Dirlight light, mat4 V, vec3 position, vec3 N )
 {
     vec3 L = normalize(-light.direction.xyz);
 
-    vec3  fragpos_viewspace  = (view_matrix * vec4(position, 1.0)).xyz;
-    vec4  fragpos_lightspace = light.transform * vec4(position, 1.0);
+    vec3 fragpos_viewspace = (V * vec4(position, 1.0)).xyz;
+    vec4 cascade_depths = light.cascades;
+    vec4 res     = step(cascade_depths, vec4(abs(fragpos_viewspace.z)));
+    int  cascade = int(res.x + res.y + res.z + res.w);
+         cascade = clamp(cascade, 0, 3);
 
+    vec4  fragpos_lightspace = light.transforms[cascade] * vec4(position, 1.0);
     vec3  projCoords = fragpos_lightspace.xyz / fragpos_lightspace.w;
           projCoords = projCoords * 0.5 + 0.5;
 
-    float frag_depth = projCoords.z;
-    float bias   = 0.01; // * max(dot(N, L), 0.001);
+    float frag_depth = abs(projCoords.z);
+    float bias = 0.01 * max(dot(N, L), 0.001);
+          bias *= 1 / (cascade_depths[cascade] * 0.5);
 
-
-    const int KERNEL_HW = 1;
+    const int KERNEL_HW = 4;
     vec2 texelSize = 1.0 / textureSize(un_shadowmap, 0).xy;
     float shadow = 0.0;
 
-    for(int x = -KERNEL_HW; x <= KERNEL_HW; ++x)
+    for(int x = -KERNEL_HW; x <= KERNEL_HW; x++)
     {
-        for(int y = -KERNEL_HW; y <= KERNEL_HW; ++y)
+        for(int y = -KERNEL_HW; y <= KERNEL_HW; y++)
         {
-            vec2 sample_uv = projCoords.xy + vec2(x, y) * texelSize;
-            float depth = texture(un_shadowmap, sample_uv).r;
+            vec2  sample_uv    = texelSize * vec2(x, y) + projCoords.xy;
+            float sample_depth = texture(un_shadowmap, vec3(sample_uv, cascade)).r;
 
-            shadow += (frag_depth - bias > depth) ? 1.0 : 0.0;
-        }
+            shadow += (frag_depth - bias) > sample_depth ? 1.0 : 0.0;        
+        }    
     }
+    shadow /= ((KERNEL_HW*2+1)*(KERNEL_HW*2+1));
 
-    return 1.0 - shadow / ((2*KERNEL_HW+1)*(2*KERNEL_HW+1));
+    return 1.0 - shadow;
 }
 
-
-
-float ScreenspaceShadow( IDK_Camera camera, IDK_PBRSurfaceData surface, IDK_Dirlight light )
-{
-    vec3 ray_pos = surface.position.xyz;
-    vec3 ray_dir = normalize(-light.direction.xyz);
-    mat4 PV = (camera.P * camera.V);
-
-    float occlusion = 0.0;
-
-    const float RAY_RANGE = 0.25;
-    const int   RAY_STEPS = 16;
-    const float RAY_STEP  = 0.01;
-
-    vec2 uv;
-
-
-    for (int i=0; i<RAY_STEPS; i++)
-    {
-        ray_pos += RAY_STEP*ray_dir;
-
-        // Project ray into UV space
-        // ---------------------------------------------------------------------------
-        vec4 projected = PV * vec4(ray_pos, 1.0);
-        projected.xy /= projected.w;
-        projected.xy = projected.xy * 0.5 + 0.5;
-
-        ivec2 tx = ivec2(projected.xy * vec2(camera.width, camera.height));
-              uv = projected.xy;
-
-
-        // float frag_depth = (PV * imageLoad(un_position, tx)).z;
-        vec3 pos = IDK_WorldFromDepth(un_fragdepth, uv, camera.P, camera.V);
-
-        float frag_depth = (PV * vec4(pos, 1.0)).z;
-        float ray_depth  = IDK_WorldToUV(ray_pos, PV).z;
-        // ---------------------------------------------------------------------------
-
-        if (ray_depth >= frag_depth)
-        {
-            occlusion = 1.0;
-            break;
-        }
-    }
-
-    float dist = distance(uv, vec2(0.5));
-          dist = (dist / camera.width);
-
-    return (0.5 - dist) * (1.0 - occlusion);
-}
 
 
 
@@ -149,8 +70,6 @@ void main()
     IDK_Dirlight light  = IDK_UBO_dirlights[lightID];
 
     vec2 texcoord = IDK_WorldToUV(fsin_fragpos, camera.P * camera.V).xy;
-    vec3 worldpos = IDK_WorldFromDepth(un_fragdepth, texcoord, camera.P, camera.V);
-    // float depth = texture(un_fragdepth, texcoord).r;
 
     IDK_PBRSurfaceData surface = IDK_PBRSurfaceData_load(
         camera,
@@ -162,35 +81,39 @@ void main()
         un_BRDF_LUT
     );
 
+    vec3 worldpos = surface.position;
 
-    float shadow  = dirlight_shadow_2(camera, light, camera.V, worldpos, surface.N);
-    // float sss     = ScreenspaceShadow(camera, surface, light);
-    //       shadow  = min(sss, sss);
-
-    vec3  result  = shadow * IDK_PBR_Dirlight2(light, surface, worldpos);
+    float shadow = dirlight_shadow_2(camera, light, camera.V, worldpos, surface.N);
+    vec3  result  = IDK_PBR_Dirlight(light, surface, worldpos);
+          result *= shadow;
           result += light.ambient.rgb * surface.albedo.rgb;
 
 
-    // IBL
-    // -----------------------------------------------------------------------------------------
-    vec3 IBL_contribution = vec3(0.0);
+    // // IBL
+    // // -----------------------------------------------------------------------------------------
+    // vec3 IBL_contribution = vec3(0.0);
 
-    vec3 irradiance = textureLod(un_skybox_diffuse, surface.N, surface.roughness).rgb;
-    vec3 diffuse    = irradiance * surface.albedo;
+    // vec3 irradiance = textureLod(un_skybox_diffuse, surface.N, surface.roughness).rgb;
+    // vec3 diffuse    = irradiance * surface.albedo;
 
-    vec3 prefilter = textureLod(un_skybox_specular, surface.R, surface.roughness*MIPLEVEL_SPECULAR).rgb;
-    vec3 specular  = prefilter * surface.brdf;
-    vec3 ambient   = (surface.Kd * diffuse + specular) * surface.ao;
+    // vec3 prefilter = textureLod(un_skybox_specular, surface.R, surface.roughness*4.0).rgb;
+    // vec3 specular  = prefilter * surface.brdf;
+    // vec3 ambient   = (surface.Kd * diffuse + specular) * surface.ao;
 
-    // #if DIRSHADOW_AMBIENT == 1
-        ambient *= clamp(shadow, light.ambient.w, 1.0);
-    // #endif
+    // // #if DIRSHADOW_AMBIENT == 1
+    //     ambient *= clamp(shadow, light.ambient.w, 1.0);
+    // // #endif
 
-    IBL_contribution = SKYBOX_IBL_STRENGTH * ambient;
-    result += IBL_contribution;
-    // -----------------------------------------------------------------------------------------
+    // result += shadow * ambient;
+    // // -----------------------------------------------------------------------------------------
 
-    result += (surface.emission * surface.albedo);
+    result += 2.0*surface.emission * surface.albedo;
+
 
     fsout_frag_color = vec4(result, surface.alpha);
 }
+
+
+
+
+

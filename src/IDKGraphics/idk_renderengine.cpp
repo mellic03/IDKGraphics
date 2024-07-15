@@ -1,12 +1,16 @@
 #include "idk_renderengine.hpp"
+#include "idk_render_settings.hpp"
+
 #include "render/idk_initflags.hpp"
 #include "render/idk_vxgi.hpp"
+#include "render/cubemap.hpp"
 
 #include <libidk/GL/idk_glShaderStage.hpp>
 #include <libidk/idk_image.hpp>
 #include <libidk/idk_texturegen.hpp>
 #include <libidk/idk_log.hpp>
 
+#include <libidk/idk_noisegen.hpp>
 
 #include "./UI/idk_ui.hpp"
 
@@ -68,14 +72,38 @@ idk::RenderEngine::compileShaders()
 
     createProgram("background", "IDKGE/shaders/", "screenquad.vs", "deferred/background.fs");
 
-    createProgram("gpass-particle", "IDKGE/shaders/deferred/", "gpass-particle.vs", "gpass-particle.fs");
-    createProgram("gpass", "IDKGE/shaders/deferred/", "gpass.vs", "gpass.fs");
+    createProgram("gpass",          "IDKGE/shaders/deferred/", "gpass.vs", "gpass.fs");
+    createProgram("gpass-particle", "IDKGE/shaders/deferred/", "gpass.vs", "gpass-particle.fs");
+    createProgram("gpass-decal",    "IDKGE/shaders/deferred/", "gpass.vs", "gpass-decal.fs");
+
+    // Probe-based GI
+    // -----------------------------------------------------------------------------------------
+    // idk::glShaderStage VS_cubemap("IDKGE/shaders/GI/envprobe-cubemap.vs");
+    // idk::glShaderStage FS_cubemap("IDKGE/shaders/GI/envprobe-cubemap.fs");
+    // createProgram("envprobe-cubemap", idk::glShaderProgram(VS_cubemap, FS_cubemap));
+
+    // idk::glShaderStage VS_cubemap_bg("IDKGE/shaders/GI/envprobe-background.vs");
+    // idk::glShaderStage FS_cubemap_bg("IDKGE/shaders/GI/envprobe-background.fs");
+    // createProgram("envprobe-background", idk::glShaderProgram(VS_cubemap_bg, FS_cubemap_bg));
+
+    // idk::glShaderStage VS_convolve_cubemap("IDKGE/shaders/GI/convolve-cubemap.vs");
+    // idk::glShaderStage FS_convolve_cubemap("IDKGE/shaders/GI/convolve-cubemap.fs");
+    // createProgram("convolve-cubemap", idk::glShaderProgram(VS_convolve_cubemap, FS_convolve_cubemap));
+
+    // idk::glShaderStage VS_radiance("IDKGE/shaders/deferred/radiance.vs");
+    // idk::glShaderStage FS_radiance("IDKGE/shaders/deferred/radiance.fs");
+    // createProgram("radiance", idk::glShaderProgram(VS_radiance, FS_radiance));
+    // -----------------------------------------------------------------------------------------
 
 
-
+    // Deferred lightsources
+    // -----------------------------------------------------------------------------------------
     idk::glShaderStage VS_Dirlight("IDKGE/shaders/deferred/dirlight.vs");
     idk::glShaderStage FS_Dirlight("IDKGE/shaders/deferred/dirlight.fs");
+    idk::glShaderStage FS_DirlightVol("IDKGE/shaders/deferred/dirlight-volumetric.fs");
     createProgram("deferred-dirlight", idk::glShaderProgram(VS_Dirlight, FS_Dirlight));
+    createProgram("dirlight-volumetric", idk::glShaderProgram(VS_Dirlight, FS_DirlightVol));
+
 
     idk::glShaderStage VS_Pointlight("IDKGE/shaders/deferred/pointlight.vs");
     idk::glShaderStage FS_Pointlight("IDKGE/shaders/deferred/pointlight.fs");
@@ -84,6 +112,19 @@ idk::RenderEngine::compileShaders()
     idk::glShaderStage VS_Spotlight("IDKGE/shaders/deferred/spotlight.vs");
     idk::glShaderStage FS_Spotlight("IDKGE/shaders/deferred/spotlight.fs");
     createProgram("deferred-spotlight", idk::glShaderProgram(VS_Spotlight, FS_Spotlight));
+    // -----------------------------------------------------------------------------------------
+
+
+    idk::glShaderStage VS_SSAO("IDKGE/shaders/screenquad.vs");
+    idk::glShaderStage FS_SSAO("IDKGE/shaders/post/SSAO.fs");
+    createProgram("SSAO", idk::glShaderProgram(VS_SSAO, FS_SSAO));
+    // createProgram("SSAO", glShaderProgram("IDKGE/shaders/post/SSAO.comp"));
+    createProgram("SSAO_composite", "IDKGE/shaders/", "screenquad.vs", "post/SSAO_composite.fs");
+
+
+
+
+    createProgram("composite", "IDKGE/shaders/", "screenquad.vs", "post/composite.fs");
 
     createProgram("dirshadow-indirect", "IDKGE/shaders/", "dirshadow-indirect.vs", "dirshadow.fs");
     createProgram("SSR", "IDKGE/shaders/", "screenquad.vs", "post/SSR.fs");
@@ -111,6 +152,7 @@ idk::RenderEngine::init_framebuffers( int w, int h )
 
     idk::glTextureConfig config = {
         .internalformat = GL_RGBA16F,
+        .format         = GL_RGBA,
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
         .datatype       = GL_FLOAT,
@@ -119,10 +161,38 @@ idk::RenderEngine::init_framebuffers( int w, int h )
 
     idk::glTextureConfig SSR_config = {
         .internalformat = GL_RGBA8,
-        .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
+        .format         = GL_RGBA,
+        .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
         .datatype       = GL_UNSIGNED_BYTE,
-        .genmipmap      = GL_TRUE
+        .genmipmap      = GL_FALSE
+    };
+
+    idk::glTextureConfig radiance_config = {
+        .internalformat = GL_RGBA16F,
+        .format         = GL_RGBA,
+        .minfilter      = GL_LINEAR,
+        .magfilter      = GL_LINEAR,
+        .datatype       = GL_FLOAT,
+        .genmipmap      = GL_FALSE
+    };
+
+    idk::glTextureConfig vol_config = {
+        .internalformat = GL_RGBA16F,
+        .format         = GL_RGBA,
+        .minfilter      = GL_LINEAR,
+        .magfilter      = GL_LINEAR,
+        .datatype       = GL_FLOAT,
+        .genmipmap      = GL_FALSE
+    };
+
+    idk::glTextureConfig SSAO_config = {
+        .internalformat = GL_R8,
+        .format         = GL_RED,
+        .minfilter      = GL_NEAREST,
+        .magfilter      = GL_LINEAR,
+        .datatype       = GL_UNSIGNED_BYTE,
+        .genmipmap      = GL_FALSE
     };
 
     static const idk::DepthAttachmentConfig depth_config = {
@@ -130,13 +200,22 @@ idk::RenderEngine::init_framebuffers( int w, int h )
         .datatype       = GL_FLOAT
     };
 
-    // m_vxgi_buffer.reset(VXGI_TEXTURE_SIZE, VXGI_TEXTURE_SIZE, 1);
-    // m_vxgi_buffer.colorAttachment(0, config);
-    // m_vxgi_buffer.depthAttachment(depth_config);
-
-
     m_dirshadow_buffer.reset(2048, 2048, 0);
-    m_dirshadow_buffer.depthAttachment(depth_config);
+    m_dirshadow_buffer.depthArrayAttachment(5, depth_config);
+
+    m_radiance_buffer.reset(w, h, 1);
+    m_radiance_buffer.colorAttachment(0, radiance_config);
+
+    m_volumetrics_buffers[0].reset(w/2, h/2, 2);
+    m_volumetrics_buffers[1].reset(w/2, h/2, 2);
+    m_volumetrics_buffers[0].colorAttachment(0, vol_config);
+    m_volumetrics_buffers[1].colorAttachment(0, vol_config);
+
+    m_SSAO_buffers[0].reset(w/2, h/2, 1);
+    m_SSAO_buffers[1].reset(w/2, h/2, 1);
+    m_SSAO_buffers[0].colorAttachment(0, SSAO_config);
+    m_SSAO_buffers[1].colorAttachment(0, SSAO_config);
+
 
     m_finalbuffer.reset(w, h, 1);
     m_finalbuffer.colorAttachment(0, config);
@@ -157,7 +236,6 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     m_ui_buffer.reset(w, h, 1);
     m_ui_buffer.colorAttachment(0, config);
     m_ui_buffer.depthAttachment(depth_config);
-
 
 
     idk::glTextureConfig albedo_config = {
@@ -188,11 +266,12 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     };
 
 
-    m_geom_buffer.reset(w, h, 3);
-    m_geom_buffer.colorAttachment(0, albedo_config);
-    m_geom_buffer.colorAttachment(1, normal_config);
-    m_geom_buffer.colorAttachment(2, pbr_config);
-    m_geom_buffer.depthAttachment(depth_config);
+    m_gbuffer.reset(w, h, 3);
+    m_gbuffer.colorAttachment(0, albedo_config);
+    m_gbuffer.colorAttachment(1, normal_config);
+    m_gbuffer.colorAttachment(2, pbr_config);
+    m_gbuffer.depthAttachment(depth_config);
+
 
     config = {
         .internalformat = GL_RGBA16F,
@@ -213,29 +292,64 @@ idk::RenderEngine::init_framebuffers( int w, int h )
 
 
 void
+idk::RenderEngine::_gen_envprobes()
+{
+    idk::glTextureConfig envprobe_config = {
+        .target         = GL_TEXTURE_CUBE_MAP,
+        .internalformat = GL_RGBA8,
+        .format         = GL_RGBA,
+        .minfilter      = GL_LINEAR,
+        .magfilter      = GL_LINEAR,
+        .datatype       = GL_UNSIGNED_BYTE,
+        .genmipmap      = GL_FALSE,
+    };
+
+    idk::DepthAttachmentConfig envprobe_depthconfig = {
+        .internalformat = GL_DEPTH_COMPONENT16,
+        .format         = GL_DEPTH_COMPONENT,
+        .datatype       = GL_FLOAT,
+        .compare_func   = GL_LESS,
+    };
+
+    idk::glTextureConfig lightprobe_config = {
+        .target         = GL_TEXTURE_CUBE_MAP_ARRAY,
+        .internalformat = GL_RGBA8,
+        .format         = GL_RGBA,
+        .minfilter      = GL_LINEAR,
+        .magfilter      = GL_LINEAR,
+        .datatype       = GL_UNSIGNED_BYTE,
+        .genmipmap      = GL_FALSE,
+    };
+
+
+    m_envprobe_buffer.reset(256, 256, 1);
+    m_envprobe_buffer.cubeColorAttachment(0, envprobe_config);
+    m_envprobe_buffer.cubeDepthAttachment(envprobe_depthconfig);
+
+    int nprobes = m_rendersettings->envprobe.nprobes;
+    idk_printvalue(nprobes);
+
+    m_lightprobe_buffer.reset(16, 16, 1);
+    m_lightprobe_buffer.cubeArrayColorAttachment(0, nprobes, lightprobe_config);
+
+}
+
+
+
+void
 idk::RenderEngine::init_all( std::string name, int w, int h )
 {
     compileShaders();
+    gl::enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
     init_screenquad();
     init_framebuffers(w, h);
-
 
     m_RQ           = m_render_queues.create();
     m_viewspace_RQ = m_render_queues.create();
     m_shadow_RQ    = m_render_queues.create();
     m_GI_RQ        = m_render_queues.create();
-
-
-    // // Initialize GL_DRAW_INDIRECT_BUFFER for glMultiDrawElementsIndirect
-    // // -----------------------------------------------------------------------------------------
-    // m_DrawCommandBuffer.init();
-    // m_DrawCommandBuffer.bufferData(512 * sizeof(idk::glDrawCmd), nullptr, GL_DYNAMIC_COPY);
-
-    // m_DrawIndirectData = new idk::DrawIndirectData;
-    // m_DrawIndirectSSBO.init(0);
-    // // -----------------------------------------------------------------------------------------
-
+    m_decal_RQ     = m_render_queues.create();
 
     // Primitive shapes
     // -----------------------------------------------------------------------------------------
@@ -248,22 +362,20 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     // -----------------------------------------------------------------------------------------
 
 
-
     // Initialize buffers for indirect draw
     // -----------------------------------------------------------------------------------------
-    m_SSBO.init(0);
-    m_SSBO.bufferData(sizeof(idk::SSBO_Buffer), nullptr, GL_DYNAMIC_DRAW);
-
     m_UBO.init(0);
     m_UBO.bufferData(sizeof(idk::UBO_Buffer),  nullptr, GL_DYNAMIC_DRAW);
 
+    m_SSBO.init(0);
+    m_SSBO.bufferData(sizeof(idk::SSBO_Buffer), nullptr, GL_DYNAMIC_DRAW);
+
     m_DIB.init();
-    m_DIB.bufferData(draw_buffer::MAX_DRAW_CALLS*sizeof(glDrawCmd), nullptr, GL_DYNAMIC_DRAW);
+    m_DIB.bufferData(storage_buffer::MAX_DRAW_CALLS*sizeof(glDrawCmd), nullptr, GL_DYNAMIC_DRAW);
 
     m_lightsource_DIB.init();
     m_lightsource_DIB.bufferData(sizeof(glDrawCmd), nullptr, GL_DYNAMIC_DRAW);
     // -----------------------------------------------------------------------------------------
-
 
 
     // Compute BRDF LUT
@@ -290,20 +402,27 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     idk::gl::memoryBarrier(GL_ALL_BARRIER_BITS);
     // -----------------------------------------------------------------------------------------
 
+    // _gen_envprobes();
+
+    // Generate white noise for temporal effects
+    // -----------------------------------------------------------------------------------------
+    idk::glTextureConfig SSAO_config = {
+        .internalformat = GL_RGBA8,
+        .format         = GL_RGBA,
+        .minfilter      = GL_LINEAR,
+        .magfilter      = GL_LINEAR,
+        .wrap_s         = GL_REPEAT,
+        .wrap_t         = GL_REPEAT,
+        .datatype       = GL_UNSIGNED_BYTE,
+        .genmipmap      = GL_FALSE
+    };
+
+    auto pixels = noisegen2D::u8_whitenoise(256, 256);
+    m_SSAO_noise = gltools::loadTexture2D(256, 256, pixels.get(), SSAO_config);
+    // -----------------------------------------------------------------------------------------
 
     m_active_camera_id = createCamera();
-
     loadSkybox("IDKGE/resources/skybox/");
-
-    // vxgi_albedo = VXGI::allocateAlbedoTexture(VXGI_TEXTURE_SIZE);
-    // vxgi_normal = VXGI::allocateNormalTexture(VXGI_TEXTURE_SIZE);
-
-    // for (int i=0; i<6; i++)
-    // {
-    //     vxgi_radiance[i] = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
-    //     vxgi_radiance_2[i] = VXGI::allocateTexture(VXGI_TEXTURE_SIZE);
-    // }
-
 }
 
 
@@ -311,7 +430,8 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
 idk::RenderEngine::RenderEngine( const std::string &name, int w, int h, int gl_major,
                                  int gl_minor, uint32_t flags )
 :
-    m_windowsys(name.c_str(), w, h, gl_major, gl_minor, flags)
+    m_windowsys      (name.c_str(), w, h, gl_major, gl_minor, flags),
+    m_rendersettings (new RenderSettings)
 {
     m_resolution = glm::ivec2(w, h);
     gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
@@ -358,9 +478,24 @@ int
 idk::RenderEngine::createRenderQueue( const std::string &program )
 {
     int ID = m_user_render_queues.create();
-    LOG_INFO() << "Created user-facing render queue \"" << program << "\" with ID " << ID;
+    LOG_INFO() << "[RenderEngine] Created user-facing render queue \"" << program << "\" with ID " << ID;
 
+    m_user_render_queues.get(ID).config = { .cull_face = true };
     m_user_render_queues.get(ID).name = program;
+
+    return ID;
+}
+
+
+int
+idk::RenderEngine::createRenderQueue( const std::string &program, const idk::RenderQueueConfig &config )
+{
+    int ID = m_user_render_queues.create();
+    LOG_INFO() << "[RenderEngine] Created user-facing render queue \"" << program << "\" with ID " << ID;
+
+    m_user_render_queues.get(ID).config = config;
+    m_user_render_queues.get(ID).name = program;
+
     return ID;
 }
 
@@ -394,8 +529,6 @@ idk::RenderEngine::destroyShadowCasterQueue( int RQ )
 int
 idk::RenderEngine::loadSkybox( const std::string &filepath )
 {
-    gl::enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
-
     static const std::vector<std::string> faces
     {
         "px.png", "nx.png", "py.png", "ny.png", "pz.png", "nz.png"
@@ -596,10 +729,24 @@ idk::RenderEngine::loadModel( const std::string &filepath )
 }
 
 
+int
+idk::RenderEngine::loadModelLOD( int model, int level, const std::string &filepath )
+{
+    return m_model_allocator.loadModelLOD(model, level, filepath);
+}
+
+
 void
 idk::RenderEngine::drawModel( int model, const glm::mat4 &transform )
 {
     _getRenderQueue(m_RQ).enque(model, transform);
+}
+
+
+void
+idk::RenderEngine::drawModel( int model, const idk::Transform &T )
+{
+    _getRenderQueue(m_RQ).enque(model, T, getCamera(), modelAllocator());
 }
 
 
@@ -614,6 +761,16 @@ void
 idk::RenderEngine::drawShadowCasterRQ( int RQ, int model, const glm::mat4 &transform )
 {
     m_user_shadow_queues.get(RQ).enque(model, transform);
+}
+
+
+void
+idk::RenderEngine::drawDecal( int model, const glm::vec3 &pos, const glm::vec3 &dir, float scale )
+{
+    glm::mat4 M = glm::inverse(glm::lookAt(pos, pos-dir, glm::vec3(0.0f, 1.0f, 0.0f)));
+    glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(scale));
+
+    _getRenderQueue(m_decal_RQ).enque(model, M*S);
 }
 
 
@@ -794,21 +951,36 @@ idk::RenderEngine::update_UBO_lightsources( idk::UBO_Buffer &buffer )
 
     IDK_Camera &camera = getCamera();
 
+
     offset = 0;
     for (IDK_Dirlight &light: m_dirlights)
     {
-        glm::mat4 P = glm::ortho(-10.0f, +10.0f, -10.0f, +10.0f, -10.0f, 10.0f);
+        auto matrices = glDepthCascade::computeCascadeMatrices(
+            camera.fov, camera.aspect, camera.near, camera.far,
+            2048.0f,
+            camera.V, glm::vec3(light.direction)
+        );
 
+        light.cascades = glm::vec4(8.0f, 16.0f, 32.0f, 64.0f);
+
+        glm::mat4 P = glm::ortho(-35.0f, +35.0f, -35.0f, +35.0f, -35.0f, +35.0f);
         glm::mat4 V = glm::lookAt(
-            glm::vec3(camera.position) - glm::vec3(light.direction),
-            glm::vec3(camera.position),
+            glm::vec3(0.0f),
+            glm::vec3(light.direction),
             glm::vec3(0.0f, 1.0f, 0.0f)
         );
 
+
         light.transform = P*V;
+
+        for (int i=0; i<4; i++)
+        {
+            light.transforms[i] = matrices[i];
+        }
 
         buffer.dirlights[offset++] = light;
     }
+
 
     offset = 0;
     for (IDK_Pointlight &light: m_pointlights)
@@ -861,6 +1033,44 @@ idk::RenderEngine::update_UBO_lightsources( idk::UBO_Buffer &buffer )
 // }
 
 
+void
+idk::RenderEngine::applyRenderSettings( const RenderSettings &settings )
+{
+    // *m_rendersettings = settings;
+
+    // Volumetrics
+    {
+        m_rendersettings->dirlight_volumetrics = settings.dirlight_volumetrics;
+    }
+
+    // // Environment probes
+    // {
+    //     auto prev = m_rendersettings->envprobe;
+    //     auto curr = settings.envprobe;
+
+    //     if (curr.grid_size != prev.grid_size)
+    //     {
+    //         curr.dirty = true;
+    //     }
+    
+    //     if (curr.cell_size != prev.cell_size)
+    //     {
+    //         curr.dirty = true;
+    //     }
+
+    //     m_rendersettings->envprobe = curr;
+    // }
+
+}
+
+
+const idk::RenderSettings &
+idk::RenderEngine::getRenderSettings()
+{
+    return *m_rendersettings;
+}
+
+
 
 void
 idk::RenderEngine::beginFrame()
@@ -878,6 +1088,35 @@ void
 idk::RenderEngine::endFrame( float dt )
 {
     delta_time = dt;
+    IDK_Camera &camera = getCamera();
+
+
+    // {
+    //     auto &config = m_rendersettings->envprobe;
+
+    //     if (config.dirty)
+    //     {
+    //         glm::ivec3 bounds = config.grid_size;
+    //         config.nprobes = bounds.x * bounds.y * bounds.z;
+
+    //         _gen_envprobes();
+
+    //         config.dirty = false;
+    //     }
+
+    //     if (config.visualize)
+    //     {
+    //         for (int layer=0; layer<config.nprobes; layer++)
+    //         {
+    //             glm::vec3 position = env_probe::layerToWorld(
+    //                 camera.position, layer, config
+    //             );
+
+    //             drawSphere(position, 0.25f);
+    //         }
+    //     }
+    // }
+
 
     {
         if (m_overlays.empty() == false)
@@ -913,8 +1152,6 @@ idk::RenderEngine::endFrame( float dt )
 
     // Update particle emitters
     // -----------------------------------------------------------------------------------------
-    IDK_Camera &camera = getCamera();
-
     for (auto &P: m_particle_emitters)
     {
         P.update(dt);
@@ -931,6 +1168,8 @@ idk::RenderEngine::endFrame( float dt )
 
     // Update UBO data
     // -----------------------------------------------------------------------------------------
+    m_UBO_buffer.counter = (m_UBO_buffer.counter + 1) % 4;
+
     update_UBO_camera(m_UBO_buffer);
     update_UBO_lightsources(m_UBO_buffer);
     // -----------------------------------------------------------------------------------------
@@ -984,7 +1223,7 @@ idk::RenderEngine::endFrame( float dt )
     // -----------------------------------------------------------------------------------------
 
 
-    IDK_ASSERT("m_DIB_buffer.size() > 512", m_DIB_buffer.size() <= draw_buffer::MAX_DRAW_CALLS);
+    IDK_ASSERT("m_DIB_buffer.size() > 1024", m_DIB_buffer.size() <= storage_buffer::MAX_DRAW_CALLS);
 
     m_UBO.bufferSubData(0, sizeof(m_UBO_buffer), (const void *)(&m_UBO_buffer));
     m_SSBO.bufferSubData(0, sizeof(m_SSBO_buffer), (const void *)(&m_SSBO_buffer));
@@ -992,19 +1231,25 @@ idk::RenderEngine::endFrame( float dt )
     gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_DIB.ID());
 
 
-    gl::bindVertexArray(m_model_allocator.getVAO());
     gl::disable(GL_BLEND);
+    gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
+    gl::enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
+    // Perform environment mapping
+    // -----------------------------------------------------------------------------------------
+    gl::bindVertexArray(m_model_allocator.getVAO());
+    RenderStage_envmapping(camera, dt);
+    // -----------------------------------------------------------------------------------------
 
 
     // Render G-Buffer
     // -----------------------------------------------------------------------------------------
-    gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
+    gl::bindVertexArray(m_model_allocator.getVAO());
 
-    m_geom_buffer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    m_geom_buffer.bind();
+    m_gbuffer.bind();
+    m_gbuffer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    RenderStage_geometry(camera, dt, m_geom_buffer);
+    RenderStage_geometry(camera, dt, m_gbuffer);
     // -----------------------------------------------------------------------------------------
 
 
@@ -1012,9 +1257,11 @@ idk::RenderEngine::endFrame( float dt )
     // -----------------------------------------------------------------------------------------
     gl::disable(GL_CULL_FACE);
 
+    // gl::cullFace(GL_FRONT);
     shadowpass_dirlights();
     shadowpass_pointlights();
     shadowpass_spotlights();
+    // gl::cullFace(GL_BACK);
     // -----------------------------------------------------------------------------------------
 
 
@@ -1023,7 +1270,7 @@ idk::RenderEngine::endFrame( float dt )
     m_mainbuffer_0.clear(GL_COLOR_BUFFER_BIT);
     m_mainbuffer_0.bind();
 
-    RenderStage_lighting(camera, dt, m_geom_buffer, m_mainbuffer_0);
+    RenderStage_lighting(camera, dt, m_gbuffer, m_mainbuffer_0);
     // -----------------------------------------------------------------------------------------
 
 

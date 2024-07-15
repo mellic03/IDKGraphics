@@ -12,11 +12,13 @@ namespace idk
 {
     namespace draw_buffer
     {
+        static constexpr int MODEL_MAX_LOD = 4;
+
         static constexpr uint32_t TEXTURES_PER_MATERIAL = 5;
         
         static constexpr uint32_t MAX_TEXTURES   = 128;
-        static constexpr uint32_t MAX_TRANSFORMS = 8;
-        static constexpr uint32_t MAX_DRAW_CALLS = 512;
+        static constexpr uint32_t MAX_TRANSFORMS = 1024;
+        static constexpr uint32_t MAX_DRAW_CALLS = 1024;
     };
 
     namespace uniform_buffer
@@ -40,25 +42,24 @@ struct idk::DrawIndirectSSBO
 
 namespace idk
 {
-    // struct MaterialDescriptor
-    // {
-    //     std::vector<uint32_t> textures;
-    //     std::vector<uint64_t> handles;
-
-    //     MaterialDescriptor()
-    //     :   textures(draw_buffer::TEXTURES_PER_MATERIAL, 0),
-    //         handles(draw_buffer::TEXTURES_PER_MATERIAL, 0)
-    //     {
-
-    //     };
-    // };
-
-    struct MeshDescriptor
+    struct MaterialDescriptor
     {
         std::vector<uint32_t> textures;
         std::vector<uint64_t> handles;
 
-        // std::vector<MaterialDescriptor> materials;
+        MaterialDescriptor()
+        :   textures(draw_buffer::TEXTURES_PER_MATERIAL, 0),
+            handles(draw_buffer::TEXTURES_PER_MATERIAL, 0)
+        {
+
+        };
+    };
+
+    struct MeshDescriptor
+    {
+        // std::vector<uint32_t> textures;
+        // std::vector<uint64_t> handles;
+        int    material;
 
         float  bounding_radius;
 
@@ -68,18 +69,22 @@ namespace idk
         uint32_t numVertices;
         uint32_t numIndices;
 
-        MeshDescriptor()
-        :   textures(draw_buffer::TEXTURES_PER_MATERIAL, 0),
-            handles(draw_buffer::TEXTURES_PER_MATERIAL, 0)
-        {
+        // MeshDescriptor()
+        // :   textures(draw_buffer::TEXTURES_PER_MATERIAL, 0),
+        //     handles(draw_buffer::TEXTURES_PER_MATERIAL, 0)
+        // {
 
-        };
+        // };
     };
 
 
     struct ModelDescriptor
     {
+        int proxy = -1;
+
         std::vector<MeshDescriptor> meshes;
+        float bounding_radius = 1.0f;
+        int LOD[4] = { -1, -1, -1, -1 };
         // std::vector<MaterialDescriptor> user_materials;
     };
 
@@ -197,14 +202,18 @@ template <typename vertex_type>
 float
 idk::MeshFile_computeBoundingSphere( uint32_t num_vertices, const vertex_type *vertices )
 {
-    float radius = -1.0f;
+    float radius = 0.0f;
 
     for (uint32_t i=0; i<num_vertices; i++)
     {
-        glm::vec3 origin   = glm::vec3(0.0f);
+        // glm::vec3 origin   = glm::vec3(0.0f);
         glm::vec3 position = vertices[i].position;
 
-        radius = glm::max(radius, glm::distance(origin, position));
+        radius = glm::max(radius, position.x);
+        radius = glm::max(radius, position.y);
+        radius = glm::max(radius, position.z);
+
+        // radius = glm::max(radius, glm::distance(origin, position));
     }
 
     return radius;

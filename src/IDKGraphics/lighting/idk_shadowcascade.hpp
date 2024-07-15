@@ -14,6 +14,8 @@ private:
     glm::vec4              m_cascade_depths;
     std::vector<glm::mat4> m_cascade_matrices;
 
+public:
+
     static const std::vector<glm::vec4> &get_corners( const glm::mat4 &P,
                                                       const glm::mat4 &V );
 
@@ -27,7 +29,7 @@ private:
                                             const std::vector<glm::vec4> &corners );
 
 
-public:
+
     const static uint32_t NUM_CASCADES = 4;
 
     void        reset( int w, int h );
@@ -38,8 +40,9 @@ public:
     GLuint      getTextureArray();
 
 
-    const std::vector<glm::mat4> &computeCascadeMatrices( float fov,  float aspect,
+    static std::vector<glm::mat4> computeCascadeMatrices( float fov,  float aspect,
                                                           float near, float far,
+                                                          float image_w,
                                                           const glm::mat4 &cam_view,
                                                           const glm::vec3 &light_dir );
 

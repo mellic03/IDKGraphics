@@ -12,5 +12,12 @@ uniform sampler2D un_atlas;
 
 void main()
 {
-    fsout_frag_color = texture(un_atlas, fsin_texcoord);
+    vec4 src = texture(un_atlas, fsin_texcoord);
+
+    // if (src.a < 0.9)
+    // {
+    //     discard;
+    // }
+
+    fsout_frag_color = src;
 }

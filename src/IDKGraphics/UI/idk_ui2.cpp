@@ -17,19 +17,36 @@ idkui2::ElementBase *focus_element = nullptr;
 
 
 
-
 void
 idkui2::ElementBase::update( glm::vec2 corner, glm::vec2 span, int depth,
                               idkui2::UIRenderer &uiren )
 {
-    glm::vec4 margin = m_style.margin;
+    {
+        const glm::vec4 &margin = m_style.margin;
 
-    m_bounds[0] = corner.x          + margin[0];
-    m_bounds[1] = corner.x + span.x - margin[1];
-    m_bounds[2] = corner.y          + margin[2];
-    m_bounds[3] = corner.y + span.y - margin[3];
+        m_bounds[0] = corner.x          + margin[0];
+        m_bounds[1] = corner.x + span.x - margin[1];
+        m_bounds[2] = corner.y          + margin[2];
+        m_bounds[3] = corner.y + span.y - margin[3];
+
+        auto [xmin, xmax, ymin, ymax] = m_bounds;
+
+        if (m_style.invisible == false)
+        {
+            uiren.renderQuad(xmin, ymin, depth++, xmax-xmin, ymax-ymin, m_style.radius, m_style.bg);
+        }
+    }
+
+
+    const glm::vec4 &padding = m_style.padding;
+
+    m_bounds[0] -= padding[0];
+    m_bounds[1] -= padding[1];
+    m_bounds[2] += padding[2];
+    m_bounds[3] -= padding[3];
 
     auto [xmin, xmax, ymin, ymax] = m_bounds;
+
 
     m_focused = false;
 
@@ -52,18 +69,43 @@ idkui2::ElementBase::update( glm::vec2 corner, glm::vec2 span, int depth,
 
 
 
-
-
-
-
 idkui2::Grid::Grid( const std::string &name, const ElementStyle &style, int rows, int cols )
-:   ElementBase (name, style),
-    m_rows      (rows),
-    m_cols      (cols),
-    m_children  (rows, std::vector<ElementBase*>(cols, nullptr))
+:   ElementBase       (name, style),
+    m_rows            (rows),
+    m_cols            (cols),
+    m_children        (rows, std::vector<ElementBase*>(cols, nullptr)),
+    m_row_proportions (rows, 1.0f / rows),
+    m_col_proportions (cols, 1.0f / cols)
 {
 
 }
+
+
+
+idkui2::Split::Split( const std::string &name, const ElementStyle &style, float ratio )
+:   Grid    (name, style, 1, 2),
+    m_ratio (ratio)
+{
+    setColProportions({ratio, 1.0f - ratio});
+}
+
+
+void
+idkui2::Split::setLeft( ElementBase *child )
+{
+    m_children[0][0] = child;
+}
+
+
+void
+idkui2::Split::setRight( ElementBase *child )
+{
+    m_children[0][1] = child;
+}
+
+
+
+
 
 
 void
@@ -85,35 +127,78 @@ idkui2::Grid::setChild( int row, int col, ElementBase *element )
     m_children[row][col] = element;
 }
 
+
+
+void
+idkui2::Grid::setRowProportions( const std::vector<float> &proportions )
+{
+    m_row_proportions = proportions;
+
+    float length = 0.0f;
+    for (int i=0; i<m_rows; i++)
+    {
+        length += m_row_proportions[i];
+    }
+
+    IDK_ASSERT("Cannot normalize proportions", length > 0.0001f);
+
+    for (int i=0; i<m_rows; i++)
+    {
+        m_row_proportions[i] /= length;
+    }
+}
+
+
+void
+idkui2::Grid::setColProportions( const std::vector<float> &proportions )
+{
+    m_col_proportions = proportions;
+
+    float length = 0.0f;
+    for (int i=0; i<m_cols; i++)
+    {
+        length += m_col_proportions[i];
+    }
+
+    IDK_ASSERT("Cannot normalize proportions", length > 0.0001f);
+
+    for (int i=0; i<m_cols; i++)
+    {
+        m_col_proportions[i] /= length;
+    }
+}
+
+
+
+
+
 void
 idkui2::List::_update( glm::vec2 corner, glm::vec2 span, int depth,
                       idkui2::UIRenderer &uiren )
 {
     auto [xmin, xmax, ymin, ymax] = m_bounds;
 
-
     if (m_style.invisible == false)
     {
         uiren.renderQuad(corner.x, corner.y, depth++, span.x, span.y, m_style.radius, m_style.bg);
     }
 
-
-    glm::vec4 padding    = m_style.padding;
-    glm::vec2 offset     = glm::vec2(0.0f, padding[3]);
-    glm::vec2 child_span = glm::vec2(span.x, offset.y);
+    glm::vec2 offset     = glm::vec2(0.0f, 0.0f);
+    glm::vec2 child_span = glm::vec2(span.x, 64.0f);
 
     for (ElementBase *child: m_children_front)
     {
         child->update(corner+offset, child_span, depth+1, uiren);
-        offset.y += padding[3];
+        offset.y += 64.0f;
     }
 
-    offset = glm::vec2(0.0f, span.y - padding[3]);
+
+    offset.y = span.y - 64.0f;
 
     for (ElementBase *child: m_children_back)
     {
         child->update(corner+offset, child_span, depth+1, uiren);
-        offset.y -= padding[3];
+        offset.y -= 64.0f;
     }
 
 }
@@ -137,7 +222,11 @@ idkui2::Button::_update( glm::vec2 corner, glm::vec2 span, int depth,
     uiren.renderQuad(xmin, ymin, depth++, span.x, span.y, m_style.radius, bg);
 
     glm::vec2 center = glm::vec2(xmin+span.x/2.0f, ymin+span.y/2.0f);
-    uiren.renderTextCentered(center.x, center.y, depth++, m_label, fg);
+
+    float label_w = float(m_label.length() * uiren.glyphWidth());
+    float scale   = glm::min(label_w, span.x) / label_w;
+
+    uiren.renderTextCentered(center.x, center.y, depth++, m_label, fg, scale);
 
 }
 
@@ -225,17 +314,62 @@ idkui2::TextInput::_update( glm::vec2 corner, glm::vec2 span, int depth,
     glm::vec4 fg = m_style.fg;
     glm::vec4 bg = m_style.bg;
 
-    glm::vec4 fg2 = m_style.fg2;
-    glm::vec4 bg2 = m_style.bg2;
+    // glm::vec4 fg2 = m_style.fg2;
+    // glm::vec4 bg2 = m_style.bg2;
 
-
-    if (m_focused)
-    {
-        std::swap(fg, bg);
-    }
+    // if (m_focused)
+    // {
+    //     std::swap(fg, bg);
+    // }
 
     uiren.renderQuad(xmin, ymin, depth++, span.x, span.y, m_style.radius, bg);
-    uiren.renderText(xmin, ymin, depth++, m_text, fg);
+
+    if (m_text.length() == 0)
+    {
+        return;
+    }
+
+    float label_w = float(m_text.length() * uiren.glyphWidth());
+    float new_w   = glm::min(label_w, span.x);
+    float scale   =  new_w / label_w;
+
+    uiren.renderText(xmin, ymin, depth++, m_text, fg, scale);
+
+
+    float xcursor = xmin + label_w;
+    uiren.renderQuad(xcursor, ymin+span.y, depth++, 32, 8, 0.0f, fg);
+
+}
+
+
+void
+idkui2::TextInput::on_focus( idk::EngineAPI &api )
+{
+    auto &keylog = api.getEventSys().keylog();
+
+
+    if (!m_text.empty() && keylog.keyTapped(Keycode::BACKSPACE))
+    {
+        m_text.pop_back();
+    }
+
+    if (keylog.keyTapped(Keycode::PERIOD))
+    {
+        m_text.push_back('.');
+    }
+
+    if (keylog.keyTapped(Keycode::N0))
+    {
+        m_text.push_back('0');
+    }
+
+    for (uint32_t k=Keycode::N1; k<=Keycode::N9; k++)
+    {
+        if (keylog.keyTapped((Keycode)(k)))
+        {
+            m_text += char(k - Keycode::N1 + '0');
+        }
+    }
 
 }
 
@@ -254,7 +388,37 @@ idkui2::Title::_update( glm::vec2 corner, glm::vec2 span, int depth,
     glm::vec4 bg = m_style.bg;
 
     glm::vec2 center = glm::vec2(xmin+span.x/2.0f, ymin+span.y/2.0f);
+
+    uiren.renderQuadCentered(center.x, center.y, depth++, span.x, span.y, m_style.radius, m_style.bg);
     uiren.renderTextCentered(center.x, center.y, depth++, m_label, fg);
+
+}
+
+
+
+
+void
+idkui2::Label::_update( glm::vec2 corner, glm::vec2 span, int depth,
+                        idkui2::UIRenderer &uiren )
+{
+    auto [xmin, xmax, ymin, ymax] = m_bounds;
+
+    corner = glm::vec2(xmin, ymin);
+    span   = glm::vec2(xmax-xmin, ymax-ymin);
+
+    glm::vec4 fg = m_style.fg;
+    glm::vec4 bg = m_style.bg;
+
+    glm::vec2 center = glm::vec2(xmin+span.x/2.0f, ymin+span.y/2.0f);
+
+
+    int   label_w = m_label.length() * uiren.glyphWidth();
+    int   quad_w  = span.x;
+    int   width   = glm::min(label_w, quad_w);
+    float scale   = float(width) / label_w;
+
+    uiren.renderQuadCentered(center.x, center.y, depth++, span.x, span.y, m_style.radius, m_style.bg);
+    uiren.renderTextCentered(center.x, center.y, depth++, m_label, fg, scale);
 
 }
 
@@ -281,51 +445,147 @@ idkui2::Grid::_update( glm::vec2 corner, glm::vec2 span, int depth,
     {
         float width  = xmax - xmin;
         float height = ymax - ymin;
+        float label_w = float(m_label.length() * uiren.glyphWidth());
+        float scale   = glm::min(label_w, span.x) / label_w;
+
 
         uiren.renderQuad(corner.x, corner.y, depth++, width, height, m_style.radius, m_style.bg);
-        uiren.renderTextCenteredX((xmin+xmax)/2.0f, corner.y, depth++, m_label, m_style.fg);
+        uiren.renderTextCenteredX((xmin+xmax)/2.0f, corner.y, depth++, m_label, m_style.fg, scale);
     }
 
+    
+    glm::vec2 child_corner = corner;
+    // glm::vec2 child_span   = span / glm::vec2(m_cols, m_rows);
 
-    glm::vec2 child_span = span / glm::vec2(m_cols, m_rows);
-    float y = corner.y;
+    float x, y, w, h;
 
+    y = corner.y;
 
-    for (std::vector<ElementBase *> &row: m_children)
+    for (int row=0; row<m_rows; row++)
     {
-        float x = corner.x;
+        x = corner.x;
+        h = span.y * m_row_proportions[row];
 
-        for (ElementBase *child: row)
+        for (int col=0; col<m_cols; col++)
         {
-            if (child != nullptr)
+            w = span.x * m_col_proportions[col];
+            
+            if (m_children[row][col])
             {
-                child->update(glm::vec2(x, y), child_span, depth+1, uiren);
+                m_children[row][col]->update(glm::vec2(x, y), glm::vec2(w, h), depth+1, uiren);
             }
-            x += child_span.x;
+
+            x += w;
         }
-        y += child_span.y;
+    
+        y += h;
     }
-
-}
-
-
-
-idkui2::Grid*
-idkui2::LayoutManager::createRootPanel( int rows, int cols, const ElementStyle &style )
-{
-    m_root = new Grid("root", style, rows, cols);
-    return m_root;
 }
 
 
 
 void
-idkui2::LayoutManager::update( idk::EngineAPI &api, float dt )
+idkui2::SubMenu::_update( glm::vec2 corner, glm::vec2 span, int depth,
+                          idkui2::UIRenderer &uiren )
+{
+    if (m_visible == false)
+    {
+        return;
+    }
+
+    auto [xmin, xmax, ymin, ymax] = m_bounds;
+
+    const auto &fg = m_style.fg;
+    const auto &bg = m_style.bg;
+    const float radius = m_style.radius;
+
+    // Background
+    // -----------------------------------------------------------------------------------------
+    {
+        int w = xmax-xmin;
+        int h = ymax-ymin;
+        uiren.renderQuad(xmin, ymin, depth++, w, h, radius, bg);
+    }
+    // -----------------------------------------------------------------------------------------
+
+    // Title bar
+    // -----------------------------------------------------------------------------------------
+    float label_w = float(m_label.length() * uiren.glyphWidth());
+    float label_h = float(uiren.glyphWidth());
+    float scale   = glm::min(label_w, span.x) / label_w;
+
+    float w = span.x;
+    float h = 2.0f * label_h;
+
+    float cx = xmin + 0.5f*w;
+    float cy = ymin + 0.5f*h;
+
+    uiren.renderQuadCentered(cx, cy, depth++, w, h, radius, bg);
+    uiren.renderTextCentered(cx, cy, depth++, m_label, fg, scale);
+    // -----------------------------------------------------------------------------------------
+
+    corner.y += h;
+    span.y   -= h;
+
+    m_bounds[2] += h;
+    m_bounds[3] -= h;
+
+    idkui2::Grid::_update(corner, span, depth+1, uiren);
+
+}
+
+
+
+
+void
+idkui2::Split::_update( glm::vec2 corner, glm::vec2 span, int depth,
+                        idkui2::UIRenderer &uiren )
+{
+    if (m_visible == false)
+    {
+        return;
+    }
+
+    auto [xmin, xmax, ymin, ymax] = m_bounds;
+
+    const auto &fg = m_style.fg;
+    const auto &bg = m_style.bg;
+    const float radius = m_style.radius;
+
+    float width  = xmax - xmin;
+    float height = ymax - ymin;
+
+    float xmin_L = xmin;
+    float xmax_L = xmin_L + m_ratio*width;
+
+    float xmin_R = xmax_L;
+    float xmax_R = xmin_R + (1.0f - m_ratio)*width;
+
+    glm::vec2 child_corner, child_span;
+
+    // Left child
+    child_corner = glm::vec2(xmin_L, ymin);
+    child_span   = glm::vec2(xmax_L-xmin_L, span.y);
+    m_children[0][0]->update(child_corner, child_span, depth+1, uiren);
+
+    // Right child
+    child_corner = glm::vec2(xmin_R, ymin);
+    child_span   = glm::vec2(xmax_R-xmin_R, span.y);
+    m_children[0][1]->update(child_corner, child_span, depth+1, uiren);
+}
+
+
+
+void
+idkui2::LayoutManager::renderTexture( idk::EngineAPI &api, ElementBase *root )
 {
     auto &ren    = api.getRenderer();
     auto &events = api.getEventSys();
 
     glm::vec2 size = glm::vec2(ren.resolution());
+
+    root->update(glm::vec2(0.0f), size, 1, m_UIRenderer);
+
 
     if (events.mouseCaptured())
     {
@@ -349,7 +609,7 @@ idkui2::LayoutManager::update( idk::EngineAPI &api, float dt )
 
         if (E != nullptr)
         {
-            E->on_focus();
+            E->on_focus(api);
     
             auto [xmin, xmax, ymin, ymax] = E->m_bounds;
 
@@ -369,15 +629,6 @@ idkui2::LayoutManager::update( idk::EngineAPI &api, float dt )
     }
 
 
-    m_root->update(glm::vec2(0.0f), size, 1, m_UIRenderer);
-}
-
-
-
-void
-idkui2::LayoutManager::renderTexture( idk::EngineAPI &api )
-{
-    auto &ren = api.getRenderer();
 
     m_UIRenderer.renderTexture(api);
 

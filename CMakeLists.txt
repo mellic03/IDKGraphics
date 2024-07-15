@@ -4,10 +4,12 @@ project(IDKGraphics)
 file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/lighting/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/env_probe/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/model/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/animation/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/camera/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/storage/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/batching/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/UI/*.cpp
 )

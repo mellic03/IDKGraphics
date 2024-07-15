@@ -9,6 +9,8 @@ idkui2::UIRenderer::UIRenderer( const std::string &filepath, int size )
 {
     m_atlas = _renderFontAtlas(filepath, size);
 
+    m_vertexbuffer_quads.resize(MAX_Z_DEPTH);
+
     _genQuadVAO();
 
 }
@@ -57,21 +59,26 @@ idkui2::UIRenderer::_renderFontAtlas( const std::string &filepath, int size )
     int grid_w = atlas_w / size;
     int glyph_w = size;
 
-    m_atlas_w = 512;
+    m_atlas_w = atlas_w;
     m_glyph_w = size;
     m_grid_w  = grid_w;
 
     SDL_Surface *atlas = SDL_CreateRGBSurface(0, atlas_w, atlas_h, 32, 0, 0, 0, 0);
 
-    for (uint8_t current='A'; current<='z'; current++)
+    for (uint8_t current=' '; current<='}'; current++)
     {
-        int x = size * ((current-'A') % grid_w);
-        int y = size * ((current-'A') / grid_w);
+        int x = size * ((current - ' ') % grid_w);
+        int y = size * ((current - ' ') / grid_w);
 
         SDL_Surface *S = TTF_RenderGlyph32_Blended(font, (current), {255, 255, 255, 255});
-
+    
         SDL_Rect src = {0, 0, S->w, S->h};
         SDL_Rect dst = {x, y, glyph_w, glyph_w};
+
+        {
+            float distance = float(glyph_w / 2) - float(S->w / 2);
+            dst.x += distance;
+        }
 
         SDL_BlitSurface(S, &src, atlas, &dst);
         SDL_FreeSurface(S);
@@ -85,6 +92,14 @@ idkui2::UIRenderer::_renderFontAtlas( const std::string &filepath, int size )
         .datatype       = GL_UNSIGNED_BYTE,
         .genmipmap      = GL_TRUE
     };
+
+
+    if (std::filesystem::exists("./IDKGE/temp/ui/") == false)
+    {
+        std::filesystem::create_directory("./IDKGE/temp/ui/");
+    }
+
+    IMG_SavePNG(atlas, "./IDKGE/temp/ui/atlas.png");
 
     uint32_t texture = gltools::loadTexture2D(atlas->w, atlas->h, atlas->pixels, config);
     SDL_FreeSurface(atlas);
@@ -127,7 +142,7 @@ idkui2::UIRenderer::renderQuad( int x, int y, int z, int w, int h, float r, cons
     for (int i=0; i<6; i++)
     {
         Vertex vert = { positions[i], texcoords[i], extents, color };
-        m_vertexbuffer_quad.push_back(vert);
+        m_vertexbuffer_quads[z].push_back(vert);
     }
 }
 
@@ -155,12 +170,13 @@ glm::vec2 atlas_uv( int row, int col, int glyph_w, int atlas_w, glm::vec2 texcoo
 
 
 void
-idkui2::UIRenderer::renderGlyph( int x, int y, int z, char c, const glm::vec4 &color )
+idkui2::UIRenderer::renderGlyph( int x, int y, int z, char c, const glm::vec4 &color,
+                                 float scale )
 {
     float xmin = x;
-    float xmax = x + m_glyph_w;
+    float xmax = x + m_glyph_w * scale;
     float ymin = y;
-    float ymax = y + m_glyph_w;
+    float ymax = y + m_glyph_w * scale;
 
     glm::vec3 positions[6] = {
         glm::vec3( xmax, ymax, float(z)),
@@ -181,9 +197,9 @@ idkui2::UIRenderer::renderGlyph( int x, int y, int z, char c, const glm::vec4 &c
     };
 
 
-    glm::vec3 extents = glm::vec3(m_glyph_w, m_glyph_w, 0.0f);
+    glm::vec3 extents = scale * glm::vec3(m_glyph_w, m_glyph_w, 0.0f);
 
-    uint32_t idx = uint32_t(c - 'A');
+    uint32_t idx = uint32_t(c - ' ');
     uint32_t row = idx / m_grid_w;
     uint32_t col = idx % m_grid_w;
 
@@ -205,73 +221,35 @@ idkui2::UIRenderer::renderGlyph( int x, int y, int z, char c, const glm::vec4 &c
 
 void
 idkui2::UIRenderer::renderText( int x, int y, int z, const std::string &text,
-                                const glm::vec4 &color )
+                                const glm::vec4 &color, float scale )
 {
     for (char c: text)
     {
-        renderGlyph(x, y, z, c, color);
-        x += m_glyph_w;
+        renderGlyph(x, y, z, c, color, scale);
+        x += scale*m_glyph_w;
     }
 }
 
 
 void
 idkui2::UIRenderer::renderTextCentered( int x, int y, int z, const std::string &text,
-                                        const glm::vec4 &color )
+                                        const glm::vec4 &color, float scale )
 {
-    x -= 0.5f * (m_glyph_w * text.length());
-    y -= 0.5f * m_glyph_w;
+    x -= scale * 0.5f * (m_glyph_w * text.length());
+    y -= scale * 0.5f * m_glyph_w;
 
-    renderText(x, y, z, text, color);
+    renderText(x, y, z, text, color, scale);
 }
 
 
 
 void
 idkui2::UIRenderer::renderTextCenteredX( int x, int y, int z, const std::string &text,
-                                         const glm::vec4 &color )
+                                         const glm::vec4 &color, float scale )
 {
-    x -= 0.5f * (m_glyph_w * text.length());
-    renderText(x, y, z, text, color);
+    x -= scale * 0.5f * (m_glyph_w * text.length());
+    renderText(x, y, z, text, color, scale);
 }
-
-
-// void
-// idkui2::UIRenderer::renderButton( int x, int y, int z, const std::string &text,
-//                                   const glm::vec3 &fg, const glm::vec3 &bg )
-// {
-//     int w = m_glyph_w * text.length();
-//     int h = m_glyph_w;
-
-//     renderQuad(x, y, z+0, w, h, bg);
-//     renderText(x, y, z+1, text, fg);
-// }
-
-
-// void
-// idkui2::UIRenderer::renderButtonCentered( int x, int y, int z, const std::string &text,
-//                                           const glm::vec3 &fg, const glm::vec3 &bg )
-// {
-//     int w = m_glyph_w * text.length();
-//     int h = m_glyph_w;
-
-//     x -= w/2;
-//     y -= h/2;
-
-//     renderButton(x, y, z, text, fg, bg);
-// }
-
-
-
-// void
-// idkui2::UIRenderer::renderButtonCenteredX( int x, int y, int z, const std::string &text,
-//                                            const glm::vec3 &fg, const glm::vec3 &bg )
-// {
-//     x -= 0.5f * m_glyph_w * text.length();
-//     renderButton(x, y, z, text, fg, bg);
-// }
-
-
 
 
 
@@ -279,20 +257,23 @@ idkui2::UIRenderer::renderTextCenteredX( int x, int y, int z, const std::string 
 void
 idkui2::UIRenderer::_renderAllQuads( idk::RenderEngine &ren, const glm::mat4 &projection )
 {
-    if (m_vertexbuffer_quad.empty())
+    for (int i=0; i<m_vertexbuffer_quads.size(); i++)
     {
-        return;
+        if (m_vertexbuffer_quads[i].empty())
+        {
+            continue;
+        }
+    
+        gl::namedBufferSubData(
+            m_VBO, 0, m_vertexbuffer_quads[i].size()*sizeof(Vertex), m_vertexbuffer_quads[i].data()
+        );
+
+        auto &program = ren.getProgram("ui-quad");
+        program.bind();
+        program.set_mat4("un_projection", projection);
+
+        gl::drawArrays(GL_TRIANGLES, 0, m_vertexbuffer_quads[i].size());
     }
-  
-    gl::namedBufferSubData(
-        m_VBO, 0, m_vertexbuffer_quad.size()*sizeof(Vertex), m_vertexbuffer_quad.data()
-    );
-
-    auto &program = ren.getProgram("ui-quad");
-    program.bind();
-    program.set_mat4("un_projection", projection);
-
-    gl::drawArrays(GL_TRIANGLES, 0, m_vertexbuffer_quad.size());
 
 }
 
@@ -304,7 +285,7 @@ idkui2::UIRenderer::_renderAllText( idk::RenderEngine &ren, const glm::mat4 &pro
     {
         return;
     }
-  
+
     gl::namedBufferSubData(
         m_VBO, 0, m_vertexbuffer_glyph.size()*sizeof(Vertex), m_vertexbuffer_glyph.data()
     );
@@ -325,6 +306,7 @@ idkui2::UIRenderer::renderTexture( idk::EngineAPI &api )
 {
     auto &ren = api.getRenderer();
 
+
     float rw = float(ren.width());
     float rh = float(ren.height());
 
@@ -341,11 +323,18 @@ idkui2::UIRenderer::renderTexture( idk::EngineAPI &api )
     gl::enable(GL_DEPTH_TEST, GL_BLEND);
     gl::blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    gl::disable(GL_DEPTH_TEST);
     _renderAllQuads(ren, projection);
+
+    gl::enable(GL_DEPTH_TEST);
     _renderAllText(ren, projection);
 
     gl::disable(GL_BLEND);
 
+    for (int i=0; i<m_vertexbuffer_quads.size(); i++)
+    {
+        m_vertexbuffer_quads[i].clear();
+    }
 
     m_vertexbuffer_quad.clear();
     m_vertexbuffer_glyph.clear();
