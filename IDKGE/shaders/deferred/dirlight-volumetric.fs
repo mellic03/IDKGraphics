@@ -3,6 +3,7 @@
 #extension GL_GOOGLE_include_directive: require
 #include "../include/storage.glsl"
 #include "../include/util.glsl"
+#include "../include/noise.glsl"
 #include "../include/pbr.glsl"
 
 layout (location = 0) out vec4 fsout_frag_color;
@@ -11,8 +12,21 @@ in vec3 fsin_fragpos;
 flat in uint lightID;
 
 
-uniform sampler2D un_previous;
-uniform sampler2D un_noise;
+uniform float un_samples     = 16.0;
+uniform float un_attenuation = 0.01;
+uniform float un_intensity   = 1.0;
+uniform float un_factor      = 32.0;
+
+#define NUM_SAMPLES   un_samples
+#define RAY_INTENSITY un_intensity
+#define BLEND_FACTOR  un_factor
+
+// #define NUM_SAMPLES   16.0
+// #define RAY_INTENSITY 1.0
+// #define BLEND_FACTOR  4.0
+
+
+// uniform sampler2D un_previous;
 uniform float     un_irrational;
 
 uniform sampler2D un_fragdepth;
@@ -35,21 +49,26 @@ float dirlight_shadow( IDK_Camera camera, IDK_Dirlight light, mat4 V, vec3 posit
           projCoords = projCoords * 0.5 + 0.5;
 
     float frag_depth = abs(projCoords.z);
-    float bias = -0.001;
+    float bias = -0.0001;
 
     const int KERNEL_HW = 1;
-    vec2 texelSize = 1.0 / textureSize(un_shadowmap, 0).xy;
+    vec2 tsize = 1.0 / textureSize(un_shadowmap, 0).xy;
 
-    float ray_depth = texture(un_shadowmap, vec3(projCoords.xy, cascade)).r;
-    float shadow    = (frag_depth - bias) > ray_depth ? 1.0 : 0.0;
+    float shadow = 0.0;
 
-    return 1.0 - shadow;
+    for (int y=-1; y<=+1; y++)
+    {
+        for (int x=-1; x<=+1; x++)
+        {
+            vec2 uv = projCoords.xy + vec2(x, y) / tsize;
+            float ray_depth = texture(un_shadowmap, vec3(uv, cascade)).r;
+            shadow += (frag_depth - bias) > ray_depth ? 1.0 : 0.0;
+        }
+    }
+
+    return 1.0 - (shadow / 9.0);
 }
 
-
-
-#define MAX_STEPS 16
-#define SHAFT_INTENSITY 0.5
 
 
 float IDK_PHG( float g, float cosTheta )
@@ -73,57 +92,104 @@ float IDK_RayleighScattering( float cosTheta )
 
 
 
+#define V_color  vec3(0.05, 0.13, 0.22)
+#define H_color1 vec3(0.59, 0.4, 0.17)
+#define H_color2 vec3(0.7, 0.76, 0.66)
+
+
+vec3 bad_atmospherics( vec3 ray_dir, vec3 L, IDK_Dirlight light )
+{
+    vec3 result = vec3(0.0);
+
+    float VdotL    = dot(ray_dir, -L) * 0.5 + 0.5;
+    float vertical = pow(1.0 - abs(ray_dir.y), 5);
+
+    vec3 hoz = mix(H_color1, H_color2, pow(VdotL, 2));
+    result = mix(V_color, hoz, vertical);
+
+    VdotL = clamp(dot(ray_dir, -L), 0.0, 1.0);
+    result += light.diffuse.rgb * IDK_MieScattering(VdotL);
+
+    return light.diffuse.a * result;
+}
+
+
+
+
 void main()
 {
     IDK_Camera   camera = IDK_UBO_cameras[0];
     IDK_Dirlight light  = IDK_UBO_dirlights[lightID];
 
     vec2 texcoord = IDK_WorldToUV(fsin_fragpos, camera.P * camera.V).xy;
-    vec3 worldpos = IDK_WorldFromDepth(un_fragdepth, texcoord, camera.P, camera.V);
-    ivec2 texel = ivec2( texcoord * vec2(camera.width, camera.height));
-    vec2 noise_texcoord = vec2(texel) / textureSize(un_noise, 0);
+    vec2 texel    = texcoord * vec2(camera.width, camera.height);
 
-    vec2 offset    = un_irrational * texture(un_noise, texcoord).rg;
-         offset.r  = textureLod(un_noise, noise_texcoord, 0).r;
+    vec3 worldpos = IDK_WorldFromDepth(un_fragdepth, texcoord, camera.P, camera.V);
+    float offset  = IDK_BlueNoise((texel / 512.0) + un_irrational).r;
 
     vec3  ray_dir   = normalize(worldpos - camera.position.xyz);
-    vec3  ray_pos   = camera.position.xyz + offset.r*ray_dir;
-    float frag_dist = distance(ray_pos, worldpos);
+    vec3  ray_pos   = camera.position.xyz;
 
-    if (frag_dist > 0.9*camera.far)
+    float frag_dist = min(distance(ray_pos, worldpos), 256.0);
+    float step_size = frag_dist / NUM_SAMPLES;
+
+    ray_pos += 4.0*offset * step_size * ray_dir;
+    frag_dist = min(distance(ray_pos, worldpos), 256.0);
+    step_size = frag_dist / NUM_SAMPLES;
+
+    float intensity  = un_intensity * IDK_MieScattering(max(dot(ray_dir, -light.direction.xyz), 0.0));
+          intensity /= NUM_SAMPLES;
+
+    float volumetric = 0.0;
+
+    if (textureLod(un_fragdepth, texcoord, 0.0).r >= 0.999)
     {
-        vec3 result = SHAFT_INTENSITY * light.diffuse.rgb;
-             result *= IDK_RayleighScattering(max(dot(ray_dir, -light.direction.xyz), 0.0));
-
-        fsout_frag_color = vec4(result, 1.0);
+        fsout_frag_color = vec4(light.diffuse.rgb, intensity);
         return;
     }
 
-    const float step_size = frag_dist / MAX_STEPS;
-    float volumetric = 0.0;
 
-    for (int i=0; i<MAX_STEPS; i++)
+    for (int i=0; i<NUM_SAMPLES; i++)
     {
         ray_pos += step_size * ray_dir;
         volumetric += dirlight_shadow(camera, light, camera.V, ray_pos);
     }
 
-    volumetric = SHAFT_INTENSITY * (volumetric / MAX_STEPS);
-    volumetric *= IDK_RayleighScattering(max(dot(ray_dir, -light.direction.xyz), 0.0));
 
-    // attenuate if too close to camera
-    float cam_dist = distance(worldpos, camera.position.xyz);
-          cam_dist = clamp(cam_dist, 0.0, 0.5);
+    volumetric *= intensity;
 
-    volumetric *= (cam_dist / 0.5);
+    fsout_frag_color = vec4(light.diffuse.rgb, volumetric);
 
-    float A = 1.0 / 2.0;
-    float B = (2.0 - 1.0) / 2.0;
 
-    float prev = texture(un_previous, texcoord).r;
-    vec3 result = A*volumetric*light.diffuse.rgb + B*prev;
+    // vec4 prev_uv = camera.P * camera.prev_V * vec4(worldpos, 1.0);
+    //      prev_uv.xy = (prev_uv.xy / prev_uv.w) * 0.5 + 0.5;
 
-    fsout_frag_color = vec4(result, SHAFT_INTENSITY);
+    // float A = 1.0;
+    // float B = 0.0;
+
+    // vec4 curr = vec4(light.diffuse.rgb, volumetric);
+    // // vec4 prev = vec4(0.0);
+
+    // // if (prev_uv.xy == clamp(prev_uv.xy, 0.0, 1.0))
+    // // {
+    // //     A = 1.0 / BLEND_FACTOR;
+    // //     B = (BLEND_FACTOR - 1.0) / BLEND_FACTOR;
+
+    // //     // prev = textureLod(un_previous, prev_uv.xy, 0.0).rgba;
+
+    // //     // for (int row=-1; row<1; row++)
+    // //     // {
+    // //     //     for (int col=-1; col<1; col++)
+    // //     //     {
+    // //     //         vec2 offset = vec2(col, row) / textureSize(un_previous, 0);
+    // //     //         prev += textureLod(un_previous, prev_uv.xy+offset, 0.0);
+    // //     //     }
+    // //     // }
+
+    // //     // prev /= 9.0;
+    // // }
+
+    // // fsout_frag_color = A*curr + B*prev;
 
 }
 

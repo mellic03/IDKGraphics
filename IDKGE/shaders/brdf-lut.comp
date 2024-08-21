@@ -15,8 +15,7 @@ layout (
 layout (binding = 0, rg16f) writeonly uniform image2D un_output;
 
 
-#define LUT_TEXTURE_SIZE 512
-
+#define LUT_TEXTURE_SIZE 512.0
 
 
 float RadicalInverse_VdC(uint bits) 
@@ -35,29 +34,53 @@ vec2 Hammersley(uint i, uint N)
     return vec2(float(i)/float(N), RadicalInverse_VdC(i));
 }  
 
-
 vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
 {
-    float a = roughness*roughness;
+	float a = roughness*roughness;
 	
-    float phi = 2.0 * 3.14159 * Xi.x;
-    float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
-    float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
+	float phi = 2.0 * PBR_PI * Xi.x;
+	float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
+	float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
 	
-    // from spherical coordinates to cartesian coordinates
-    vec3 H;
-    H.x = cos(phi) * sinTheta;
-    H.y = sin(phi) * sinTheta;
-    H.z = cosTheta;
+	// from spherical coordinates to cartesian coordinates - halfway vector
+	vec3 H;
+	H.x = cos(phi) * sinTheta;
+	H.y = sin(phi) * sinTheta;
+	H.z = cosTheta;
 	
-    // from tangent-space vector to world-space sample vector
-    vec3 up        = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-    vec3 tangent   = normalize(cross(up, N));
-    vec3 bitangent = cross(N, tangent);
+	// from tangent-space H vector to world-space sample vector
+	vec3 up          = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 tangent   = normalize(cross(up, N));
+	vec3 bitangent = cross(N, tangent);
 	
-    vec3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
-    return normalize(sampleVec);
+	vec3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
+	return normalize(sampleVec);
 }
+
+
+
+float GGX_IBL(float cosTheta, float k)
+{
+    float nom   = cosTheta;
+    float denom = cosTheta * (1.0 - k) + k;
+
+    return nom / denom;
+}
+
+
+float GSF_IBL( float roughness, vec3 N, vec3 V, vec3 L )
+{
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+
+    float k = (roughness * roughness) / 2.0;
+
+    return GGX_IBL(NdotV, k) * GGX_IBL(NdotL, k);
+}
+
+
+
+#define LUT_EPSILON 0.0001
 
 
 vec2 IntegrateBRDF( float NdotV, float roughness )
@@ -68,26 +91,25 @@ vec2 IntegrateBRDF( float NdotV, float roughness )
     V.z = NdotV;
 
     float A = 0.0;
-    float B = 0.0;
+    float B = 0.0; 
 
     vec3 N = vec3(0.0, 0.0, 1.0);
-
     const uint SAMPLE_COUNT = 1024;
 
-    for(uint i = 0u; i < SAMPLE_COUNT; ++i)
+    for (uint i = 0; i < SAMPLE_COUNT; ++i)
     {
         vec2 Xi = Hammersley(i, SAMPLE_COUNT);
-        vec3 H  = ImportanceSampleGGX(Xi, N, roughness);
-        vec3 L  = normalize(2.0 * dot(V, H) * H - V);
+        vec3 H = ImportanceSampleGGX(Xi, N, roughness);
+        vec3 L = normalize(2.0 * dot(V, H) * H - V);
 
         float NdotL = max(L.z, 0.0);
         float NdotH = max(H.z, 0.0);
         float VdotH = max(dot(V, H), 0.0);
 
-        if (NdotL > 0.0)
+        if(NdotL > 0.0)
         {
-            float G = GSF(roughness, N, V, L);
-            float G_Vis = (G * VdotH) / (NdotH * NdotV);
+            float G = GSF_IBL(roughness, N, V, L);
+            float G_Vis = (G * VdotH) / (NdotH * NdotV + LUT_EPSILON);
             float Fc = pow(1.0 - VdotH, 5.0);
 
             A += (1.0 - Fc) * G_Vis;
@@ -107,6 +129,11 @@ void main()
     ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
     vec2  uv    = vec2(texel) / LUT_TEXTURE_SIZE;
     vec2  brdf  = IntegrateBRDF(uv.x, uv.y);
+
+    // if (brdf != brdf)
+    // {
+    //     brdf = vec2(1.0);
+    // }
 
     imageStore(un_output, texel, vec4(brdf, 0.0, 1.0));
 }

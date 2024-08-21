@@ -3,6 +3,7 @@
 
 #include "../include/storage.glsl"
 #include "../include/util.glsl"
+#include "../include/noise.glsl"
 
 
 layout (location = 0) out float fsout_result;
@@ -13,8 +14,6 @@ uniform sampler2D un_gNormal;
 uniform sampler2D un_gDepth;
 
 uniform sampler2D un_prev;
-
-uniform sampler2D un_noise;
 uniform float     un_irrational;
 
 
@@ -38,9 +37,14 @@ float linearDepth( float z, float near, float far )
 
 float SSAO( vec2 texcoord, vec3 frag_pos, vec3 N, mat4 P, mat4 V )
 {
-    vec2 offset = un_irrational * texture(un_noise, texcoord).rg;
+    IDK_Camera camera = IDK_UBO_cameras[0];
+    vec2 image_size = vec2(camera.width, camera.height);
 
-    vec3 sample_dir = texture(un_noise, texcoord + offset).rgb;
+    vec2 texel    = texcoord * image_size;
+    // vec2 noise_uv = texel / textureSize(un_noise, 0);
+    vec2 offset   = un_irrational * IDK_WhiteNoise(texcoord/2.0).rg;
+
+    vec3 sample_dir = IDK_WhiteNoise(texcoord/2.0 + offset).rgb;
          sample_dir = sample_dir * 2.0 - 1.0;
          sample_dir = normalize(sample_dir);
          sample_dir *= sign(dot(sample_dir, N));
@@ -64,16 +68,44 @@ float SSAO( vec2 texcoord, vec3 frag_pos, vec3 N, mat4 P, mat4 V )
 }
 
 
+float convolve_prev( vec2 texcoord )
+{
+    vec2  size   = 1.0 / textureSize(un_prev, 0);
+    float result = 0.0;
+
+    const vec2 offsets[9] = vec2[9]
+    (
+        vec2( -1.0, -1.0 ),
+        vec2( -1.0,  0.0 ),
+        vec2( -1.0, +1.0 ),
+        vec2(  0.0, -1.0 ),
+        vec2(  0.0,  0.0 ),
+        vec2(  0.0, +1.0 ),
+        vec2( +1.0, -1.0 ),
+        vec2( +1.0,  0.0 ),
+        vec2( +1.0, +1.0 )
+    );
+
+    for (int i=0; i<9; i++)
+    {
+        result += textureLod(un_prev, texcoord + size*offsets[i], 0.0).r;
+    }
+
+    return result / 9.0;
+}
+
+
+
 void main()
 {
     IDK_Camera camera = IDK_UBO_cameras[0];
-    vec2 image_size = vec2(camera.width, camera.height);;
+    vec2 image_size = vec2(camera.width, camera.height);
 
-    vec3  viewpos    = camera.position.xyz;
-    vec2  texcoord   = fsin_texcoords;
+    vec3 viewpos   = camera.position.xyz;
+    vec2 texcoord  = fsin_texcoords;
 
-    vec3 frag_pos = IDK_WorldFromDepth(un_gDepth, texcoord, camera.P, camera.V);
-         frag_pos = (camera.V * vec4(frag_pos, 1.0)).xyz;
+    vec3 world_pos = IDK_WorldFromDepth(un_gDepth, texcoord, camera.P, camera.V);
+    vec3 frag_pos  = (camera.V * vec4(world_pos, 1.0)).xyz;
 
     vec3 normal = texture(un_gNormal, texcoord).rgb;
          normal = (camera.V * vec4(normal, 0.0)).xyz;
@@ -96,10 +128,22 @@ void main()
     result /= 4.0; // ((2*KERNEL_HW+1)*(2*KERNEL_HW+1));
     result = 1.0 - (un_intensity * result);
 
-    float A = 1.0 / un_factor;
-    float B = (un_factor - 1.0) / un_factor;
+    vec4 prev_uv = camera.P * camera.prev_V * vec4(world_pos, 1.0);
+         prev_uv.xy = (prev_uv.xy / prev_uv.w) * 0.5 + 0.5;
 
-    float prev = texture(un_prev, texcoord).r;
+    float A = 1.0; // 1.0 / un_factor;
+    float B = 0.0; // (un_factor - 1.0) / un_factor;
+
+    float prev = 0.0;
+
+    if (prev_uv.xy == clamp(prev_uv.xy, 0.0, 1.0))
+    {
+        A = 1.0 / un_factor;
+        B = (un_factor - 1.0) / un_factor;
+        prev = convolve_prev(prev_uv.xy); // texture(un_prev, prev_uv.xy).r;
+    }
+
+
     result = A*result + B*prev;
 
     fsout_result = result;

@@ -53,6 +53,12 @@ void main()
     //     return;
     // }
 
+    if (surface.roughness > 0.2)
+    {
+        fsout_frag_color = in_color;
+        return;
+    }
+
     if (surface.alpha < 1.0)
     {
         fsout_frag_color = in_color;
@@ -103,9 +109,9 @@ void main()
             return;
         }
 
-        else if (ray_depth >= frag_depth && frag_depth > initial_depth)
+        else if (ray_depth >= frag_depth && frag_depth > initial_depth || i == RAY_MAX_STEPS-1)
         {
-            result = textureLod(un_input, uv, MIPLEVEL_SPECULAR*surface.roughness);
+            result = texture(un_input, uv, MIPLEVEL_SPECULAR);
             break;
         }
 
@@ -114,9 +120,7 @@ void main()
     }
 
     result.rgb *= fresnelSchlickR(surface.NdotV, surface.F0, surface.roughness);
-
     result.rgb * 1.0 - max(dot(surface.R, surface.V), 0.0);
-
 
     fsout_frag_color = vec4(result.rgb, 1.0);
 }

@@ -1,0 +1,64 @@
+#ifndef IDK_NOISE
+#define IDK_NOISE
+
+
+#include "./bindings.glsl"
+
+
+layout (std430, binding = IDK_BINDING_SSBO_Noise) readonly buffer IDK_SSBO_Noise
+{
+    sampler2D IDK_SSBO_WhiteNoise;
+    sampler2D IDK_SSBO_BlueNoise;
+    sampler2DArray IDK_SSBO_PerlinNoise;
+    sampler2DArray IDK_SSBO_SuperPerlinNoise;
+    sampler2DArray IDK_SSBO_VoronoiNoise;
+    sampler2DArray IDK_SSBO_VeinNoise;
+    sampler2DArray IDK_SSBO_CraterNoise;
+
+};
+
+
+vec3 IDK_WhiteNoise( vec2 texcoord )
+{
+    return textureLod(IDK_SSBO_WhiteNoise, texcoord, 0.0).rgb;
+}
+
+
+vec3 IDK_BlueNoise( vec2 texcoord )
+{
+    return textureLod(IDK_SSBO_BlueNoise, texcoord, 0.0).rgb;
+}
+
+vec2 IDK_BlueNoiseSize( int level )
+{
+    return textureSize(IDK_SSBO_BlueNoise, level);
+}
+
+
+vec3 IDK_PerlinNoise( vec2 texcoord, uint level )
+{
+    return textureLod(IDK_SSBO_PerlinNoise, vec3(texcoord, float(level%8)), 0.0).rgb;
+}
+
+
+vec3 IDK_PerlinNoiseOffset( vec2 texcoord, uint level, ivec2 delta )
+{
+    vec2 size = textureSize(IDK_SSBO_PerlinNoise, 0).xy;
+    vec2 offset = vec2(delta) / size;
+    return IDK_PerlinNoise(texcoord+offset, level);
+}
+
+
+float IDK_VoronoiNoise( vec2 texcoord, uint level )
+{
+    return textureLod(IDK_SSBO_VoronoiNoise, vec3(texcoord, float(level%8)), 0.0).r;
+}
+
+
+float IDK_VeinNoise( vec2 texcoord, uint level )
+{
+    return textureLod(IDK_SSBO_VeinNoise, vec3(texcoord, float(level)), 0.0).r;
+}
+
+
+#endif

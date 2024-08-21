@@ -1,0 +1,27 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+#include "./particle.glsl"
+
+layout(
+    local_size_x = EMITTER_MAX_PARTICLES,
+    local_size_y = 1,
+    local_size_z = 1
+) in;
+
+
+uniform uint un_offset;
+
+void main()
+{
+    uint idx = un_offset + gl_LocalInvocationID.x;
+
+    Particles[idx].timer[0] = 9999999.0;
+    Particles[idx].scale    = vec4(1.0);
+    Particles[idx].pos      = vec4(0.0);
+    Particles[idx].vel      = vec4(0.0);
+    Particles[idx].rot      = vec4(0.0);
+    Particles[idx].color    = vec4(1.0, 0.0, 0.0, 1.0);
+
+}
+

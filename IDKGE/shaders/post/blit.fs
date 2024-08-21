@@ -3,29 +3,28 @@
 layout (location = 0) out vec4 fsout_frag_color;
 
 in vec2 fsin_texcoords;
-uniform sampler2D un_texture_0;
-uniform sampler2D un_texture_1;
-
-uniform sampler2D un_texture_4;
-uniform sampler2D un_texture_5;
+uniform sampler2D un_input;
 
 
 void main()
 {
-    vec3  color_0 = texture(un_texture_0, fsin_texcoords).rgb;
-    float depth_0 = texture(un_texture_1, fsin_texcoords).r;
+    const int KERNEL_HW = 4;
 
-    vec3  color_1 = texture(un_texture_4, fsin_texcoords).rgb;
-    float depth_1 = texture(un_texture_5, fsin_texcoords).r;
+    vec2 tsize  = 0.5 / textureSize(un_input, 0).xy;
+    vec4 result = vec4(0.0);
 
-
-    if (depth_0 < depth_1)
+    for(int x = -KERNEL_HW; x <= +KERNEL_HW; x++)
     {
-        fsout_frag_color = vec4(color_0, 1.0);
+        for(int y = -KERNEL_HW; y <= +KERNEL_HW; y++)
+        {
+            vec2 texcoord = fsin_texcoords + tsize*vec2(x, y);
+
+            result += texture(un_input, texcoord);
+        }    
     }
 
-    else
-    {
-        fsout_frag_color = vec4(color_1, 1.0);
-    }
+    result /= ((KERNEL_HW*2+1)*(KERNEL_HW*2+1));
+
+
+    fsout_frag_color = result;
 }

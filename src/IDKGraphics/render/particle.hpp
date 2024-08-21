@@ -49,7 +49,10 @@ private:
 public:
     ParticleDesc m_desc;
 
-    int       model_id;
+    int          m_ID       = -1;
+    float        m_duration = -1.0f;
+    float        m_timer    =  0.0f;
+    int          model_id;
 
     glm::vec3 origin;
     glm::vec3 direction = glm::vec3(0.0f, 1.0f, 0.0f);

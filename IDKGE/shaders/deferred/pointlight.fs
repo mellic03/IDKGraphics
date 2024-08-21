@@ -32,6 +32,12 @@ void main()
     vec2 texcoord = IDK_WorldToUV(fsin_fragpos, camera.P * camera.V).xy;
     vec3 worldpos = IDK_WorldFromDepth(un_fragdepth, texcoord, camera.P, camera.V);
 
+    if (distance(worldpos, light.position.xyz) > light.radius)
+    {
+        fsout_frag_color = vec4(0.0);
+        return;
+    }
+
     IDK_PBRSurfaceData surface = IDK_PBRSurfaceData_load(
         camera,
         texcoord,
@@ -45,5 +51,5 @@ void main()
     vec3 result = IDK_PBR_Pointlight(light, surface, worldpos);
     result = (result == result) ? result : vec3(0.0);
 
-    fsout_frag_color = vec4(result, surface.alpha);
+    fsout_frag_color = vec4(result, 0.0);
 }

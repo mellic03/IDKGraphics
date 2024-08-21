@@ -1,0 +1,34 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+
+layout(
+    local_size_x = 8,
+    local_size_y = 8,
+    local_size_z = 1
+) in;
+
+layout (binding=0, r16f) readonly  uniform image2D un_input;
+layout (binding=1, r16f) writeonly uniform image2D un_output;
+
+uniform float un_yscale;
+uniform vec3  un_lightdir;
+
+
+void main()
+{
+    ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+    
+    
+    vec3 ray_dir = -un_lightdir;
+
+
+    for (int i=0; i<64; i++)
+    {
+        
+    }
+
+    
+    // imageStore(un_output, texel, vec4(dZ, dX, 0.0, 1.0));
+}
+

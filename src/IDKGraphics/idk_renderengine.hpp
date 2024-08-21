@@ -10,9 +10,7 @@
 
 // #include "storage/idk_ubo_general.hpp"
 #include "storage/buffers.hpp"
-
 #include "idk_overlay.hpp"
-#include "render/particle.hpp"
 
 #include "camera/idk_camera.hpp"
 #include "lighting/IDKlighting.hpp"
@@ -88,7 +86,6 @@ private:
     std::queue<RenderOverlay>           m_overlays;
     std::queue<RenderOverlayFill>       m_overlayfills;
     std::queue<uint32_t>                m_texture_overlays;
-    idk::Allocator<ParticleEmitter>     m_particle_emitters;
 
 
     // idk::glFramebuffers
@@ -136,6 +133,7 @@ private:
     idk::Allocator<idk::RenderQueue>    m_user_render_queues;
     idk::Allocator<idk::RenderQueue>    m_user_shadow_queues;
     int                                 m_RQ, m_viewspace_RQ, m_shadow_RQ, m_GI_RQ;
+    int                                 m_particle_RQ;
     int                                 m_decal_RQ;
 
     // // VXGI
@@ -222,7 +220,7 @@ private:
     void RenderStage_dirlights();
     void RenderStage_pointlights();
     void RenderStage_spotlights();
-    void RenderStage_volumetrics( int idx );
+    void RenderStage_volumetrics();
 
     void RenderStage_lighting( IDK_Camera &, float dtime,
                                glFramebuffer &buffer_in,
@@ -291,6 +289,10 @@ public:
 
     void                                compileShaders();
 
+    bool m_should_recompile = false;
+    void                                _recompileShaders();
+    void                                recompileShaders();
+
     SDL_Window *                        getWindow()    { return m_windowsys.getMainWindow(); };
     SDL_GLContext                       getGLContext() { return m_windowsys.getGlContext();  };
 
@@ -351,7 +353,8 @@ public:
 
     void                                drawModel( int model, const glm::mat4& );
     void                                drawModel( int model, const idk::Transform& );
-    void                                drawModelRQ( int RQ, int model, const glm::mat4 & );
+    void                                drawModelViewspace( int model, const glm::mat4& );
+    void                                drawModelRQ( int RQ, int model, const glm::mat4& );
     void                                drawShadowCasterRQ( int RQ, int model, const glm::mat4 & );
 
     void                                drawDecal( int model, const glm::vec3&, const glm::vec3&,
@@ -359,7 +362,6 @@ public:
 
     void                                drawTextureOverlay( uint32_t texture );
 
-    // void                                drawModelViewspace( int model, const glm::mat4 & );
     void                                drawShadowCaster( int model, const glm::mat4 & );
 
     /** Draw a model which contributes to global illumination. */
@@ -379,12 +381,6 @@ public:
     void                                pushRenderOverlayFill( const RenderOverlayFill& );
     void                                skipRenderOverlay();
     void                                skipAllRenderOverlays();
-
-
-    int                                 createParticleEmitter( const ParticleEmitter &P );
-    void                                destroyParticleEmitter( int emitter );
-    ParticleEmitter &                   getParticleEmitter( int emitter );
-
 
     int                                 createProgram( const std::string &name,
                                                        const std::string &root,
@@ -408,6 +404,13 @@ public:
 
         int id = m_program_ids[name];
         return m_programs.get(id);
+    };
+
+    idk::glShaderProgram &getBindProgram( const std::string &name )
+    {
+        auto &program = getProgram(name);
+        program.bind();
+        return program;
     };
 
     idk::glShaderProgram &getProgram( int id )
@@ -437,7 +440,8 @@ public:
 
     glFramebuffer                       m_dirshadow_buffer;
     glFramebuffer                       m_radiance_buffer;
-    glFramebuffer                       m_volumetrics_buffers[2];
+    glFramebuffer                      *m_volumetrics_buffers[2];
+    glFramebuffer                       m_foliage_buffer;
 
     glFramebuffer                       m_SSAO_buffers[2];
     uint32_t                            m_SSAO_noise;
@@ -448,7 +452,8 @@ public:
     glFramebuffer                       m_mainbuffer_1;
     glFramebuffer                       m_finalbuffer;
 
-    glFramebuffer                       m_gbuffer;
+    glFramebuffer                      *m_gbuffers[2];
+    glFramebuffer                       m_prev_depth;
     glFramebuffer                       m_mip_scratchbuffer;
     glFramebuffer                       m_ui_buffer;
 

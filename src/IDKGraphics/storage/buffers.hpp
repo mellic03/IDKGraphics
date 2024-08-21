@@ -25,6 +25,7 @@ namespace idk
 
 
     struct UBO_Buffer;
+    struct UBO_Noise;
     struct Probe_UBO_Buffer;
     struct SSBO_Buffer;
     struct Probe_Buffer;
@@ -43,10 +44,18 @@ struct IDK_Camera
     glm::mat4 prev_P = glm::mat4(1.0f);
     glm::mat4 prev_V = glm::mat4(1.0f);
 
-    float width, height, near=0.05f, far=512.0f;
+    float width, height, near=0.05f, far=2048.0f;
     float exposure=1.0f, gamma=2.2f, shutter, pad0;
-    float fov=90.0f, aspect=1.25f, bloom=0.01f, pad1;
+    float fov=90.0f, aspect=1.25f, bloom=0.01f, fov_offset=0.0f;
 
+
+    void setTransform( const glm::mat4 &T )
+    {
+        prev_V = V;
+        V = glm::inverse(T);
+
+        position = T[3];
+    }
 };
 
 
@@ -94,6 +103,12 @@ struct idk::UBO_Buffer
 };
 
 
+struct idk::UBO_Noise
+{
+    GLuint64 handles[16];
+};
+
+
 struct idk::Probe_UBO_Buffer
 {
     glm::vec4 probe_spacing;
@@ -114,4 +129,6 @@ struct idk::Probe_Buffer
 {
     GLuint64  probes[16];
 };
+
+
 

@@ -1,0 +1,93 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+#include "./particle.glsl"
+
+
+layout(
+    local_size_x = EMITTER_MAX_PARTICLES,
+    local_size_y = 1,
+    local_size_z = 1
+) in;
+
+
+uniform sampler2D un_noise;
+uniform float     un_dtime;
+uniform float     un_irrational;
+uniform uint      un_offset;
+
+
+void reset_particle( IDK_ParticleDesc desc, uint idx )
+{
+    vec3 origin        = desc.origin.xyz;
+    vec3 origin_rng    = desc.origin_rng.xyz;
+
+    vec3 velocity      = desc.velocity.xyz;
+    vec3 velocity_rng  = desc.velocity_rng.xyz;
+
+    vec3  scale        = desc.scale.xyz;
+    float scale_rng    = desc.scale_rng[0];
+
+    float duration     = desc.duration[0];
+    float duration_rng = desc.duration_rng[0];
+
+
+    float u = float(gl_LocalInvocationID.x % 8) / 8.0;
+    float v = float(gl_LocalInvocationID.x / 8) / 8.0;
+
+    vec3 noise = textureLod(un_noise, vec2(u, v) + un_irrational, 0.0).rgb * 2.0 - 1.0;
+    vec3 vel   = desc.velocity.xyz + noise * velocity_rng;
+
+    noise.g = noise.g * 0.5 + 0.5;
+
+    Particles[idx].timer[0] = 0.0   + noise.r * duration_rng;
+    Particles[idx].scale.xyz = scale + noise.g * scale_rng;
+    Particles[idx].pos.xyz  = desc.origin.xyz;
+    Particles[idx].vel.xyz  = vel;
+    Particles[idx].color    = vec4(noise.g, 0.0, 0.0, 1.0);
+
+}
+
+
+void update_particle( IDK_ParticleDesc desc, uint idx )
+{
+    float timer    = un_dtime + Particles[idx].timer[0];
+    float duration = desc.duration[0];
+
+    vec3 scale_down = desc.scale.xyz * (1.0 - timer / duration);
+    vec3 scale_up   = desc.scale.xyz * (timer / duration);
+
+    vec3 scale  = desc.scale.xyz; // desc.scale_factor[0] * scale_down;
+        //  scale += desc.scale_factor[1] * scale_up;
+        //  scale = clamp(scale, vec3(0.01), desc.scale.xyz);
+
+    Particles[idx].timer[0]  += un_dtime;
+    Particles[idx].scale.xyz  = scale;
+    Particles[idx].pos.xyz   += un_dtime * Particles[idx].vel.xyz;
+    Particles[idx].rot[0]    += un_dtime * 18.0;
+    Particles[idx].color.a    = clamp(1.0 - (timer / duration), 0.0, 1.0);
+
+}
+
+
+
+void main()
+{
+    IDK_ParticleDesc desc = IDK_SSBO_ParticleDescriptors[0];
+
+    if (gl_GlobalInvocationID.x > desc.count[0])
+    {
+        return;
+    }
+
+    uint data_idx = un_offset + gl_GlobalInvocationID.x;
+
+    if (Particles[data_idx].timer[0] > desc.duration[0])
+    {
+        reset_particle(desc, data_idx);
+    }
+
+    update_particle(desc, data_idx);
+}
+
+

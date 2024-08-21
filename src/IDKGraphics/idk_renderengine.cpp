@@ -5,12 +5,15 @@
 #include "render/idk_vxgi.hpp"
 #include "render/cubemap.hpp"
 
+#include "particle/particle_system.hpp"
+#include "terrain/terrain.hpp"
+#include "storage/bindings.hpp"
+#include "./noise/noise.hpp"
+
 #include <libidk/GL/idk_glShaderStage.hpp>
 #include <libidk/idk_image.hpp>
 #include <libidk/idk_texturegen.hpp>
 #include <libidk/idk_log.hpp>
-
-#include <libidk/idk_noisegen.hpp>
 
 #include "./UI/idk_ui.hpp"
 
@@ -51,17 +54,6 @@ idk::RenderEngine::init_screenquad()
 void
 idk::RenderEngine::compileShaders()
 {
-    // createProgram("vxgi-voxelize", "IDKGE/shaders/vxgi/", "voxelize.vs", "voxelize.fs");
-    // createProgram("vxgi-shadow",   "IDKGE/shaders/vxgi/", "shadow.vs", "shadow.fs");
-    // createProgram("vxgi-trace",    "IDKGE/shaders/deferred/", "background.vs", "../vxgi/trace.fs");
-    // createProgram("vxgi-inject",    glShaderProgram("IDKGE/shaders/vxgi/inject-radiance.comp"));
-    // createProgram("vxgi-propagate", glShaderProgram("IDKGE/shaders/vxgi/propagate-radiance.comp"));
-
-    // createProgram("vxgi-mipmap-1",  glShaderProgram("IDKGE/shaders/vxgi/mipmap-1.comp"));
-    // createProgram("vxgi-mipmap-2",  glShaderProgram("IDKGE/shaders/vxgi/mipmap-2.comp"));
-    // createProgram("vxgi-clear",     glShaderProgram("IDKGE/shaders/vxgi/clear.comp"));
-    // createProgram("vxgi-copy",      glShaderProgram("IDKGE/shaders/vxgi/copy.comp"));
-
     createProgram("text",         glShaderProgram("IDKGE/shaders/text.comp"));
     createProgram("button-rect",  "IDKGE/shaders/", "button-rect.vs", "button-rect.fs");
     createProgram("ui-text",      "IDKGE/shaders/", "ui-text.vs", "ui-text.fs");
@@ -72,9 +64,9 @@ idk::RenderEngine::compileShaders()
 
     createProgram("background", "IDKGE/shaders/", "screenquad.vs", "deferred/background.fs");
 
-    createProgram("gpass",          "IDKGE/shaders/deferred/", "gpass.vs", "gpass.fs");
-    createProgram("gpass-particle", "IDKGE/shaders/deferred/", "gpass.vs", "gpass-particle.fs");
-    createProgram("gpass-decal",    "IDKGE/shaders/deferred/", "gpass.vs", "gpass-decal.fs");
+    createProgram("gpass",           "IDKGE/shaders/deferred/", "gpass.vs", "gpass.fs");
+    createProgram("gpass-decal",     "IDKGE/shaders/deferred/", "gpass.vs", "gpass-decal.fs");
+
 
     // Probe-based GI
     // -----------------------------------------------------------------------------------------
@@ -118,10 +110,10 @@ idk::RenderEngine::compileShaders()
     idk::glShaderStage VS_SSAO("IDKGE/shaders/screenquad.vs");
     idk::glShaderStage FS_SSAO("IDKGE/shaders/post/SSAO.fs");
     createProgram("SSAO", idk::glShaderProgram(VS_SSAO, FS_SSAO));
-    // createProgram("SSAO", glShaderProgram("IDKGE/shaders/post/SSAO.comp"));
     createProgram("SSAO_composite", "IDKGE/shaders/", "screenquad.vs", "post/SSAO_composite.fs");
 
 
+    createProgram("blit", "IDKGE/shaders/", "screenquad.vs", "post/blit.fs");
 
 
     createProgram("composite", "IDKGE/shaders/", "screenquad.vs", "post/composite.fs");
@@ -139,6 +131,23 @@ idk::RenderEngine::compileShaders()
     createProgram("colorgrade",     "IDKGE/shaders/", "screenquad.vs", "post/colorgrade.fs");
     createProgram("alpha-0-1",      "IDKGE/shaders/", "screenquad.vs", "post/alpha-0-1.fs");
 
+}
+
+
+void
+idk::RenderEngine::_recompileShaders()
+{
+    for (auto &program: m_programs)
+    {
+        program.recompile();
+    }
+}
+
+
+void
+idk::RenderEngine::recompileShaders()
+{
+    m_should_recompile = true;
 }
 
 
@@ -178,11 +187,11 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     };
 
     idk::glTextureConfig vol_config = {
-        .internalformat = GL_RGBA16F,
+        .internalformat = GL_RGBA16,
         .format         = GL_RGBA,
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
-        .datatype       = GL_FLOAT,
+        .datatype       = GL_UNSIGNED_BYTE,
         .genmipmap      = GL_FALSE
     };
 
@@ -206,10 +215,15 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     m_radiance_buffer.reset(w, h, 1);
     m_radiance_buffer.colorAttachment(0, radiance_config);
 
-    m_volumetrics_buffers[0].reset(w/2, h/2, 2);
-    m_volumetrics_buffers[1].reset(w/2, h/2, 2);
-    m_volumetrics_buffers[0].colorAttachment(0, vol_config);
-    m_volumetrics_buffers[1].colorAttachment(0, vol_config);
+    m_volumetrics_buffers[0] = new idk::glFramebuffer;
+    m_volumetrics_buffers[0]->reset(w/4, h/4, 1);
+    m_volumetrics_buffers[0]->colorAttachment(0, vol_config);
+    // m_volumetrics_buffers[1].reset(w/2, h/2, 1);
+    // m_volumetrics_buffers[1].colorAttachment(0, vol_config);
+
+    // m_foliage_buffer.reset(w, h, 2);
+    // m_foliage_buffer.colorAttachment()
+
 
     m_SSAO_buffers[0].reset(w/2, h/2, 1);
     m_SSAO_buffers[1].reset(w/2, h/2, 1);
@@ -233,13 +247,13 @@ idk::RenderEngine::init_framebuffers( int w, int h )
         m_scratchbuffers2[i].colorAttachment(0, config);
     }
 
-    m_ui_buffer.reset(w, h, 1);
+    m_ui_buffer.reset(w, h, 2);
     m_ui_buffer.colorAttachment(0, config);
-    m_ui_buffer.depthAttachment(depth_config);
+    m_ui_buffer.depthAttachment(1, depth_config);
 
 
     idk::glTextureConfig albedo_config = {
-        .internalformat = GL_RGB10_A2,
+        .internalformat = GL_RGBA16F,
         .format         = GL_RGBA,
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
@@ -266,11 +280,29 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     };
 
 
-    m_gbuffer.reset(w, h, 3);
-    m_gbuffer.colorAttachment(0, albedo_config);
-    m_gbuffer.colorAttachment(1, normal_config);
-    m_gbuffer.colorAttachment(2, pbr_config);
-    m_gbuffer.depthAttachment(depth_config);
+    m_gbuffers[0] = new idk::glFramebuffer;
+    // m_gbuffers[1] = new idk::glFramebuffer;
+
+    for (int i=0; i<1; i++)
+    {
+        m_gbuffers[i]->reset(w, h, 4);
+        m_gbuffers[i]->colorAttachment(0, albedo_config);
+        m_gbuffers[i]->colorAttachment(1, normal_config);
+        m_gbuffers[i]->colorAttachment(2, pbr_config);
+        m_gbuffers[i]->depthAttachment(3, depth_config);
+
+        // for (int j=0; j<4; j++)
+        // {
+        //     uint32_t texture = m_gbuffers[i]->attachments[j];
+        //     uint64_t handle  = gl::getTextureHandleARB(texture);            
+        //     m_gbuffers[i]->handles.push_back(handle);
+        // }
+    }
+
+    // for (int i=0; i<4; i++)
+    // {
+    //     gl::makeTextureHandleResidentARB(m_gbuffers[1]->handles[i]);
+    // }
 
 
     config = {
@@ -346,10 +378,10 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     init_framebuffers(w, h);
 
     m_RQ           = m_render_queues.create();
-    m_viewspace_RQ = m_render_queues.create();
-    m_shadow_RQ    = m_render_queues.create();
-    m_GI_RQ        = m_render_queues.create();
+    m_particle_RQ  = m_render_queues.create();
     m_decal_RQ     = m_render_queues.create();
+    m_GI_RQ        = m_render_queues.create();
+    m_shadow_RQ    = m_render_queues.create();
 
     // Primitive shapes
     // -----------------------------------------------------------------------------------------
@@ -388,7 +420,7 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
         .wrap_s         = GL_CLAMP_TO_EDGE,
         .wrap_t         = GL_CLAMP_TO_EDGE,
         .datatype       = GL_FLOAT,
-        .genmipmap      = GL_TRUE
+        .genmipmap      = GL_FALSE
     };
 
     static constexpr size_t LUT_TEXTURE_SIZE = 512;
@@ -399,27 +431,12 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     idk::glShaderProgram program("IDKGE/shaders/brdf-lut.comp");
     program.bind();
     program.dispatch(LUT_TEXTURE_SIZE/8, LUT_TEXTURE_SIZE/8, 1);
-    idk::gl::memoryBarrier(GL_ALL_BARRIER_BITS);
+    idk::gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
     // -----------------------------------------------------------------------------------------
 
     // _gen_envprobes();
 
-    // Generate white noise for temporal effects
-    // -----------------------------------------------------------------------------------------
-    idk::glTextureConfig SSAO_config = {
-        .internalformat = GL_RGBA8,
-        .format         = GL_RGBA,
-        .minfilter      = GL_LINEAR,
-        .magfilter      = GL_LINEAR,
-        .wrap_s         = GL_REPEAT,
-        .wrap_t         = GL_REPEAT,
-        .datatype       = GL_UNSIGNED_BYTE,
-        .genmipmap      = GL_FALSE
-    };
-
-    auto pixels = noisegen2D::u8_whitenoise(256, 256);
-    m_SSAO_noise = gltools::loadTexture2D(256, 256, pixels.get(), SSAO_config);
-    // -----------------------------------------------------------------------------------------
+    idk::internal::upload_noise();
 
     m_active_camera_id = createCamera();
     loadSkybox("IDKGE/resources/skybox/");
@@ -439,29 +456,14 @@ idk::RenderEngine::RenderEngine( const std::string &name, int w, int h, int gl_m
     m_textsurface = SDL_CreateRGBSurface(0, w, h, 16, 0, 0, 0, 0);
     idkui::TextManager::init("./IDKGE/resources/fonts/Ubuntu/18/Ubuntu-Medium.ttf", 18);
 
-    if (flags == idk::InitFlag::NONE)
-    {
-        init_all(name, w, h);
-        return;
-    }
+    init_all(name, w, h);
+    resize(w, h);
 
-    if (flags & idk::InitFlag::INIT_HEADLESS)
-    {
-        return;
-    }
+    idk::ParticleSystem::init();
+    idk::TerrainRenderer::init(*this, m_model_allocator);
+
 }
 
-
-int
-idk::RenderEngine::createProgram( const std::string &name, const std::string &root,
-                                  const std::string &vs, const std::string &fs )
-{
-    int id = m_programs.create();
-    m_programs.get(id).loadFileC(root, vs, fs);
-    m_program_ids[name] = id;
-
-    return id;
-}
 
 
 int
@@ -473,15 +475,35 @@ idk::RenderEngine::createProgram( const std::string &name, const idk::glShaderPr
 }
 
 
+int
+idk::RenderEngine::createProgram( const std::string &name, const std::string &root,
+                                  const std::string &vs, const std::string &fs )
+{
+    auto VS = idk::glShaderStage((root+vs).c_str());
+    auto FS = idk::glShaderStage((root+fs).c_str());
+    return createProgram(name, idk::glShaderProgram(VS, FS));
+}
+
+
 
 int
 idk::RenderEngine::createRenderQueue( const std::string &program )
 {
+    for (auto &queue: m_user_render_queues)
+    {
+        if (queue.name == program)
+        {
+            LOG_WARN() << "[RenderEngine] Render queue already exists: \"" << program << "\"\n";
+            return queue.ID;
+        }
+    }
+
     int ID = m_user_render_queues.create();
     LOG_INFO() << "[RenderEngine] Created user-facing render queue \"" << program << "\" with ID " << ID;
 
     m_user_render_queues.get(ID).config = { .cull_face = true };
-    m_user_render_queues.get(ID).name = program;
+    m_user_render_queues.get(ID).name   = program;
+    m_user_render_queues.get(ID).ID     = ID;
 
     return ID;
 }
@@ -490,11 +512,21 @@ idk::RenderEngine::createRenderQueue( const std::string &program )
 int
 idk::RenderEngine::createRenderQueue( const std::string &program, const idk::RenderQueueConfig &config )
 {
+    for (auto &queue: m_user_render_queues)
+    {
+        if (queue.name == program)
+        {
+            LOG_WARN() << "[RenderEngine] Render queue already exists: \"" << program << "\"\n";
+            return queue.ID;
+        }
+    }
+
     int ID = m_user_render_queues.create();
     LOG_INFO() << "[RenderEngine] Created user-facing render queue \"" << program << "\" with ID " << ID;
 
     m_user_render_queues.get(ID).config = config;
-    m_user_render_queues.get(ID).name = program;
+    m_user_render_queues.get(ID).name   = program;
+    m_user_render_queues.get(ID).ID     = ID;
 
     return ID;
 }
@@ -699,17 +731,13 @@ idk::RenderEngine::drawRect( const glm::mat4 &M )
 void
 idk::RenderEngine::drawLine( const glm::vec3 A, const glm::vec3 B, float thickness )
 {
-    glm::vec3 offset = glm::vec3(0.0f);
+    glm::mat4 T = glm::translate(glm::mat4(1.0f), A);
+    glm::mat4 R = glm::transpose(glm::lookAt(A, B, glm::vec3(0.0f, 1.0f, 0.0f)));
+              R = glm::mat4_cast(glm::normalize(glm::quat_cast(R)));
 
-    if (A.x == B.x && A.z == B.z)
-    {
-        offset.x = 0.0001f;
-    }
-
-    glm::mat4 TR = glm::inverse(glm::lookAt(A, B+offset, glm::vec3(0.0f, 1.0f, 0.0f)));
     glm::mat4 S  = glm::scale(glm::mat4(1.0f), glm::vec3(thickness, thickness, glm::length(B - A)));
 
-    drawModel(m_unit_cylinder_FF, TR*S);
+    drawModel(m_unit_cylinder_FF, T*R*S);
 }
 
 
@@ -780,13 +808,6 @@ idk::RenderEngine::drawTextureOverlay( uint32_t texture )
     m_texture_overlays.push(texture);
 }
 
-
-
-// void
-// idk::RenderEngine::drawModelViewspace( int model, const glm::mat4 &transform )
-// {
-//     _getRenderQueue(m_viewspace_RQ).enque(model, transform);
-// }
 
 
 void
@@ -871,32 +892,6 @@ idk::RenderEngine::skipAllRenderOverlays()
 }
 
 
-
-int
-idk::RenderEngine::createParticleEmitter( const ParticleEmitter &P )
-{
-    int id = m_particle_emitters.create(P);
-    LOG_INFO() << "[idk::RenderEngine] Created particle emitter with ID " << id;
-    return id;
-}
-
-
-void
-idk::RenderEngine::destroyParticleEmitter( int emitter )
-{
-    m_particle_emitters.destroy(emitter);
-}
-
-
-
-idk::ParticleEmitter &
-idk::RenderEngine::getParticleEmitter( int emitter )
-{
-    return m_particle_emitters.get(emitter);
-}
-
-
-
 void
 idk::RenderEngine::update_UBO_camera( idk::UBO_Buffer &buffer )
 {
@@ -910,7 +905,7 @@ idk::RenderEngine::update_UBO_camera( idk::UBO_Buffer &buffer )
         camera.position = glm::inverse(camera.V)[3];
 
         camera.P = glm::perspective(
-            glm::radians(camera.fov),
+            glm::radians(camera.fov + camera.fov_offset),
             camera.aspect,
             camera.near,
             camera.far
@@ -1012,35 +1007,22 @@ idk::RenderEngine::update_UBO_lightsources( idk::UBO_Buffer &buffer )
 }
 
 
-// void
-// idk::RenderEngine::updateAtmosphereUBO( idk::UBORenderData &data )
-// {
-//     static uint32_t offset;
-
-//     offset = 0;
-//     for (IDK_Atmosphere &atmosphere: m_atmospheres)
-//     {
-//         glm::mat4 T = glm::translate(glm::mat4(1.0f), glm::vec3(atmosphere.position));
-//         glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f * atmosphere.radius * atmosphere.atmosphere_scale));
-
-//         atmosphere.transform = T * S;
-
-//         // data.atmospheres[offset++] = atmosphere;
-//     }
-
-//     std::memcpy(data.atmospheres, m_atmospheres.data(), m_atmospheres.size() * sizeof(IDK_Atmosphere));
-
-// }
-
-
 void
 idk::RenderEngine::applyRenderSettings( const RenderSettings &settings )
 {
     // *m_rendersettings = settings;
 
+    // SSAO
+    {
+        auto prev = m_rendersettings->ssao;
+        auto curr = settings.ssao;
+
+        m_rendersettings->ssao = curr;
+    }
+
     // Volumetrics
     {
-        m_rendersettings->dirlight_volumetrics = settings.dirlight_volumetrics;
+        m_rendersettings->volumetrics = settings.volumetrics;
     }
 
     // // Environment probes
@@ -1081,6 +1063,27 @@ idk::RenderEngine::beginFrame()
     gl::clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     SDL_FillRect(m_textsurface, NULL, 0);
+
+
+    if (m_should_recompile)
+    {
+        _recompileShaders();
+        m_should_recompile = false;
+    }
+
+
+    static idk::glBufferObject<GL_UNIFORM_BUFFER> UBO_time(
+        shader_bindings::UBO_Time, sizeof(glm::vec4), GL_DYNAMIC_COPY
+    );
+
+    static glm::vec4 time = glm::vec4(0.0f);
+
+    time[0] += delta_time; // glm::mod(time[0]+delta_time, 2.0f*3.14159f);
+    // time[0] = glm::mod(time[0]+delta_time, 2.0f*3.14159f);
+    time[1] = delta_time;
+
+    UBO_time.bufferSubData(0, sizeof(glm::vec4), &(time[0]));
+
 }
 
 
@@ -1091,31 +1094,27 @@ idk::RenderEngine::endFrame( float dt )
     IDK_Camera &camera = getCamera();
 
 
+    // Swap G Buffers
     // {
-    //     auto &config = m_rendersettings->envprobe;
+    //     gl::bindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    //     if (config.dirty)
+    //     static idk::glBufferObject<GL_UNIFORM_BUFFER> ubo_gbuffer(
+    //         shader_bindings::UBO_GBuffer,
+    //         8 * sizeof(uint64_t),
+    //         GL_DYNAMIC_COPY
+    //     );
+
+    //     for (int i=0; i<4; i++)
     //     {
-    //         glm::ivec3 bounds = config.grid_size;
-    //         config.nprobes = bounds.x * bounds.y * bounds.z;
-
-    //         _gen_envprobes();
-
-    //         config.dirty = false;
+    //         gl::makeTextureHandleResidentARB(m_gbuffers[0]->handles[i]);
+    //         gl::makeTextureHandleNonResidentARB(m_gbuffers[1]->handles[i]);
     //     }
 
-    //     if (config.visualize)
-    //     {
-    //         for (int layer=0; layer<config.nprobes; layer++)
-    //         {
-    //             glm::vec3 position = env_probe::layerToWorld(
-    //                 camera.position, layer, config
-    //             );
+    //     ubo_gbuffer.bufferSubData(0, 4*sizeof(uint64_t), m_gbuffers[0]->attachments.data());
 
-    //             drawSphere(position, 0.25f);
-    //         }
-    //     }
+    //     std::swap(m_gbuffers[0], m_gbuffers[1]);
     // }
+
 
 
     {
@@ -1149,21 +1148,15 @@ idk::RenderEngine::endFrame( float dt )
     // -----------------------------------------------------------------------------------------
 
 
-
     // Update particle emitters
     // -----------------------------------------------------------------------------------------
-    for (auto &P: m_particle_emitters)
-    {
-        P.update(dt);
-
-        for (int i=0; i<P.m_particles.size(); i++)
-        {
-            glm::mat4 M = P.getTransform(i, camera.position);
-            _getRenderQueue(m_viewspace_RQ).enque(P.model_id, M);
-        }
-    }
+    idk::ParticleSystem::update(dt, camera.position, _getRenderQueue(m_particle_RQ));
     // -----------------------------------------------------------------------------------------
 
+    // Update terrain rendering
+    // -----------------------------------------------------------------------------------------
+    idk::TerrainRenderer::update(*this, camera, m_model_allocator);
+    // -----------------------------------------------------------------------------------------
 
 
     // Update UBO data
@@ -1235,6 +1228,7 @@ idk::RenderEngine::endFrame( float dt )
     gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
     gl::enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
+
     // Perform environment mapping
     // -----------------------------------------------------------------------------------------
     gl::bindVertexArray(m_model_allocator.getVAO());
@@ -1246,15 +1240,16 @@ idk::RenderEngine::endFrame( float dt )
     // -----------------------------------------------------------------------------------------
     gl::bindVertexArray(m_model_allocator.getVAO());
 
-    m_gbuffer.bind();
-    m_gbuffer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    m_gbuffers[0]->bind();
+    m_gbuffers[0]->clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    RenderStage_geometry(camera, dt, m_gbuffer);
+    RenderStage_geometry(camera, dt, *(m_gbuffers[0]));
     // -----------------------------------------------------------------------------------------
 
 
     // Render depth maps
     // -----------------------------------------------------------------------------------------
+    gl::bindVertexArray(m_model_allocator.getVAO());
     gl::disable(GL_CULL_FACE);
 
     // gl::cullFace(GL_FRONT);
@@ -1267,10 +1262,10 @@ idk::RenderEngine::endFrame( float dt )
 
     // Lighting pass
     // -----------------------------------------------------------------------------------------
-    m_mainbuffer_0.clear(GL_COLOR_BUFFER_BIT);
     m_mainbuffer_0.bind();
+    m_mainbuffer_0.clear(GL_COLOR_BUFFER_BIT);
 
-    RenderStage_lighting(camera, dt, m_gbuffer, m_mainbuffer_0);
+    RenderStage_lighting(camera, dt, *(m_gbuffers[0]), m_mainbuffer_0);
     // -----------------------------------------------------------------------------------------
 
 
@@ -1282,8 +1277,6 @@ idk::RenderEngine::endFrame( float dt )
 
     RenderStage_postprocessing(camera, m_mainbuffer_0, m_finalbuffer);
     // -----------------------------------------------------------------------------------------
-
-
 
     // Clear render queues
     // -----------------------------------------------------------------------------------------
@@ -1327,6 +1320,9 @@ idk::RenderEngine::resize( int w, int h )
 
     SDL_FreeSurface(m_textsurface);
     m_textsurface = SDL_CreateRGBSurface(0, w, h, 32, 0, 0, 0, 0);
+
+    SDL_SetWindowSize(getWindow(), w, h);
+
 }
 
 

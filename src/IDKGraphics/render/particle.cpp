@@ -29,26 +29,27 @@ idk::ParticleEmitter::_reset( Particle &p )
 {
     p.pos = origin;
 
-
     glm::vec3 velA = m_desc.velocity;
     glm::vec3 velB = m_desc.velocity_randomness;
 
-    glm::mat4 R = glm::lookAt(
-        glm::vec3(0.0f),
-        glm::normalize(direction),
-        glm::vec3(0.0f, 1.0f, 0.0f)
-    );
+    // glm::mat4 R = glm::lookAt(
+    //     glm::vec3(0.0f),
+    //     glm::normalize(direction),
+    //     glm::vec3(0.0f, 1.0f, 0.0f)
+    // );
 
-    R = glm::inverse(R);
+    // R = glm::mat4(glm::mat3(glm::inverse(R)));
+
 
     velA.x += idk::randf(-1.0f, +1.0f) * velB.x;
     velA.y += idk::randf(-1.0f, +1.0f) * velB.y;
     velA.z += idk::randf(-1.0f, +1.0f) * velB.z;
 
-    p.vel = glm::mat3(R) * velA;
+    // p.vel = glm::mat3(R) * velA;
+    p.vel = velA;
 
     p.timer = idk::randf(-0.1f, +0.1f);
-    p.scale = m_desc.scale;
+    p.scale = m_desc.scale; // + m_desc.scale_randomness * idk::randf(-1.0f, +1.0f);
 }
 
 
@@ -69,13 +70,12 @@ idk::ParticleEmitter::_update( float dt, Particle &p )
 
     p.timer += dt;
     p.scale = 1.0f - (p.timer / m_desc.duration);
-    p.scale = glm::max(p.scale, 0.001f);
+    p.scale = glm::clamp(p.scale, 0.001f, m_desc.scale);
 
     if (p.timer >= m_desc.duration)
     {
         _reset(p);
     }
-
 }
 
 
@@ -85,6 +85,11 @@ idk::ParticleEmitter::update( float dt )
     for (Particle &p: m_particles)
     {
         _update(dt, p);
+    }
+
+    if (m_duration >= 0.0f)
+    {
+        m_timer += dt;
     }
 }
 
@@ -104,7 +109,7 @@ idk::ParticleEmitter::getTransform( int i, const glm::vec3 &view )
 
     R = glm::inverse(R);
 
-    glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(scale * p.scale));
+    glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(p.scale));
 
     return T*R*S;
 }

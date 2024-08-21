@@ -45,6 +45,7 @@ private:
     uint32_t m_default_textures[5];
     uint64_t m_default_handles[5];
     int      m_default_model;
+    int      m_error_model;
 
     idk::vector<idk::MeshAllocator>         m_mesh_allocators;
 
@@ -87,6 +88,7 @@ public:
 
     int              createModel( const ModelDescriptor& );
     ModelDescriptor &getModel( int model );
+    ModelDescriptor &getModelLOD( int model, int level );
 
     int loadTexture( const std::string &filepath, uint32_t&, uint64_t&, const idk::glTextureConfig& );
     int loadModel( const std::string &filepath, uint32_t format=0 );

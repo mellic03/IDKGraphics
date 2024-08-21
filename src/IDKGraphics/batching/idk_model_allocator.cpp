@@ -37,8 +37,8 @@ idk::ModelAllocator::ModelAllocator()
     };
 
     m_lightmap_config = {
-        .internalformat = GL_RGBA16,
-        .format         = GL_RGBA,
+        .internalformat = GL_RGB8,
+        .format         = GL_RGB,
         .minfilter      = GL_LINEAR_MIPMAP_LINEAR,
         .magfilter      = GL_LINEAR,
         .wrap_s         = GL_REPEAT,
@@ -53,9 +53,9 @@ idk::ModelAllocator::ModelAllocator()
     constexpr size_t IMG_W = 32;
 
     auto data_albedo = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 200, 200, 200, 255 );
-    auto data_normal = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 125, 125, 255, 0);
-    auto data_ao_r_m = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 255, 180, 1, 0);
-    auto data_emissv = texturegen::genRGBA<uint8_t>(IMG_W, IMG_W, 0, 0, 0, 0);
+    auto data_normal = texturegen::genRGB<uint8_t>(IMG_W, IMG_W, 125, 125, 255);
+    auto data_ao_r_m = texturegen::genRGB<uint8_t>(IMG_W, IMG_W, 255, 180, 1);
+    auto data_emissv = texturegen::genRGB<uint8_t>(IMG_W, IMG_W, 0, 0, 0);
 
     GLuint textures[5];
     GLuint handles[5];
@@ -71,7 +71,7 @@ idk::ModelAllocator::ModelAllocator()
         m_default_handles[i] = gl::getTextureHandleARB(m_default_textures[i]);
     }
 
-
+    m_error_model = loadModel("IDKGE/resources/error.idkvi");
 }
 
 
@@ -89,6 +89,16 @@ idk::ModelAllocator::getModel( int model )
 }
 
 
+idk::ModelDescriptor&
+idk::ModelAllocator::getModelLOD( int model, int level )
+{
+    int lod = getModel(model).LOD[level];
+    return getModel(lod);
+}
+
+
+
+
 int
 idk::ModelAllocator::loadTexture( const std::string &filepath, uint32_t &texture, uint64_t &handle,
                                   const glTextureConfig &config )
@@ -99,6 +109,7 @@ idk::ModelAllocator::loadTexture( const std::string &filepath, uint32_t &texture
         handle  = gl::getTextureHandleARB(texture);
         return 0;
     }
+
     texture = gltools::loadTexture(filepath, config);
     handle  = gl::getTextureHandleARB(texture);
 
@@ -162,7 +173,8 @@ idk::ModelAllocator::loadMaterial( uint32_t bitmask,
                 (*data)[i].pixels = gltools::loadPixels(
                     (*data)[i].filepath,
                     &((*data)[i].w),
-                    &((*data)[i].h)
+                    &((*data)[i].h),
+                    (i == 0)
                 );
             }
         },
@@ -221,8 +233,12 @@ idk::ModelAllocator::loadModel( const std::string &filepath, uint32_t format )
 {
     if (fs::exists(filepath) == false)
     {
-        std::cout << "Cannot open \"" << filepath << "\"\n";
-        IDK_ASSERT("File does not exist", fs::exists(filepath));
+        LOG_ERROR() << "File does not exist: \"" << filepath << "\"";
+
+        return m_error_model;
+
+        // std::cout << "Cannot open \"" << filepath << "\"\n";
+        // IDK_ASSERT("File does not exist", fs::exists(filepath));
     }
 
     if (m_loaded_model_IDs.contains(filepath))

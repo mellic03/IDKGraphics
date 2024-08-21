@@ -9,6 +9,9 @@ file(GLOB SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/animation/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/camera/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/render/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/noise/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/particle/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/terrain/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/storage/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/batching/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/IDKGraphics/UI/*.cpp

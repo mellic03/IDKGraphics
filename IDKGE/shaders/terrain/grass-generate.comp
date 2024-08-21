@@ -1,0 +1,69 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+
+#include "../include/storage.glsl"
+#include "./terrain.glsl"
+
+
+layout(
+    local_size_x = 8,
+    local_size_y = 8,
+    local_size_z = 1
+) in;
+
+
+layout (std430, binding = IDK_BINDING_SSBO_Grass) readonly buffer IDKGrass
+{
+    vec4 GrassPositions[4*2048];
+};
+
+
+
+
+uniform uint un_tile_w;
+uniform uint un_tiles_xz;
+
+
+layout (binding = 0) uniform atomic_uint global_idx;
+
+shared vec4 shared_positions[64];
+shared uint shared_idx;
+
+
+void writePosition( vec4 pos )
+{
+    uint idx = atomicAdd(shared_idx, 1) + 1;
+    shared_positions[idx] = pos;
+}
+
+
+
+
+void main()
+{
+    if (gl_LocalInvocationIndex == 0)
+    {
+        shared_idx = 0;
+    }
+
+    groupMemoryBarrier();
+
+
+    // write to shared_positions
+    {
+        // IDK_Camera cam = IDK_UBO_cameras[0];
+
+        // // uint row = gl_GlobalInvocationID.y;
+        // // uint col = gl_GlobalInvocationID.x;
+
+        // int cam_row = int(cam.position.z / float(un_tile_w));
+        // int cam_col = int(cam.position.x / float(un_tile_w));
+    }
+
+
+
+    barrier();
+
+
+}
+

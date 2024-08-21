@@ -1,0 +1,73 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+#extension GL_ARB_bindless_texture: require
+
+#include "../include/storage.glsl"
+#include "./terrain.glsl"
+
+layout(
+    local_size_x = 8,
+    local_size_y = 8,
+    local_size_z = 1
+) in;
+
+
+layout (binding=0, r32f) writeonly uniform image2D un_height;
+
+
+
+
+// vec4 TerrainFractalNoise2( vec2 texcoord, NoiseFactor NF )
+// {
+//     vec4 result   = vec4(0.0);
+//     vec2 gradient = vec2(0.0);
+
+//     float a = NF.amp;
+//     float w = 1.0 / NF.wav;
+
+//     for (int i=0; i<int(NF.octaves); i++)
+//     {
+//         float xnoise = IDK_PerlinNoiseOffset(w * texcoord, i%8, ivec2(1, 0)).r;
+//         float znoise = IDK_PerlinNoiseOffset(w * texcoord, i%8, ivec2(0, 1)).r;
+
+//         float ax = a * xnoise;
+//         float az = a * znoise;
+
+//         float noise  = IDK_PerlinNoise(w * texcoord, i%8).r;
+    
+//         a *= abs(NF.amp);
+
+//         result[0] += a * noise;
+//         result[1] += a;
+    
+//         w *= NF.wav;
+//     }
+
+//     result[1] = max(result[1], 0.0001);
+
+//     return result;
+// }
+
+
+void main()
+{
+    ivec2 texel    = ivec2(gl_GlobalInvocationID.xy);
+    vec2  texcoord = vec2(texel) / IDK_TERRAIN_TEX_W;
+
+    float xscale = (mat3(IDK_SSBO_Terrain.transform) * vec3(1.0)).x;
+    float yscale = IDK_SSBO_Terrain.scale.y;
+
+    float height = TerrainComputeHeight(texcoord);
+
+    // float dX = 0.05 * sobel_x(texel);
+    // float dZ = 0.05 * sobel_y(texel);
+    // float dY = sqrt(1.0 - dX*dX - dZ*dZ);
+
+    // vec3 N = normalize(vec3(-dX, dZ, dY));
+    //      N = vec3(-N.x, N.z, N.y);
+    //      N = N * 0.5 + 0.5;
+
+    imageStore(un_height, texel, vec4(height));
+    // imageStore(un_normal, texel, vec4(0.2));
+}
+

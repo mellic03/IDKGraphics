@@ -7,6 +7,7 @@
 
 layout (location = 0) out vec4 fsout_frag_color;
 
+
 in vec3 fsin_fragpos;
 flat in uint lightID;
 
@@ -17,6 +18,7 @@ uniform sampler2D un_texture_2;
 uniform sampler2D un_fragdepth;
 uniform sampler2D un_BRDF_LUT;
 
+uniform samplerCube un_skybox;
 uniform samplerCube un_skybox_diffuse;
 uniform samplerCube un_skybox_specular;
 
@@ -63,13 +65,56 @@ float dirlight_shadow_2( IDK_Camera camera, IDK_Dirlight light, mat4 V, vec3 pos
 
 
 
+float IDK_PHG( float g, float cosTheta )
+{
+    const float Inv4Pi = 0.07957747154594766788;
+    
+    float gSq = g * g;
+    float denomPreMul = 1 + gSq - (2.0 * g * cosTheta);
+    return (1 - gSq) * Inv4Pi * inversesqrt(denomPreMul * denomPreMul * denomPreMul);
+}
+
+float IDK_MieScattering( float cosTheta )
+{
+    return mix(IDK_PHG(0.8, cosTheta), IDK_PHG(-0.5, cosTheta), 0.5);
+}
+
+float IDK_RayleighScattering( float cosTheta )
+{
+    return ((3.0*3.14159) / 16.0) * (1.0 + cosTheta*cosTheta);
+}
+
+
+
+#define V_color  vec3(0.05, 0.13, 0.22)
+#define H_color1 vec3(0.59, 0.4, 0.17)
+#define H_color2 vec3(0.7, 0.76, 0.66)
+
+
+vec3 bad_atmospherics( vec3 ray_dir, vec3 L, IDK_Dirlight light )
+{
+    vec3 result = vec3(0.0);
+
+    float VdotL    = dot(ray_dir, -L) * 0.5 + 0.5;
+    float vertical = pow(1.0 - abs(ray_dir.y), 5);
+
+    vec3 hoz = mix(H_color1, H_color2, pow(VdotL, 2));
+    result = mix(V_color, hoz, vertical);
+
+    VdotL = clamp(dot(ray_dir, -L), 0.0, 1.0);
+    result += light.diffuse.a * IDK_MieScattering(VdotL);
+
+    return result;
+}
+
+
 
 void main()
 {
     IDK_Camera   camera = IDK_UBO_cameras[0];
     IDK_Dirlight light  = IDK_UBO_dirlights[lightID];
 
-    vec2 texcoord = IDK_WorldToUV(fsin_fragpos, camera.P * camera.V).xy;
+    vec2  texcoord = IDK_WorldToUV(fsin_fragpos, camera.P * camera.V).xy;
 
     IDK_PBRSurfaceData surface = IDK_PBRSurfaceData_load(
         camera,
@@ -82,6 +127,7 @@ void main()
     );
 
     vec3 worldpos = surface.position;
+    vec3  ray_dir = normalize(worldpos - camera.position.xyz);
 
     float shadow = dirlight_shadow_2(camera, light, camera.V, worldpos, surface.N);
     vec3  result  = IDK_PBR_Dirlight(light, surface, worldpos);
@@ -89,28 +135,35 @@ void main()
           result += light.ambient.rgb * surface.albedo.rgb;
 
 
-    // // IBL
-    // // -----------------------------------------------------------------------------------------
-    // vec3 IBL_contribution = vec3(0.0);
+    // IBL
+    // -----------------------------------------------------------------------------------------
+    vec3 IBL_contribution = vec3(0.0);
 
-    // vec3 irradiance = textureLod(un_skybox_diffuse, surface.N, surface.roughness).rgb;
-    // vec3 diffuse    = irradiance * surface.albedo;
+    vec3 irradiance = textureLod(un_skybox_diffuse, surface.N, surface.roughness).rgb;
+    vec3 diffuse    = irradiance * surface.albedo;
 
-    // vec3 prefilter = textureLod(un_skybox_specular, surface.R, surface.roughness*4.0).rgb;
-    // vec3 specular  = prefilter * surface.brdf;
-    // vec3 ambient   = (surface.Kd * diffuse + specular) * surface.ao;
+    vec3 prefilter = textureLod(un_skybox_specular, surface.R, surface.roughness*4.0).rgb;
+    vec3 specular  = prefilter * surface.brdf;
+    vec3 ambient   = (surface.Kd * diffuse + specular) * surface.ao;
 
-    // // #if DIRSHADOW_AMBIENT == 1
-    //     ambient *= clamp(shadow, light.ambient.w, 1.0);
-    // // #endif
+    // #if DIRSHADOW_AMBIENT == 1
+        // ambient *= clamp(shadow, light.ambient.w, 1.0);
+    // #endif
 
-    // result += shadow * ambient;
-    // // -----------------------------------------------------------------------------------------
-
-    result += 2.0*surface.emission * surface.albedo;
+    result += ambient * light.ambient.w;
+    // -----------------------------------------------------------------------------------------
 
 
-    fsout_frag_color = vec4(result, surface.alpha);
+    if (distance(camera.position.xyz, worldpos) >= 0.95 * camera.far)
+    {
+        vec3 result = textureLod(un_skybox, ray_dir, 0.0).rgb; // bad_atmospherics(ray_dir, light.direction.xyz, light);
+        fsout_frag_color = vec4(result, 1.0);
+        return;
+    }
+
+    // result += surface.emission * surface.albedo;
+
+    fsout_frag_color = vec4(result, 1.0);
 }
 
 

@@ -42,14 +42,21 @@ private:
 public:
     idk::RenderQueueConfig config;
     std::string            name;
+    int                    ID = -1;
 
     void enque( int, const glm::mat4& );
     void enque( int, const idk::Transform&, const IDK_Camera&, ModelAllocator& );
     void clear();
     bool empty() { return m_drawlist.empty(); };
 
-    size_t getDrawCommandOffset() { return m_drawcmd_offset; };
-    size_t numDrawCommands()      { return m_num_drawcmd; };
+    size_t getDrawCommandOffset() { return m_drawcmd_offset;  };
+    size_t numDrawCommands()      { return m_num_drawcmd;     };
+    bool   empty2()               { return m_num_drawcmd > 0; };
+
+    std::vector<glm::mat4> &getDrawList( int model)
+    {
+        return m_drawlist[model];
+    }
 
     void genDrawCommands( ModelAllocator&, size_t&, size_t&, size_t&, SSBO_Buffer&,
                           std::vector<idk::glDrawCmd>& );

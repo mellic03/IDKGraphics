@@ -1,5 +1,5 @@
 #include "../idk_renderengine.hpp"
-
+#include "../terrain/terrain.hpp"
 
 
 void
@@ -17,15 +17,14 @@ idk::RenderEngine::shadowpass_dirlights()
         return;
     }
 
-    auto &light = m_dirlights.get(0);
-
     m_dirshadow_buffer.bind();
+
+    auto &light = m_dirlights.get(0);
 
     auto &program = getProgram("dirshadow-indirect");
     program.bind();
     program.set_uint("un_draw_offset", uint32_t(queue.getDrawCommandOffset()));
     program.set_uint("un_light_id", 0);
-
 
     for (uint32_t layer=0; layer<5; layer++)
     {
@@ -49,6 +48,11 @@ idk::RenderEngine::shadowpass_dirlights()
             sizeof(idk::glDrawCmd)
         );
     }
+
+
+    idk::TerrainRenderer::renderShadow(*this, m_dirshadow_buffer, m_model_allocator);
+    gl::bindVertexArray(m_model_allocator.getVAO());
+    gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_DIB.ID());
 
 }
 

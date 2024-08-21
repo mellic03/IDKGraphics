@@ -1,0 +1,64 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+#extension GL_ARB_bindless_texture: require
+
+#include "../include/bindings.glsl"
+
+layout(
+    local_size_x = 8,
+    local_size_y = 8,
+    local_size_z = 1
+) in;
+
+
+layout (binding=0, r16) writeonly uniform image2D un_output;
+
+layout (std430, binding = IDK_BINDING_SSBO_NoiseGen) buffer IDK_SSBO_NoiseGen
+{
+    readonly vec4 NG_input_bounds;
+    readonly vec4 NG_output_bounds;
+
+    readonly vec4 NG_input[256][256];
+};
+
+
+
+void main()
+{
+    float grid_w = NG_input_bounds[0];
+    float tex_w  = NG_output_bounds[0];
+    float cell_w = tex_w / grid_w;
+
+    ivec2 texel    = ivec2(gl_GlobalInvocationID.xy);
+    vec2  texcoord = vec2(texel) / tex_w;
+
+    vec2  pos   = vec2(0.0);
+    float color = 0.0;
+    float dist  = 2.0;
+
+    int row = int(texel.y / cell_w);
+    int col = int(texel.x / cell_w);
+
+    for (int y=-1; y<2; y++)
+    {
+        for (int x=-1; x<2; x++)
+        {
+            vec4  data = NG_input[row+y][col+x];
+            float d    = distance(texcoord, data.xy);
+
+            if (d < dist)
+            {
+                pos   = data.xy;
+                color = data.z;
+                dist  = d;
+            }
+
+        }
+    }
+
+
+    imageStore(un_output, texel, vec4(dist, 0.0, 0.0, 0.0));
+
+
+}
+

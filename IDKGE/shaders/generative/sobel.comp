@@ -1,0 +1,97 @@
+#version 460 core
+#extension GL_GOOGLE_include_directive: require
+#extension GL_ARB_bindless_texture: require
+
+
+layout(
+    local_size_x = 8,
+    local_size_y = 8,
+    local_size_z = 1
+) in;
+
+
+uniform sampler2DArray un_input;
+layout (binding=0, rg16f) writeonly uniform image2DArray un_output;
+
+
+float sobel_x( ivec2 texel, int layer )
+{
+    const ivec2 offsets[9] = ivec2[9](
+        ivec2(-1, -1),
+        ivec2( 0, -1),
+        ivec2( 1, -1),
+        ivec2(-1,  0),
+        ivec2( 0,  0),
+        ivec2( 1,  0),
+        ivec2(-1,  1),
+        ivec2( 0,  1),
+        ivec2( 1,  1)
+    );
+
+    const float weights[9] = float[9](
+        -1.0, 0.0, +1.0,
+        -2.0, 0.0, +2.0,
+        -1.0, 0.0, +1.0
+    );
+
+    float result = 0.0;
+
+    for (int i=0; i<9; i++)
+    {
+        vec2 texcoord = vec2(texel + offsets[i]) / textureSize(un_input, 0).xy;
+        result += weights[i] * texture(un_input, vec3(texcoord, layer)).r;
+    }
+
+    return result;
+}
+
+
+float sobel_y( ivec2 texel, int layer )
+{
+    const ivec2 offsets[9] = ivec2[9](
+        ivec2(-1, -1),
+        ivec2( 0, -1),
+        ivec2( 1, -1),
+        ivec2(-1,  0),
+        ivec2( 0,  0),
+        ivec2( 1,  0),
+        ivec2(-1,  1),
+        ivec2( 0,  1),
+        ivec2( 1,  1)
+    );
+
+    const float weights[9] = float[9]
+    (
+       -1.0, -2.0, -1.0,
+        0.0,  0.0,  0.0,
+       +1.0, +2.0, +1.0
+    );
+
+
+    float result = 0.0;
+
+    for (int i=0; i<9; i++)
+    {
+        vec2 texcoord = vec2(texel + offsets[i]) / textureSize(un_input, 0).xy;
+        result += weights[i] * texture(un_input, vec3(texcoord, layer)).r;
+    }
+
+    return result;
+}
+
+
+
+
+void main()
+{
+    ivec2 texel  = ivec2(gl_GlobalInvocationID.xy);
+
+    for (int i=0; i<8; i++)
+    {
+        float dX = sobel_x(texel, i);
+        float dZ = sobel_y(texel, i);
+
+        imageStore(un_output, ivec3(texel, i), vec4(dX, dZ, 0.0, 0.0));
+    }
+}
+

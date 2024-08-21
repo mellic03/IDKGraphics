@@ -2,9 +2,14 @@
 #include "idk_render_settings.hpp"
 
 #include "render/idk_vxgi.hpp"
+#include "render/cubemap.hpp"
+
+#include "particle/particle_system.hpp"
+#include "terrain/terrain.hpp"
 
 #include <libidk/idk_noisegen.hpp>
-#include "render/cubemap.hpp"
+
+
 
 void
 idk::RenderEngine::RenderStage_envmapping( IDK_Camera &camera, float dtime )
@@ -62,6 +67,22 @@ idk::RenderEngine::RenderStage_envmapping( IDK_Camera &camera, float dtime )
 
 
 
+static void drawRQ( idk::glShaderProgram &program, idk::RenderQueue &RQ )
+{
+    using namespace idk;
+
+    program.set_uint("un_draw_offset", uint32_t(RQ.getDrawCommandOffset()));
+
+    gl::multiDrawElementsIndirect(
+        GL_TRIANGLES,
+        GL_UNSIGNED_INT,
+        (const void *)(sizeof(idk::glDrawCmd) * RQ.getDrawCommandOffset()),
+        RQ.numDrawCommands(),
+        sizeof(idk::glDrawCmd)
+    );
+}
+
+
 
 void
 idk::RenderEngine::RenderStage_geometry( IDK_Camera &camera, float dtime,
@@ -77,20 +98,12 @@ idk::RenderEngine::RenderStage_geometry( IDK_Camera &camera, float dtime,
 
         if (queue.numDrawCommands() > 0)
         {
-            auto &program = getProgram("gpass");
-            program.bind();
-            program.set_uint("un_draw_offset", uint32_t(queue.getDrawCommandOffset()));
-
-            gl::multiDrawElementsIndirect(
-                GL_TRIANGLES,
-                GL_UNSIGNED_INT,
-                (const void *)(sizeof(idk::glDrawCmd) * queue.getDrawCommandOffset()),
-                queue.numDrawCommands(),
-                sizeof(idk::glDrawCmd)
-            );
+            auto &program = getBindProgram("gpass");
+            drawRQ(program, queue);
         }
     }
     // -----------------------------------------------------------------------------------------
+
 
     // User-created render queues
     // -----------------------------------------------------------------------------------------
@@ -101,52 +114,20 @@ idk::RenderEngine::RenderStage_geometry( IDK_Camera &camera, float dtime,
             continue;
         }
 
+        auto &program = getBindProgram(queue.name);
+
         if (queue.config.cull_face == false)
         {
             gl::disable(GL_CULL_FACE);
-        }
-
-        auto &program = getProgram(queue.name);
-        program.bind();
-        program.set_uint("un_draw_offset", uint32_t(queue.getDrawCommandOffset()));
-
-        gl::multiDrawElementsIndirect(
-            GL_TRIANGLES,
-            GL_UNSIGNED_INT,
-            (const void *)(sizeof(idk::glDrawCmd) * queue.getDrawCommandOffset()),
-            queue.numDrawCommands(),
-            sizeof(idk::glDrawCmd)
-        );
-
-        if (queue.config.cull_face == false)
-        {
+            drawRQ(program, queue);
             gl::enable(GL_CULL_FACE);
         }
-    }
-    // -----------------------------------------------------------------------------------------
 
-
-    // Particles
-    // -----------------------------------------------------------------------------------------
-    {
-        idk::RenderQueue &queue = _getRenderQueue(m_viewspace_RQ);
-
-        if (queue.numDrawCommands() > 0)
+        else
         {
-            auto &program = getProgram("gpass-particle");
-            program.bind();
-            program.set_uint("un_draw_offset", uint32_t(queue.getDrawCommandOffset()));
-
-            gl::multiDrawElementsIndirect(
-                GL_TRIANGLES,
-                GL_UNSIGNED_INT,
-                (const void *)(sizeof(idk::glDrawCmd) * queue.getDrawCommandOffset()),
-                queue.numDrawCommands(),
-                sizeof(idk::glDrawCmd)
-            );
+            drawRQ(program, queue);
         }
     }
-    // -----------------------------------------------------------------------------------------
 
 
     // Decals
@@ -156,18 +137,36 @@ idk::RenderEngine::RenderStage_geometry( IDK_Camera &camera, float dtime,
 
         if (queue.numDrawCommands() > 0)
         {
-            auto &program = getProgram("gpass-decal");
-            program.bind();
-            program.set_uint("un_draw_offset", uint32_t(queue.getDrawCommandOffset()));
-
-            gl::multiDrawElementsIndirect(
-                GL_TRIANGLES,
-                GL_UNSIGNED_INT,
-                (const void *)(sizeof(idk::glDrawCmd) * queue.getDrawCommandOffset()),
-                queue.numDrawCommands(),
-                sizeof(idk::glDrawCmd)
-            );
+            auto &program = getBindProgram("gpass-decal");
+            drawRQ(program, queue);
         }
+    }
+    // -----------------------------------------------------------------------------------------
+
+
+    // terrain
+    // -----------------------------------------------------------------------------------------
+    gl::disable(GL_BLEND);
+    {
+        buffer_out.bind();
+
+        idk::TerrainRenderer::render(*this, buffer_out, dtime, camera, m_model_allocator);
+
+        gl::bindVertexArray(m_model_allocator.getVAO());
+        gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_DIB.ID());
+    }
+    // -----------------------------------------------------------------------------------------
+
+
+    // Particles
+    // -----------------------------------------------------------------------------------------
+    {
+        buffer_out.bind();
+
+        idk::ParticleSystem::render(m_model_allocator);
+
+        gl::bindVertexArray(m_model_allocator.getVAO());
+        gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_DIB.ID());
     }
     // -----------------------------------------------------------------------------------------
 
@@ -190,11 +189,11 @@ idk::RenderEngine::RenderStage_geometry( IDK_Camera &camera, float dtime,
 //     auto &program = getProgram("atmosphere");
 //     program.bind();
 
-//     program.set_sampler2D("un_texture_0", m_gbuffer.attachments[0]);
-//     program.set_sampler2D("un_texture_1", m_gbuffer.attachments[1]);
-//     program.set_sampler2D("un_texture_2", m_gbuffer.attachments[2]);
+//     program.set_sampler2D("un_texture_0", m_gbuffers[0]->attachments[0]);
+//     program.set_sampler2D("un_texture_1", m_gbuffers[0]->attachments[1]);
+//     program.set_sampler2D("un_texture_2", m_gbuffers[0]->attachments[2]);
 
-//     program.set_sampler2D("un_fragdepth", m_gbuffer.depth_attachment);
+//     program.set_sampler2D("un_fragdepth", m_gbuffers[0]->depth_attachment);
 //     program.set_sampler2D("un_BRDF_LUT", BRDF_LUT);
 
 //     gl::multiDrawElementsIndirect(
@@ -209,7 +208,7 @@ idk::RenderEngine::RenderStage_geometry( IDK_Camera &camera, float dtime,
 
 
 void
-idk::RenderEngine::RenderStage_volumetrics( int idx )
+idk::RenderEngine::RenderStage_volumetrics()
 {
     idk::glDrawCmd cmd = genLightsourceDrawCommand(
         m_unit_cube, m_dirlights.size(), modelAllocator()
@@ -224,21 +223,27 @@ idk::RenderEngine::RenderStage_volumetrics( int idx )
     gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_lightsource_DIB.ID());
 
 
-    static double irrational = 0.25;
-    irrational += 0.0025 * 1.61803398875;
-    irrational = fmod(irrational, 1.0);
+    static double irrational = 1.61803398875;
+    irrational += 1.61803398875;
 
-    m_volumetrics_buffers[idx].bind();
-    m_volumetrics_buffers[idx].clear(GL_COLOR_BUFFER_BIT);
+    m_volumetrics_buffers[0]->bind();
+    m_volumetrics_buffers[0]->clear(GL_COLOR_BUFFER_BIT);
+
+
+    auto &config = m_rendersettings->volumetrics;
 
     auto &program = getProgram("dirlight-volumetric");
     program.bind();
 
-    program.set_sampler2D("un_previous",  m_volumetrics_buffers[(idx+1)%2].attachments[0]);
-    program.set_sampler2D("un_noise",     m_SSAO_noise);
-    program.set_float("un_irrational",    irrational);
+    program.set_float("un_samples",     config.samples);
+    program.set_float("un_attenuation", config.attenuation);
+    program.set_float("un_intensity",   config.intensity);
+    program.set_float("un_factor",      config.factor);
 
-    program.set_sampler2D("un_fragdepth", m_gbuffer.depth_attachment);
+    // // program.set_sampler2D("un_previous",  m_volumetrics_buffers[(idx+1)%2].attachments[0]);
+    program.set_float("un_irrational",    fmod(irrational, 1.0));
+
+    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[3]);
     program.set_sampler2D("un_shadowmap", m_dirshadow_buffer.depth_attachment);
 
     gl::multiDrawElementsIndirect(
@@ -266,10 +271,10 @@ idk::RenderEngine::RenderStage_radiance()
     //     program.set_samplerCube("IDK_UN_PROBE_ARRAY", texture);
     // }
 
-    // program.set_sampler2D("un_texture_0", m_gbuffer.attachments[0]);
-    // program.set_sampler2D("un_texture_1", m_gbuffer.attachments[1]);
-    // program.set_sampler2D("un_texture_2", m_gbuffer.attachments[2]);
-    // program.set_sampler2D("un_fragdepth", m_gbuffer.depth_attachment);
+    // program.set_sampler2D("un_texture_0", m_gbuffers[0]->attachments[0]);
+    // program.set_sampler2D("un_texture_1", m_gbuffers[0]->attachments[1]);
+    // program.set_sampler2D("un_texture_2", m_gbuffers[0]->attachments[2]);
+    // program.set_sampler2D("un_fragdepth", m_gbuffers[0]->depth_attachment);
     // program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
 
     // program.set_samplerCube("un_skybox_diffuse", skyboxes_IBL[current_skybox].first);
@@ -298,12 +303,13 @@ idk::RenderEngine::RenderStage_dirlights()
     auto &program = getProgram("deferred-dirlight");
     program.bind();
 
-    program.set_sampler2D("un_texture_0", m_gbuffer.attachments[0]);
-    program.set_sampler2D("un_texture_1", m_gbuffer.attachments[1]);
-    program.set_sampler2D("un_texture_2", m_gbuffer.attachments[2]);
-    program.set_sampler2D("un_fragdepth", m_gbuffer.depth_attachment);
+    program.set_sampler2D("un_texture_0", m_gbuffers[0]->attachments[0]);
+    program.set_sampler2D("un_texture_1", m_gbuffers[0]->attachments[1]);
+    program.set_sampler2D("un_texture_2", m_gbuffers[0]->attachments[2]);
+    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[3]);
     program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
 
+    program.set_samplerCube("un_skybox", skyboxes[current_skybox]);
     program.set_samplerCube("un_skybox_diffuse", skyboxes_IBL[current_skybox].first);
     program.set_samplerCube("un_skybox_specular", skyboxes_IBL[current_skybox].second);
     program.set_sampler2DArray("un_shadowmap", m_dirshadow_buffer.depth_attachment);
@@ -336,10 +342,10 @@ idk::RenderEngine::RenderStage_pointlights()
     auto &program = getProgram("deferred-pointlight");
     program.bind();
 
-    program.set_sampler2D("un_texture_0", m_gbuffer.attachments[0]);
-    program.set_sampler2D("un_texture_1", m_gbuffer.attachments[1]);
-    program.set_sampler2D("un_texture_2", m_gbuffer.attachments[2]);
-    program.set_sampler2D("un_fragdepth", m_gbuffer.depth_attachment);
+    program.set_sampler2D("un_texture_0", m_gbuffers[0]->attachments[0]);
+    program.set_sampler2D("un_texture_1", m_gbuffers[0]->attachments[1]);
+    program.set_sampler2D("un_texture_2", m_gbuffers[0]->attachments[2]);
+    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[3]);
     program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
 
     gl::multiDrawElementsIndirect(
@@ -370,10 +376,10 @@ idk::RenderEngine::RenderStage_spotlights()
     auto &program = getProgram("deferred-spotlight");
     program.bind();
 
-    program.set_sampler2D("un_texture_0", m_gbuffer.attachments[0]);
-    program.set_sampler2D("un_texture_1", m_gbuffer.attachments[1]);
-    program.set_sampler2D("un_texture_2", m_gbuffer.attachments[2]);
-    program.set_sampler2D("un_fragdepth", m_gbuffer.depth_attachment);
+    program.set_sampler2D("un_texture_0", m_gbuffers[0]->attachments[0]);
+    program.set_sampler2D("un_texture_1", m_gbuffers[0]->attachments[1]);
+    program.set_sampler2D("un_texture_2", m_gbuffers[0]->attachments[2]);
+    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[3]);
     program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
 
     gl::multiDrawElementsIndirect(
@@ -392,9 +398,10 @@ idk::RenderEngine::RenderStage_lighting( IDK_Camera &camera, float dtime,
                                          glFramebuffer &buffer_in,
                                          glFramebuffer &buffer_out )
 {
-    gl::disable(GL_BLEND, GL_CULL_FACE);
-    m_radiance_buffer.bind();
-    RenderStage_radiance();
+    gl::disable(GL_BLEND);
+    // gl::disable(GL_BLEND, GL_CULL_FACE);
+    // m_radiance_buffer.bind();
+    // RenderStage_radiance();
 
     // SSAO
     // -----------------------------------------------------------------------------------------
@@ -403,15 +410,13 @@ idk::RenderEngine::RenderStage_lighting( IDK_Camera &camera, float dtime,
     SSAO_curr = (SSAO_curr + 1) % 2;
     SSAO_next = (SSAO_curr + 1) % 2;
 
-    if (SSAO_settings.enabled)
+    if (m_rendersettings->ssao.enabled)
     {
-        static double irrational = 1.0;
-        irrational += 0.0025 * 1.61803398875;
+        auto &config = m_rendersettings->ssao;
 
-        // while (irrational > 1.0)
-        // {
-        //     irrational -= 1.0;
-        // }
+        static double irrational = 1.61803398875;
+        irrational += 1.61803398875;
+        // irrational = fmod(irrational, 1.61803398875);
 
         m_SSAO_buffers[SSAO_curr].bind();
         m_SSAO_buffers[SSAO_curr].clear(GL_COLOR_BUFFER_BIT);
@@ -419,63 +424,53 @@ idk::RenderEngine::RenderStage_lighting( IDK_Camera &camera, float dtime,
         auto &program = getProgram("SSAO");
 
         program.bind();
-        program.set_sampler2D("un_gNormal",   m_gbuffer.attachments[1]);
-        program.set_sampler2D("un_gDepth",    m_gbuffer.depth_attachment);
+        program.set_sampler2D("un_gNormal",   m_gbuffers[0]->attachments[1]);
+        program.set_sampler2D("un_gDepth",    m_gbuffers[0]->attachments[3]);
         program.set_sampler2D("un_prev",      m_SSAO_buffers[SSAO_next].attachments[0]);
-        program.set_sampler2D("un_noise",     m_SSAO_noise);
 
-        program.set_float("un_irrational",    irrational);
-        program.set_float("un_intensity",     SSAO_settings.intensity);
-        program.set_float("un_factor",        SSAO_settings.factor);
-        program.set_int("un_samples",         SSAO_settings.samples);
-        program.set_float("un_ssao_radius",   SSAO_settings.radius);
-        program.set_float("un_ssao_bias",     SSAO_settings.bias);
+        program.set_float("un_irrational",    fmod(irrational, 1.0));
+        program.set_float("un_intensity",     config.intensity);
+        program.set_float("un_factor",        config.factor);
+        program.set_int("un_samples",         config.samples);
+        program.set_float("un_ssao_radius",   config.radius);
+        program.set_float("un_ssao_bias",     config.bias);
 
         gl::drawArrays(GL_TRIANGLES, 0, 6);
     }
     // -----------------------------------------------------------------------------------------
 
 
-    gl::enable(GL_BLEND);
-    gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
-
-    gl::enable(GL_CULL_FACE);
-    gl::cullFace(GL_FRONT);
-
-    m_scratchbuffers2[0].bind();
-    m_scratchbuffers2[0].clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     gl::bindVertexArray(m_model_allocator.getVAO());
+
+
+    // Volumetrics
+    // -----------------------------------------------------------------------------------------
+    if (m_rendersettings->volumetrics.enabled)
+    {
+        RenderStage_volumetrics();
+    }
+    // -----------------------------------------------------------------------------------------
+
+
+
+
+    buffer_out.bind();
+    buffer_out.clear(GL_COLOR_BUFFER_BIT);
+
+    gl::enable(GL_BLEND, GL_CULL_FACE);
+    gl::blendFunc(GL_ONE, GL_ONE);
+    gl::cullFace(GL_FRONT);
 
     RenderStage_dirlights();
     RenderStage_pointlights();
     RenderStage_spotlights();
 
 
-    static int vol_curr = 0;
-    static int vol_next = 1;
-    vol_curr = (vol_curr + 1) % 2;
-    vol_next = (vol_curr + 1) % 2;
-    
-
-    if (m_rendersettings->dirlight_volumetrics)
-    {
-        RenderStage_volumetrics(vol_curr);
-        m_scratchbuffers2[0].bind();
-    }
-
-
     gl::bindVertexArray(m_quad_VAO);
     gl::disable(GL_CULL_FACE, GL_DEPTH_TEST);
 
-    {
-        auto &program = getProgram("composite");
-        program.bind();
 
-        program.set_sampler2D("un_input", m_radiance_buffer.attachments[0]);
-        gl::drawArrays(GL_TRIANGLES, 0, 6);
-    }
-
-    if (SSAO_settings.enabled)
+    if (m_rendersettings->ssao.enabled)
     {
         gl::blendFunc(GL_DST_COLOR, GL_ZERO);
 
@@ -487,52 +482,36 @@ idk::RenderEngine::RenderStage_lighting( IDK_Camera &camera, float dtime,
         gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
     }
 
-    buffer_out.bind();
 
-    // step alpha 0/1
-    // -----------------------------------------------------------------------------------------
+
+    if (m_rendersettings->volumetrics.enabled)
     {
-        glShaderProgram &program = getProgram("alpha-0-1");
+        gl::blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        auto &program = getProgram("blit");
         program.bind();
-        program.set_sampler2D("un_input", m_scratchbuffers2[0].attachments[0]);
+        program.set_sampler2D("un_input", m_volumetrics_buffers[0]->attachments[0]);
         gl::drawArrays(GL_TRIANGLES, 0, 6);
-    }
-    // -----------------------------------------------------------------------------------------
 
-
-    // Background
-    // -----------------------------------------------------------------------------------------
-    gl::blendFunc(GL_ONE_MINUS_DST_ALPHA, GL_DST_ALPHA);
-    {
-        glShaderProgram &program = getProgram("background");
-        program.bind();
-        program.set_samplerCube("un_skybox", skyboxes[current_skybox]);
-        gl::drawArrays(GL_TRIANGLES, 0, 6);
-    }
-    // -----------------------------------------------------------------------------------------
-
-
-    if (m_rendersettings->dirlight_volumetrics)
-    {
         gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
-
-        glShaderProgram &program = getProgram("composite");
-        program.bind();
-        program.set_sampler2D("un_input", m_volumetrics_buffers[vol_curr].attachments[0]);
-        gl::drawArrays(GL_TRIANGLES, 0, 6);
     }
 
-    gl::disable(GL_DEPTH_TEST);
 
-    gl::disable(GL_CULL_FACE);
-    gl::cullFace(GL_BACK);
+    // if (m_rendersettings->volumetrics.enabled)
+    // {
+    //     gl::blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Volumetrics
-    // -----------------------------------------------------------------------------------------
+    //     glShaderProgram &program = getProgram("composite");
+    //     program.bind();
+    //     program.set_sampler2D("un_input", m_volumetrics_buffers[0].attachments[0]);
+    //     gl::drawArrays(GL_TRIANGLES, 0, 6);
 
-    gl::disable(GL_BLEND);
+    //     gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
+    // }
+
+
     gl::enable(GL_CULL_FACE);
-    // // -----------------------------------------------------------------------------------------
+    gl::cullFace(GL_BACK);
 
 }
 
@@ -554,36 +533,38 @@ idk::RenderEngine::PostProcess_chromatic_aberration( glFramebuffer &buffer_in,
 void
 idk::RenderEngine::PostProcess_SSR( glFramebuffer &buffer_in, glFramebuffer &buffer_out )
 {
-    glBlitNamedFramebuffer(
-        buffer_in.m_FBO,
-        m_mip_scratchbuffer.m_FBO,
-        0, 0, m_mip_scratchbuffer.size().x, m_mip_scratchbuffer.size().y,
-        0, 0, width(), height(),
-        GL_COLOR_BUFFER_BIT,
-        GL_LINEAR
-    );
+    // glBlitNamedFramebuffer(
+    //     buffer_in.m_FBO,
+    //     m_mip_scratchbuffer.m_FBO,
+    //     0, 0, m_mip_scratchbuffer.size().x, m_mip_scratchbuffer.size().y,
+    //     0, 0, width(), height(),
+    //     GL_COLOR_BUFFER_BIT,
+    //     GL_LINEAR
+    // );
 
-    gl::enable(GL_BLEND);
-    gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
+    // gl::enable(GL_BLEND);
+    // gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
 
-    gl::generateTextureMipmap(m_mip_scratchbuffer.attachments[0]);
+    // gl::generateTextureMipmap(m_mip_scratchbuffer.attachments[0]);
 
     buffer_out.bind();
+    buffer_out.clear(GL_COLOR_BUFFER_BIT);
+
 
     auto &program = getProgram("SSR");
     program.bind();
 
-    program.set_sampler2D("un_input",  m_mip_scratchbuffer.attachments[0]);
-    program.set_sampler2D("un_albedo", m_gbuffer.attachments[0]);
-    program.set_sampler2D("un_normal", m_gbuffer.attachments[1]);
-    program.set_sampler2D("un_pbr",    m_gbuffer.attachments[2]);
-    program.set_sampler2D("un_fragdepth", m_gbuffer.depth_attachment);
+    program.set_sampler2D("un_input",  buffer_in.attachments[0]);
+    program.set_sampler2D("un_albedo", m_gbuffers[0]->attachments[0]);
+    program.set_sampler2D("un_normal", m_gbuffers[0]->attachments[1]);
+    program.set_sampler2D("un_pbr",    m_gbuffers[0]->attachments[2]);
+    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[3]);
     program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
     program.set_samplerCube("un_skybox",  skyboxes[current_skybox]);
 
     gl::drawArrays(GL_TRIANGLES, 0, 6);
 
-    gl::disable(GL_BLEND);
+    // gl::disable(GL_BLEND);
 }
 
 
@@ -670,7 +651,6 @@ idk::RenderEngine::PostProcess_text( glFramebuffer &buffer_out )
 
     program.set_sampler2D("un_text", texture);
     program.dispatch(width()/8, height()/8, 1);
-    gl::memoryBarrier(GL_ALL_BARRIER_BITS);
 
     gl::deleteTextures(1, &texture);
 }
@@ -712,7 +692,6 @@ idk::RenderEngine::PostProcess_overlay( idk::glFramebuffer &buffer_out )
         program.set_vec3  ("un_color", overlay.fill);
 
         program.dispatch(width()/8, height()/8, 1);
-        gl::memoryBarrier(GL_ALL_BARRIER_BITS);
     }
 
     if (m_overlays.empty() == false)
@@ -726,7 +705,6 @@ idk::RenderEngine::PostProcess_overlay( idk::glFramebuffer &buffer_out )
         program.set_sampler2D ("un_input", overlay.texture.ID());
 
         program.dispatch(width()/8, height()/8, 1);
-        gl::memoryBarrier(GL_ALL_BARRIER_BITS);
     }
 }
 
@@ -764,8 +742,13 @@ idk::RenderEngine::RenderStage_postprocessing( IDK_Camera   &camera,
     // -----------------------------------------------------------------------------------------
 
     PostProcess_text(buffer_out);
+    gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
     PostProcess_ui(buffer_out);
+    gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
     PostProcess_overlay(buffer_out);
+    gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
     {
         gl::bindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -781,7 +764,6 @@ idk::RenderEngine::RenderStage_postprocessing( IDK_Camera   &camera,
             );
         )
     }
-
 
 
     gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
