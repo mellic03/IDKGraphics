@@ -1,6 +1,8 @@
 
 # IDK Graphics
 
+Various video snippets showcasing this project can be found on my [youtube channel](https://www.youtube.com/channel/UCGAz01HMhGKtGDcwpWRQNbg).
+
 | | | |
 |-|-|-|
 |<img src="scr1.png">|<img src="scr10.png">| |
@@ -11,6 +13,7 @@
 # Features
 - Modern OpenGL 4.6 features (AZDO).
 - GPU-side particle systems. All particle systems are updated in parallel using compute shaders.
+- GPU-side skeletal animation.
 - Various natural phenomena:
     - Physically-based atmosphere rendering.
     - Realistic water using fractional brownian motion.
@@ -21,6 +24,8 @@
     - Screen space ambient occlusion.
     - Screen space reflections.
     - Volumetric light sources.
+    - Bloom.
+    - Chromatic Aberration.
     - Option for temporal accumulation of many post-processing effects.
 - Concurrent asset loading.
 - Engine-native binary file formats.
@@ -52,6 +57,8 @@ On the user-facing side, IDK Graphics presents itself as an immediate-mode rende
 
 #### Post-Processing Pass
 - The post-processing pass is a mix of fragment and compute shader dispatches.
+- Some of the tasks in this pass run concurrently, but many rely on each other.
+- Bloom, for example, require effects such as screen space reflections. UI, however, is rendered independently and composited at the end of the pass.
 
 
 
