@@ -3,16 +3,19 @@
 layout (location = 0) out vec4 fsout_frag_color;
 
 
-in vec2 fsin_texcoord;
-flat in vec3 fsin_extents;
-flat in vec4 fsin_color;
+in FS_in
+{
+    vec2 texcoord;
+    flat vec3 extents;
+    flat vec4 color;
+} fsin;
 
 uniform sampler2D un_atlas;
 
 
 void main()
 {
-    vec4 src = texture(un_atlas, fsin_texcoord);
+    vec4 src = texture(un_atlas, fsin.texcoord);
 
     // if (src.a < 0.9)
     // {

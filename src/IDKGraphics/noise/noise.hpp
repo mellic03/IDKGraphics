@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <glm/glm.hpp>
 
 
 namespace idk::internal
@@ -12,7 +13,8 @@ namespace idk::internal
 
 namespace idk::noise
 {
-    // uint32_t getVoronoiTest();
+    glm::vec2 BlueRG( float u, float v );
+    glm::vec2 Randvec2( int i );
 }
 
 

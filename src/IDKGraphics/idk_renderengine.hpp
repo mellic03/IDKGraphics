@@ -3,17 +3,19 @@
 #include <libidk/idk_sdl_glew_init.hpp>
 #include <libidk/idk_log.hpp>
 #include <libidk/idk_gl.hpp>
+#include <libidk/GL/idk_Framebuffer.hpp>
+
 #include <libidk/idk_allocator.hpp>
+#include <libidk/idk_wallocator.hpp>
 
 #include "batching/idk_model_allocator.hpp"
 #include "batching/idk_render_queue.hpp"
 
-// #include "storage/idk_ubo_general.hpp"
 #include "storage/buffers.hpp"
 #include "idk_overlay.hpp"
 
 #include "camera/idk_camera.hpp"
-#include "lighting/IDKlighting.hpp"
+#include "renderstage/renderstage.hpp"
 
 #include <unordered_map>
 #include <queue>
@@ -24,6 +26,7 @@ namespace idk
 {
     struct Transform;
     struct RenderSettings;
+    struct RenderConfig;
 };
 
 
@@ -77,15 +80,20 @@ private:
     };
 
     internal::SDL2_WindowSystem         m_windowsys;
-    glm::ivec2                          m_resolution;
-    uint32_t                            m_render_settings = ~0;
-    RenderSettings *                    m_rendersettings;
 
-    SDL_Surface *                       m_textsurface;
+    glm::ivec2                          m_winsize;
+    glm::ivec2                          m_resolution;
+    float                               m_renderscale = 1.0f;
+
+    uint32_t                            m_render_settings = ~0;
+    RenderSettings*                     m_rendersettings;
+    RenderConfig*                       m_config;
 
     std::queue<RenderOverlay>           m_overlays;
     std::queue<RenderOverlayFill>       m_overlayfills;
     std::queue<uint32_t>                m_texture_overlays;
+
+    std::vector<idk::RenderStage*>      m_render_stages;
 
 
     // idk::glFramebuffers
@@ -93,15 +101,14 @@ private:
     static const size_t                 NUM_SCRATCH_BUFFERS    = 8;
     static const size_t                 ATTACHMENTS_PER_BUFFER = 1;
 
-    // glFramebuffer                       m_scratchbuffers[4];
-    glFramebuffer                       m_scratchbuffers2[2];
-
     static constexpr int                BLOOM_MAX_LEVEL = 6;
     glFramebuffer                       m_bloom_buffers[BLOOM_MAX_LEVEL+1];
 
     glFramebuffer                       m_envprobe_buffer;
     glFramebuffer                       m_convolve_buffer;
     glFramebuffer                       m_lightprobe_buffer;
+
+    idk::WAllocator<Framebuffer>        m_framebuffers;
     // -----------------------------------------------------------------------------------------
 
     // Shaders
@@ -232,13 +239,12 @@ private:
     void PostProcess_chromatic_aberration( glFramebuffer &buffer_in,
                                            glFramebuffer &buffer_out );
 
-    void PostProcess_SSR( glFramebuffer &buffer_in, glFramebuffer &buffer_out );
+    void PostProcess_SSR( glFramebuffer &buffer_out );
 
     void PostProcess_colorgrading( IDK_Camera &,
                                    glFramebuffer &buffer_in,
                                    glFramebuffer &buffer_out );
 
-    void PostProcess_text ( glFramebuffer &buffer_out );
     void PostProcess_ui   ( glFramebuffer &buffer_out );
 
     void PostProcess_overlay( glFramebuffer &buffer_out );
@@ -352,6 +358,7 @@ public:
     void                                drawCapsule( const glm::vec3 A, const glm::vec3 B, float thickness );
 
     void                                drawModel( int model, const glm::mat4& );
+    void                                drawModel( int model, const glm::mat4&, const glm::mat4& );
     void                                drawModel( int model, const idk::Transform& );
     void                                drawModelViewspace( int model, const glm::mat4& );
     void                                drawModelRQ( int RQ, int model, const glm::mat4& );
@@ -392,6 +399,26 @@ public:
                                                        const idk::glShaderProgram &program );
 
 
+    int                                 createFramebuffer( float wscale, float hscale, int attachments );
+    idk::Framebuffer&                   getFramebuffer( int fb );
+
+
+    template <typename rs_type>
+    int                                 createRenderStage( rs_type *ptr )
+    {
+        auto *RS = dynamic_cast<RenderStage*>(ptr);
+              RS->init(*this);
+
+        m_render_stages.push_back(RS);
+        return m_render_stages.size() - 1;
+    }
+
+    template <typename rs_type>
+    rs_type*                             getRenderStage( int id )
+    {
+        return dynamic_cast<rs_type*>(m_render_stages.at(id));
+    }
+
 
     idk::glShaderProgram &getProgram( const std::string &name )
     {
@@ -429,36 +456,46 @@ public:
     void                                swapWindow();
     void                                resize( int w, int h );
 
-    GLuint                              getFinalImage() { return m_finalbuffer.attachments[0]; };
+    idk::RenderConfig&                  getRenderConfig() { return *m_config; };
+    uint32_t                            getFinalImage() { return m_finalbuffer.attachments[0]; };
 
+    void                                setRenderScale( float scale );
+    float                               getRenderScale() { return m_renderscale; };
+
+    glm::ivec2                          winsize()    const { return m_winsize;      };
     glm::ivec2                          resolution() const { return m_resolution;   };
     int                                 width()      const { return m_resolution.x; };
     int                                 height()     const { return m_resolution.y; };
 
-    void                                applyRenderSettings( const RenderSettings& );
+    void                                applyRenderSettings( const RenderSettings&, bool refresh=false );
     const RenderSettings&               getRenderSettings();
 
     glFramebuffer                       m_dirshadow_buffer;
-    glFramebuffer                       m_radiance_buffer;
-    glFramebuffer                      *m_volumetrics_buffers[2];
-    glFramebuffer                       m_foliage_buffer;
+    glFramebuffer                       m_dirshadow2_buffer;
+    glFramebuffer                       m_shadow_buffer;
+    glFramebuffer                       m_volumetrics_buffer;
 
     glFramebuffer                       m_SSAO_buffers[2];
     uint32_t                            m_SSAO_noise;
 
-    GLuint                              m_velocitybuffer;
-
-    glFramebuffer                       m_mainbuffer_0;
-    glFramebuffer                       m_mainbuffer_1;
     glFramebuffer                       m_finalbuffer;
 
     glFramebuffer                      *m_gbuffers[2];
+    glFramebuffer                       m_temp_depthbuffer;
+    glFramebuffer                      *m_lightbuffers[3];
+
+    glFramebuffer                       m_foliage_buffer;
+
+    int                                 m_postprocess_fb;
+
     glFramebuffer                       m_prev_depth;
-    glFramebuffer                       m_mip_scratchbuffer;
+    glFramebuffer                       m_mipbuffer[2];
     glFramebuffer                       m_ui_buffer;
 
-    // auto &getScratchBuffers()  { return m_scratchbuffers; };
-    auto &getScratchBuffers2() { return m_scratchbuffers2; };
+    const glFramebuffer&                getGBuffer() { return *(m_gbuffers[0]); }
+    const glFramebuffer&                getHistoryGBuffer() { return *(m_gbuffers[1]); }
+
+
 
     idk::glFramebuffer &getUIFrameBuffer() { return m_ui_buffer; };
 

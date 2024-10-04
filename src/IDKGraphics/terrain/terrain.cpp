@@ -1,11 +1,14 @@
 #include "terrain.hpp"
 #include "desc.hpp"
 
-#include "../storage/bindings.hpp"
 #include "../idk_renderengine.hpp"
+#include "../storage/bindings.hpp"
+#include "../noise/noise.hpp"
+#include "../time/time.hpp"
 
 #include <libidk/idk_wallocator.hpp>
 #include <libidk/idk_random.hpp>
+#include <IDKThreading/IDKThreading.hpp>
 
 
 using namespace idk;
@@ -15,7 +18,9 @@ using namespace idk;
 #define CLIP_W m_terrain_desc.clipmap_size[0]
 #define NUM_CLIPS uint32_t(m_terrain_desc.clipmap_size[1])
 
-#define GRASS_TILE_W   8.0
+#define WATER_OCTAVES 512
+
+#define GRASS_TILE_W   4.0
 #define GRASS_TILES_XZ 8
 
 
@@ -23,15 +28,90 @@ struct f32buffer
 {
     float data[TEX_W*TEX_W];
 
-    float get( int row, int col )
+    float sampleNearest_i32( int x, int y )
     {
-        return data[TEX_W*(row%TEX_W) + (col%TEX_W)];
+        x %= TEX_W;
+        y %= TEX_W;
+
+        return data[TEX_W*y + x];
     }
 
-    float *operator [] (int i)
+    float sampleNearest_f32( float u, float v )
     {
-        return &(data[i]);
+        int x = int(u * TEX_W) % TEX_W;
+        int y = int(v * TEX_W) % TEX_W;
+
+        return data[TEX_W*y + x];
     }
+
+    float sampleBillinear( float u, float v )
+    {
+        u *= TEX_W;
+        v *= TEX_W;
+
+        float x_factor = u - floor(u);
+        float y_factor = v - floor(v);
+
+        int x0 = int(u+0) % TEX_W;
+        int x1 = int(u+1) % TEX_W;
+        int y0 = int(v+0) % TEX_W;
+        int y1 = int(v+1) % TEX_W;
+
+        float u00 = sampleNearest_i32(x0, y0);
+        float u01 = sampleNearest_i32(x1, y0);
+        float u10 = sampleNearest_i32(x0, y1);
+        float u11 = sampleNearest_i32(x1, y1);
+
+        float u0 = glm::mix(u00, u01, x_factor);
+        float u1 = glm::mix(u10, u11, x_factor);
+
+        return glm::mix(u0, u1, y_factor);
+    }
+};
+
+
+struct f32bufferxyz
+{
+    glm::vec3 data[TEX_W*TEX_W];
+
+    glm::vec3 sampleNearest_i32( int x, int y )
+    {
+        x %= TEX_W;
+        y %= TEX_W;
+
+        return data[TEX_W*y + x];
+    }
+
+    glm::vec3 sampleNearest_f32( float u, float v )
+    {
+        int x = int(u * TEX_W) % TEX_W;
+        int y = int(v * TEX_W) % TEX_W;
+
+        return data[TEX_W*y + x];
+    }
+
+    glm::vec3 sampleBillinear( float u, float v )
+    {
+        u *= TEX_W;
+        v *= TEX_W;
+
+        float x_factor = (u - floor(u)) / (ceil(u) - floor(u));
+        float y_factor = (v - floor(v)) / (ceil(v) - floor(v));
+
+        int x = int(u) % TEX_W;
+        int y = int(v) % TEX_W;
+
+        glm::vec3 u00 = sampleNearest_i32(x+0, y+0);
+        glm::vec3 u01 = sampleNearest_i32(x+1, y+0);
+        glm::vec3 u10 = sampleNearest_i32(x+0, y+1);
+        glm::vec3 u11 = sampleNearest_i32(x+1, y+1);
+
+        glm::vec3 u0 = glm::mix(u00, u01, x_factor);
+        glm::vec3 u1 = glm::mix(u10, u11, x_factor);
+
+        return glm::mix(u0, u1, y_factor);
+    }
+
 };
 
 
@@ -40,9 +120,12 @@ namespace
     idk::TerrainRenderer::TerrainDesc m_terrain_desc;
     idk::TerrainRenderer::SSBO_Terrain m_terrain;
 
-    std::vector<glm::vec4> m_grass;
+    std::vector<glm::vec2> m_water_dirs;
+    std::vector<glm::vec2> m_grass;
 
     f32buffer           m_readback;
+    f32bufferxyz        m_nmap_readback;
+    f32buffer           m_grass_readback;
     idk::TextureWrapper m_nmapwrapper;
 
     int       m_model;
@@ -55,8 +138,7 @@ namespace
     bool      m_terrain_wireframe = false;
     bool      m_water_wireframe   = false;
     bool      m_water_enabled     = true;
-
-    uint32_t  m_terrain_depth;
+    bool      m_grass_enabled     = true;
 
     uint32_t  m_diff_textures;
     uint32_t  m_norm_textures;
@@ -95,7 +177,7 @@ namespace
 static void
 generate_heightmap( idk::RenderEngine &ren )
 {
-    gl::bindImageTexture(0, m_height_texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+    gl::bindImageTexture(0, m_height_texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
     gl::bindImageTexture(1, m_nmap_texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
     {
@@ -115,7 +197,7 @@ generate_heightmap( idk::RenderEngine &ren )
 
 
     gl::memoryBarrier(GL_ALL_BARRIER_BITS);
-    gl::bindImageTexture(0, m_height_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
+    gl::bindImageTexture(0, m_height_texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA16F);
 
     IDK_GLCALL(
         glGetTextureImage(
@@ -125,6 +207,28 @@ generate_heightmap( idk::RenderEngine &ren )
             GL_FLOAT,
             TEX_W*TEX_W*sizeof(float),
             &(m_readback.data[0])
+        );
+    )
+
+    IDK_GLCALL(
+        glGetTextureImage(
+        m_height_texture,
+            0,
+            GL_GREEN,
+            GL_FLOAT,
+            TEX_W*TEX_W*sizeof(float),
+            &(m_grass_readback.data[0])
+        );
+    )
+
+    IDK_GLCALL(
+        glGetTextureImage(
+        m_nmap_texture,
+            0,
+            GL_RGB,
+            GL_FLOAT,
+            TEX_W*TEX_W*sizeof(glm::vec3),
+            &(m_nmap_readback.data[0])
         );
     )
 
@@ -162,11 +266,11 @@ idk::TerrainRenderer::init( idk::RenderEngine &ren, idk::ModelAllocator &MA )
         auto VS = idk::glShaderStage("IDKGE/shaders/terrain/clipmap-gpass.vs");
         auto FS = idk::glShaderStage("IDKGE/shaders/terrain/clipmap-gpass.fs");
     
-        // auto VS2 = idk::glShaderStage("IDKGE/shaders/terrain/clipmap-shadow.vs");
-        // auto FS2 = idk::glShaderStage("IDKGE/shaders/terrain/clipmap-shadow.fs");
+        auto VS2 = idk::glShaderStage("IDKGE/shaders/terrain/clipmap-shadow.vs");
+        auto FS2 = idk::glShaderStage("IDKGE/shaders/terrain/clipmap-shadow.fs");
     
         ren.createProgram("terrain-clipmap", idk::glShaderProgram(VS, FS));
-        ren.createProgram("terrain-shadow",  idk::glShaderProgram(VS, FS));
+        ren.createProgram("terrain-shadow",  idk::glShaderProgram(VS2, FS2));
     }
 
     ren.createProgram("terrain-gen",  idk::glShaderProgram("IDKGE/shaders/terrain/heightmap-generate.comp"));
@@ -174,23 +278,40 @@ idk::TerrainRenderer::init( idk::RenderEngine &ren, idk::ModelAllocator &MA )
     ren.createProgram("terrain-grass-gen", idk::glShaderProgram("IDKGE/shaders/terrain/grass-generate.comp"));
 
     {
-        auto VS = idk::glShaderStage("IDKGE/shaders/terrain/water-gpass.vs");
-        auto FS = idk::glShaderStage("IDKGE/shaders/terrain/water-gpass.fs");
+        auto VS  = idk::glShaderStage("IDKGE/shaders/terrain/water-gpass.vs");
+        auto FS  = idk::glShaderStage("IDKGE/shaders/terrain/water-gpass.fs");
         ren.createProgram("terrain-water", idk::glShaderProgram(VS, FS));
     }
 
     {
         auto VS = idk::glShaderStage("IDKGE/shaders/terrain/grass-gpass.vs");
         auto FS = idk::glShaderStage("IDKGE/shaders/terrain/grass-gpass.fs");
-        ren.createProgram("terrain-grass", idk::glShaderProgram(VS, FS));
+        ren.createProgram("grass-gpass", idk::glShaderProgram(VS, FS));
     }
 
     m_SSBO.init(shader_bindings::SSBO_Terrain);
-    m_SSBO.bufferData(sizeof(SSBO_Terrain) + sizeof(TerrainDesc), nullptr, GL_DYNAMIC_DRAW);
+    m_SSBO.bufferData(
+        sizeof(SSBO_Terrain) + sizeof(TerrainDesc) + WATER_OCTAVES*sizeof(glm::vec2),
+        nullptr,
+        GL_DYNAMIC_DRAW
+    );
+
+    for (int i=0; i<WATER_OCTAVES; i++)
+    {
+        glm::vec2 dir = idk::randvec2(-1.0f, +1.0f);
+        m_water_dirs.push_back(dir);
+    }
+
+    m_SSBO.bufferSubData(
+        sizeof(SSBO_Terrain) + sizeof(TerrainDesc),
+        WATER_OCTAVES*sizeof(glm::vec2),
+        m_water_dirs.data()
+    );
+
 
     m_SSBOGrass.init(shader_bindings::SSBO_Grass);
     // m_SSBOGrass.bind(shader_bindings::SSBO_Grass);
-    m_SSBOGrass.bufferData(4*2048*sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
+    m_SSBOGrass.bufferData(128*4096*sizeof(glm::vec2), nullptr, GL_DYNAMIC_DRAW);
 
     m_atomic_buffer.init(0);
     m_atomic_buffer.bufferData(32*sizeof(uint32_t), nullptr, GL_STATIC_COPY);
@@ -283,11 +404,11 @@ idk::TerrainRenderer::init( idk::RenderEngine &ren, idk::ModelAllocator &MA )
     };
 
 
-    m_diff_textures  = gltools::loadTexture2DArray(512, 512, albedo_paths, color_config);
-    m_norm_textures  = gltools::loadTexture2DArray(512, 512, normal_paths, lightmap_config);
-    m_arm_textures   = gltools::loadTexture2DArray(512, 512, arm_paths,    lightmap_config);
-    m_disp_textures  = gltools::loadTexture2DArray(512, 512, disp_paths,   lightmap_config);
-    m_grass_textures = gltools::loadTexture2DArray(128, 128, grass_paths,  color_config);
+    m_diff_textures  = gltools::loadTexture2DArray(1024, 1024, albedo_paths, color_config);
+    m_norm_textures  = gltools::loadTexture2DArray(1024, 1024, normal_paths, lightmap_config);
+    m_arm_textures   = gltools::loadTexture2DArray(1024, 1024, arm_paths,    lightmap_config);
+    m_disp_textures  = gltools::loadTexture2DArray(1024, 1024, disp_paths,   lightmap_config);
+    m_grass_textures = gltools::loadTexture2DArray(128,  128,  grass_paths,  color_config);
 
     m_diff_handle  = gl::getTextureHandleARB(m_diff_textures);
     m_norm_handle  = gl::getTextureHandleARB(m_norm_textures);
@@ -303,8 +424,8 @@ idk::TerrainRenderer::init( idk::RenderEngine &ren, idk::ModelAllocator &MA )
 
 
     idk::glTextureConfig height_config = {
-        .internalformat = GL_R32F,
-        .format         = GL_RED,
+        .internalformat = GL_RGBA16F,
+        .format         = GL_RGBA,
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
         .wrap_s         = GL_CLAMP_TO_BORDER,
@@ -327,8 +448,6 @@ idk::TerrainRenderer::init( idk::RenderEngine &ren, idk::ModelAllocator &MA )
         .genmipmap      = GL_FALSE
     };
 
-
-    m_terrain_depth = gltools::loadTexture2D(2048, 2024, nullptr, height_config);
 
     m_height_texture = gltools::loadTexture2D(TEX_W, TEX_W, nullptr, height_config);
     m_nmap_texture   = gltools::loadTexture2D(TEX_W, TEX_W, nullptr, norm_config);
@@ -359,70 +478,95 @@ compute_barycentric( float x, float y, glm::vec2 v1, glm::vec2 v2, glm::vec2 v3 
 
 
 
-float
-idk::TerrainRenderer::heightQuery( float x, float z )
+static glm::vec2
+world_to_uv( float x, float z )
 {
-    auto &terrain = m_terrain;
+    auto &terrain = m_terrain_desc;
 
-    glm::mat4 T = m_terrain_desc.transform;
-    float xscale = CLIP_W * pow(2, NUM_CLIPS-1);
-    float yscale = m_terrain_desc.scale.y;
+    float xscale = glm::length(glm::vec3(terrain.transform[0]));
+    float yscale = terrain.scale.y;
 
     glm::vec3 minv  = xscale * glm::vec4(-0.5f, 0.0f, -0.5f, 1.0f);
     glm::vec3 maxv  = xscale * glm::vec4(+0.5f, 0.0f, +0.5f, 1.0f);
-    glm::vec3 scale = glm::mat3(T) * glm::vec3(1.0f);
 
-    float x_factor = (x - minv.x) / (maxv.x - minv.x);
-    float z_factor = (z - minv.z) / (maxv.z - minv.z);
+    float u = (x - minv.x) / (maxv.x - minv.x);
+    float v = (z - minv.z) / (maxv.z - minv.z);
 
-    x_factor = glm::mod(x_factor, 1.0f);
-    z_factor = glm::mod(z_factor, 1.0f);
-
-    int row = int(TEX_W * z_factor);
-    int col = int(TEX_W * x_factor);
-
-    if (row != glm::clamp(row, 0, int(TEX_W)))
-    {
-        return -100000.0f;
-    }
-
-    if (col != glm::clamp(col, 0, int(TEX_W)))
-    {
-        return -100000.0f;
-    }
-
-    float tl_h = m_readback.get(row, col);
-    float tr_h = m_readback.get(row, col+1);
-    float bl_h = m_readback.get(row+1, col);
-    float br_h = m_readback.get(row+1, col+1);
-
-    x_factor *= TEX_W;
-    z_factor *= TEX_W;
-
-    glm::vec2 tl = glm::vec2(col,   row);
-    glm::vec2 tr = glm::vec2(col+1, row);
-    glm::vec2 bl = glm::vec2(col,   row+1);
-    glm::vec2 br = glm::vec2(col+1, row+1);
+    return glm::vec2(u, v);
+}
 
 
-    float height = 0.0f;
 
-    if ((x_factor - col) < (1.0f - (z_factor - row)))
-    {
-        glm::vec3 w0 = compute_barycentric(x_factor, z_factor, bl, tl, tr);
-        height = w0[0]*bl_h + w0[1]*tl_h + w0[2]*tr_h;
-    }
+float
+idk::TerrainRenderer::heightQuery( float x, float z )
+{
+    glm::vec2 uv = world_to_uv(x, z);
 
-    else
-    {
-        glm::vec3 w1 = compute_barycentric(x_factor, z_factor, tr, br, bl);
-        height = w1[0]*tr_h + w1[1]*br_h + w1[2]*bl_h;
-    }
-
-    height *= m_terrain_desc.scale.x * yscale;
-    height += T[3].y;
+    float height  = m_readback.sampleBillinear(uv.x, uv.y);
+          height *= m_terrain_desc.scale.x * m_terrain_desc.scale.y;
+          height += m_terrain_desc.transform[3].y;
 
     return height;
+}
+
+
+
+
+static glm::vec3
+waterComputeHeight( float time, float x, float z )
+{
+    auto NF = m_terrain_desc.water;
+
+    float xscale = m_terrain_desc.water_scale[0];
+    float yscale = m_terrain_desc.water_scale[1];
+    float tscale = m_terrain_desc.water_scale[2];
+    float wscale = m_terrain_desc.water_scale[3];
+
+    glm::vec2 gradient = glm::vec2(0.0f);
+
+    float t        = tscale * time;
+    float height   = 0.0;
+    float a        = yscale;
+    float w        = 1.0 / xscale;
+
+    int waves = glm::clamp(64, 1, WATER_OCTAVES);
+
+    for (int i=0; i<waves; i++)
+    {
+        glm::vec2 dir = m_water_dirs[i];
+        float xz = glm::dot(glm::vec2(x, z), dir);
+
+        height += a * sin(w*xz + t);
+        gradient += a * w * dir * cos(w*xz + t);
+
+        a *= NF.amp;
+        w *= NF.wav;
+    }
+
+    height += m_terrain_desc.water_pos.y;
+
+    return glm::vec3(height, gradient);
+}
+
+
+
+
+float
+idk::TerrainRenderer::waterHeightQuery( float x, float z )
+{
+    glm::vec2 uv = 2048.0f * world_to_uv(x, z);
+
+    float t  = idk::getTime();
+    float dt = idk::getDeltaTime();
+
+    glm::vec3 pdh = waterComputeHeight(t-dt, uv.x, uv.y);
+
+    uv.x -= pdh[1];
+    uv.y -= pdh[2];
+
+    pdh = waterComputeHeight(t, uv.x, uv.y);
+    
+    return pdh[0];
 }
 
 
@@ -430,17 +574,8 @@ idk::TerrainRenderer::heightQuery( float x, float z )
 glm::vec3
 idk::TerrainRenderer::slopeQuery( float x, float z )
 {
-    float left  = heightQuery(x-0.01, z);
-    float right = heightQuery(x+0.01, z);
-    float up    = heightQuery(x, z-0.01);
-    float down  = heightQuery(x, z+0.01);
-
-    glm::vec3 L = glm::vec3(-0.01f, left,   0.0f);
-    glm::vec3 R = glm::vec3(+0.01f, right,  0.0f);
-    glm::vec3 U = glm::vec3( 0.0f,  up,    -0.01f);
-    glm::vec3 D = glm::vec3( 0.0f,  down,  +0.01f);
-
-    return glm::normalize(glm::cross(R-L, U-D));
+    glm::vec2 uv = world_to_uv(x, z);
+    return glm::normalize(m_nmap_readback.sampleBillinear(uv.x, uv.y));
 }
 
 
@@ -465,37 +600,25 @@ idk::TerrainRenderer::update( idk::RenderEngine &ren, const IDK_Camera &camera, 
         };
 
         m_DIB_cmds[DIB_IDX_CLIPMAP+1] = {
-            mesh1.numIndices, glm::clamp(NUM_CLIPS, uint32_t(0), uint32_t(8)), mesh1.firstIndex, mesh1.baseVertex, 0
+            mesh1.numIndices, std::max(NUM_CLIPS, uint32_t(0)), mesh1.firstIndex, mesh1.baseVertex, 0
         };
     }
 
-
-
     // Grass tiles
     {
-        // static glm::vec3 prev_pos = glm::vec3(camera.position);
-        // static glm::vec3 curr_pos;
+        static int row = 32;
+        static int col = 32;
 
-        // curr_pos = glm::vec3(camera.position);
+        int curr_row = int(ren.getCamera().position.x / GRASS_TILE_W);
+        int curr_col = int(ren.getCamera().position.z / GRASS_TILE_W);
 
-        // int prev_row = int(prev_pos.z / GRASS_TILE_W);
-        // int prev_col = int(prev_pos.x / GRASS_TILE_W);
+        if (row != curr_row || col != curr_col)
+        {
+            generateGrass(ren.getCamera().position);
+        }
 
-        // int curr_row = int(curr_pos.z / GRASS_TILE_W);
-        // int curr_col = int(curr_pos.x / GRASS_TILE_W);
-
-        // if (curr_row != prev_row || curr_col != prev_col)
-        // {
-        //     uint32_t value = 0;
-        //     m_atomic_buffer.bufferSubData(0, sizeof(uint32_t), &value);
-        //     m_atomic_buffer.bind(0);
-
-        //     auto &program = ren.getBindProgram("terrain-grass-gen");
-        //     program.set_uint("un_tile_w",   GRASS_TILE_W);
-        //     program.set_uint("un_tiles_xz", GRASS_TILES_XZ);
-        // }
-
-        // prev_pos = curr_pos;
+        row = curr_row;
+        col = curr_col;
     }
 
 
@@ -520,19 +643,15 @@ idk::TerrainRenderer::update( idk::RenderEngine &ren, const IDK_Camera &camera, 
 
 
 void
-idk::TerrainRenderer::render( idk::RenderEngine &ren, idk::glFramebuffer &buffer_out, float dt, 
+idk::TerrainRenderer::render( idk::RenderEngine &ren, float dt,
+                              idk::glFramebuffer &buffer_out, idk::glFramebuffer &tmp_depth, 
                               const IDK_Camera &camera, idk::ModelAllocator &MA )
 {
     gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_DIB.ID());
-    gl::bindImageTexture(0, m_terrain_depth, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
 
     {
         auto &program = ren.getBindProgram("terrain-clipmap");
-
-        program.set_float("un_amp_factor", getWaterTemp().amp_factor);
-        program.set_float("un_wav_factor", getWaterTemp().wav_factor);
-        program.set_vec4("un_mul_factors", getWaterTemp().mul_factors);
-        program.set_int("un_light_id", -1);
+        program.set_uint("un_light_id", -1);
         program.set_uint("un_num_instances", 4);
 
 
@@ -555,23 +674,19 @@ idk::TerrainRenderer::render( idk::RenderEngine &ren, idk::glFramebuffer &buffer
         }
     }
 
-
-    gl::disable(GL_BLEND, GL_CULL_FACE);
-
+    // Grass
+    // -----------------------------------------------------------------------------------------
+    if (m_grass_enabled)
     {
+        gl::disable(GL_BLEND);
+
         auto &model = MA.getModelLOD(m_grass_model, 0);
         auto &mesh  = model.meshes[0];
         auto &mat   = MA.getMaterial(mesh.material);
 
-        static float alpha = 0.0f;
-        alpha += dt;
-
-
-        auto &program = ren.getBindProgram("terrain-grass");
-
+        auto &program = ren.getBindProgram("grass-gpass");
         program.set_sampler2D("un_albedo", mat.textures[0]);
         program.set_sampler2DArray("un_diff", m_grass_textures);
-        program.set_float("un_time", alpha);
 
         gl::multiDrawElementsIndirect(
             GL_TRIANGLES,
@@ -581,23 +696,32 @@ idk::TerrainRenderer::render( idk::RenderEngine &ren, idk::glFramebuffer &buffer
             sizeof(idk::glDrawCmd)
         );
     }
-
+    // -----------------------------------------------------------------------------------------
 
 
     // Water
     // -----------------------------------------------------------------------------------------
     if (m_water_enabled)
     {
-        gl::memoryBarrier(GL_ALL_BARRIER_BITS);
-        gl::bindImageTexture(0, m_terrain_depth, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
-
-        gl::enable(GL_BLEND);
+        gl::enable(GL_BLEND, GL_CULL_FACE);
+        gl::cullFace(GL_BACK);
         gl::blendFunci(0, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         gl::blendFunci(1, GL_ONE, GL_ZERO);
         gl::blendFunci(2, GL_ONE, GL_ZERO);
 
+        IDK_GLCALL(
+            glBlitNamedFramebuffer(
+                buffer_out.m_FBO,
+                tmp_depth.m_FBO,
+                0, 0, ren.width(), ren.height(),
+                0, 0, ren.width(), ren.height(),
+                GL_DEPTH_BUFFER_BIT,
+                GL_NEAREST
+            );
+        )
 
         auto &program = ren.getBindProgram("terrain-water");
+        program.set_sampler2D("un_tmp_depth", tmp_depth.attachments[0]);
 
         if (m_water_wireframe)
         {
@@ -626,6 +750,33 @@ idk::TerrainRenderer::render( idk::RenderEngine &ren, idk::glFramebuffer &buffer
 
 
 
+
+void
+idk::TerrainRenderer::renderGrass( idk::RenderEngine &ren, idk::glFramebuffer &buffer_out, 
+                                   const IDK_Camera &camera, idk::ModelAllocator &MA )
+{
+    // gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_DIB.ID());
+    // gl::bindVertexArray(MA.getVAO());
+    // gl::disable(GL_BLEND, GL_CULL_FACE);
+
+    // auto &model = MA.getModelLOD(m_grass_model, 0);
+    // auto &mesh  = model.meshes[0];
+    // auto &mat   = MA.getMaterial(mesh.material);
+
+    // auto &program = ren.getBindProgram("grass-gpass");
+    // program.set_sampler2D("un_albedo", mat.textures[0]);
+    // program.set_sampler2DArray("un_diff", m_grass_textures);
+
+    // gl::multiDrawElementsIndirect(
+    //     GL_TRIANGLES,
+    //     GL_UNSIGNED_INT,
+    //     (void *)(DIB_IDX_GRASS * sizeof(idk::glDrawCmd)),
+    //     1,
+    //     sizeof(idk::glDrawCmd)
+    // );
+}
+
+
 uint32_t
 idk::TerrainRenderer::getHeightMap()
 {
@@ -647,9 +798,8 @@ idk::TerrainRenderer::renderShadow( idk::RenderEngine &ren, idk::glFramebuffer &
     using namespace idk;
 
     gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_DIB.ID());
-
     auto &program = ren.getBindProgram("terrain-shadow");
-    program.set_int("un_light_id", 0);
+    program.set_uint("un_light_id", 0);
 
     for (uint32_t layer=0; layer<5; layer++)
     {
@@ -694,40 +844,112 @@ idk::TerrainRenderer::generateTerrain()
 }
 
 
-void
-idk::TerrainRenderer::generateGrass()
+
+static void
+generate_grass_tile( float xmin, float zmin, float div, std::vector<glm::vec2> &out )
 {
-    glm::vec3 center = glm::vec3(m_terrain_desc.transform[3]);
-    glm::vec3 scale  = glm::mat3(m_terrain_desc.transform) * glm::vec3(1.0f);
-    glm::vec3 minv   = center - glm::vec3(16.0f); // glm::vec3(0.5f*scale.x);
-    glm::vec3 maxv   = center + glm::vec3(16.0f); // glm::vec3(0.5f*scale.x);
+    float step_size = GRASS_TILE_W / div;
 
-    m_grass.clear();
-
-    for (int i=0; i<8*2048; i++)
+    for (float z=zmin; z<zmin+GRASS_TILE_W; z+=step_size)
     {
-        if (m_grass.size() >= 4*2048)
+        for (float x=xmin; x<xmin+GRASS_TILE_W; x+=step_size)
         {
-            break;
+            glm::vec2 uv = world_to_uv(x, z);
+
+            if (m_grass_readback.sampleBillinear(uv.x, uv.y) < 0.65f)
+            {
+                continue;
+            }
+
+            float th = idk::TerrainRenderer::heightQuery(x, z);
+            float wh = idk::TerrainRenderer::waterHeightQuery(x, z);
+
+            if (wh > th)
+            {
+                continue;
+            }
+
+            if (idk::TerrainRenderer::slopeQuery(x, z).y < 0.95f)
+            {
+                continue;
+            }
+
+            glm::vec2 offset = idk::noise::BlueRG(4.0f*uv.x, 4.0f*uv.y) * 2.0f - 1.0f;
+            glm::vec2 pos    = glm::vec2(x, z);
+
+            pos.x += step_size * offset.x;
+            pos.y += step_size * offset.y;
+
+            out.push_back(pos);
         }
+    }
+}
 
-        float x = idk::randf(minv.x, maxv.x);
-        float z = idk::randf(minv.z, maxv.z);
-        float y = TerrainRenderer::heightQuery(x, z);
-        float s = idk::randf(0.6f, 1.0f);
 
-        glm::vec3 N = TerrainRenderer::slopeQuery(x, z);
+void
+idk::TerrainRenderer::generateGrass( const glm::vec3 &pos )
+{
+    static std::vector<glm::vec2> positions;
+    static int count = 0;
 
-        if (N.y > 0.9f)
-        {
-            m_grass.push_back(glm::vec4(x, y, z, s));
-        }
-
+    if (count > 0)
+    {
+        return;
     }
 
-    m_SSBOGrass.bufferSubData(0, m_grass.size() * sizeof(glm::vec4), m_grass.data());
+    count += 1;
 
-    std::cout << "Placed " << m_grass.size() << " grass billboards\n";
+    // 1               1               1
+    // 1       1       1       1       1
+    // 1   1   1   1   1   1   1   1   1
+    // 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+
+    idk::ThreadPool::createTask(
+        [pos]()
+        {
+            glm::vec3 center = glm::floor(pos / float(GRASS_TILE_W)) * float(GRASS_TILE_W);
+            glm::vec3 scale  = glm::mat3(m_terrain_desc.transform) * glm::vec3(1.0f);
+            // glm::vec3 minv   = center - glm::vec3(32.0f);
+            // glm::vec3 maxv   = center + glm::vec3(32.0f);
+
+            int tile_w = int(GRASS_TILE_W);
+            int hw = 16;
+
+            for (int row=-hw; row<=+hw; row++)
+            {
+                for (int col=-hw; col<=+hw; col++)
+                {
+                    float x = center.x + float(col*tile_w);
+                    float z = center.z + float(row*tile_w);
+
+                    float dist = glm::distance(glm::vec2(x, z), glm::vec2(center.x, center.z));
+                          dist = glm::clamp(dist, 0.0f, 128.0f);
+
+                    float div = 1.0f;
+
+                         if (dist <  4*GRASS_TILE_W)  div = 6;
+                    else if (dist <  8*GRASS_TILE_W)  div = 5;
+                    else if (dist < 16*GRASS_TILE_W)  div = 4;
+                    else if (dist < 32*GRASS_TILE_W)  div = 3;
+                    // else if (dist < 30*GRASS_TILE_W)  div = 2;
+                    // else if (dist < 38*GRASS_TILE_W)  div = 1;
+                    // else if (dist < 46*GRASS_TILE_W)  div = 1;
+
+                    generate_grass_tile(x, z, div, positions);
+                }
+            }
+        },
+        []()
+        {
+            m_grass = positions;
+            positions.clear();
+            m_SSBOGrass.bufferSubData(0, m_grass.size() * sizeof(glm::vec2), m_grass.data());
+            std::cout << "Placed " << m_grass.size() << " grass billboards\n";
+
+            count = 0;
+        }
+    );
+
 }
 
 

@@ -4,14 +4,15 @@
 #extension GL_ARB_bindless_texture: require
 
 #include "../include/storage.glsl"
+#include "../include/util.glsl"
+#include "../include/taa.glsl"
 #include "./water.glsl"
-
-
 
 
 layout (location = 0) out vec4 fsout_albedo;
 layout (location = 1) out vec3 fsout_normal;
 layout (location = 2) out vec4 fsout_pbr;
+layout (location = 3) out vec4 fsout_vel;
 
 
 in FS_in
@@ -19,8 +20,10 @@ in FS_in
     vec3 fragpos;
     vec2 texcoord;
     float dist;
-} fsin;
+    float dy;
 
+    IDK_VelocityData vdata;
+} fsin;
 
 
 
@@ -29,11 +32,18 @@ vec3 computeNormal()
     float x = fsin.texcoord.x;
     float z = fsin.texcoord.y;
 
-    float t  = IDK_GetTime();
+    float xscale = IDK_SSBO_Terrain.water_scale.x;
+    float yscale = IDK_SSBO_Terrain.water_scale.y;
+    float wscale = IDK_SSBO_Terrain.water_scale[3];
 
-    vec2 pd = WaterComputeHeight(t, x, z).yz;
-         pd /= IDK_SSBO_Terrain.water_scale[0];
-         pd *= IDK_SSBO_Terrain.water_scale[1];
+    float t0 = IDK_GetTime() - IDK_GetDeltaTime();
+    float t1 = IDK_GetTime();
+    vec2  pd = WaterComputeHeight(t0, x, z).yz;
+
+    x -= pd[0];
+    z -= pd[1];
+
+    pd = WaterComputeHeight(t1, x, z).yz;
 
     float dX = pd[0];
     float dZ = pd[1];
@@ -57,16 +67,7 @@ vec3 computeNormal2()
 
 
 
-layout (binding=0, r32f) readonly uniform image2D un_depth;
-
-vec3 IDK_WorldToUV( vec3 world_position, mat4 PV )
-{
-    vec4 proj = PV * vec4(world_position, 1.0);
-    proj.xy = (proj.xy / proj.w) * 0.5 + 0.5;
-
-    return proj.xyz;
-}
-
+uniform sampler2D un_tmp_depth;
 
 void main()
 {
@@ -75,42 +76,57 @@ void main()
     vec2  texcoord = IDK_WorldToUV(fsin.fragpos, cam.P * cam.V).xy;
     ivec2 texel    = ivec2(texcoord * vec2(cam.width, cam.height));
 
-    float terrain_dist = imageLoad(un_depth, texel).r;
-    float water_dist   = distance(fsin.fragpos, cam.position.xyz);
-    float water_depth  = terrain_dist - water_dist;
-    // float alpha        = 1.0 - (1.0 / (4.0*water_depth + 1.0));
+    float prev_z = IDK_ViewFromDepth(un_tmp_depth, texcoord, cam.P).z;
+    float curr_z = (cam.V * vec4(fsin.fragpos, 1.0)).z;
+    float wdepth = prev_z - curr_z;
+    
+    float A = IDK_SSBO_Terrain.water_color[2].r / 255.0;
+    float B = IDK_SSBO_Terrain.water_color[2].g / 255.0;
+    float C = IDK_SSBO_Terrain.water_color[2].b / 255.0;
+    float alpha  = 1.0 / (1.0 + B*wdepth + C*wdepth*wdepth);
 
-    // vec4 albedo = vec4(0.3, 0.38, 0.44, alpha);
-
-    float max_depth = 8.0;
-    float alpha = clamp(water_depth / max_depth, 0.0, 1.0);
-
-    alpha = 1.0 / (1.0 + 0.04*water_depth*water_depth + 0.01*water_depth);
 
     vec4 shallow_color = IDK_SSBO_Terrain.water_color[0];
     vec4 deep_color    = IDK_SSBO_Terrain.water_color[1];
 
-    vec4 albedo = mix(shallow_color, deep_color, 1.0 - alpha);
-        //  albedo.a = alpha;
+    vec4 albedo = mix(shallow_color, deep_color, 1.0-alpha);
+    vec3 normal = computeNormal();
 
-    vec3 normal;
+    IDK_Dirlight light = IDK_UBO_dirlights[0];
 
-    // if (texcoord.x < 0.5)
-    {
-        normal = computeNormal();
-    }
 
-    // float foam_factor = 1.0 - normal.y;
-    // albedo.rgb = mix(albedo.rgb, vec3(1.0), foam_factor);
+    vec4 diffuse = light.diffuse;
+    vec3 V = normalize(fsin.fragpos - cam.position.xyz);
+    vec3 L = normalize(-light.direction.xyz);
 
-    // else 
+    float transmittance = max(dot(V, L), 0.0);
+          transmittance = pow(transmittance, 8.0);
+    // float transmittance = max(dot(normal, light.direction.xyz), 0.0);
+    //       transmittance *= max(dot(normal, V), 0.0);
+
+    albedo = mix(albedo, diffuse*shallow_color, transmittance);
+
+    // // if (fsin.dy < -0.5)
+    // {
+    //     float a = clamp(-fsin.dy, 0.0, 1.0);
+    //     albedo = mix(albedo, vec4(1.0), a);
+    // }
+
+
+    // float foam = abs(normal.y);
+    //       foam = 1.0 - pow(foam, 4);
+
+    // albedo = mix(albedo, vec4(1.0), foam);
+
+    // if (texcoord.x > 0.5)
     // {
     //     normal = computeNormal2();
     // }
 
-    // albedo.rgb = vec3(fsin.dist);
 
     fsout_albedo = albedo;
     fsout_normal = normal;
     fsout_pbr    = IDK_SSBO_Terrain.water_color[3];
+    fsout_vel    = PackVelocity(fsin.vdata);
+
 }

@@ -8,7 +8,14 @@
 void
 idk::RenderQueue::enque( int model, const glm::mat4 &transform )
 {
-    m_drawlist[model].push_back(transform);
+    m_drawlist[model].push_back({transform, transform});
+}
+
+
+void
+idk::RenderQueue::enque( int model, const glm::mat4 &transform, const glm::mat4 &prev )
+{
+    m_drawlist[model].push_back({transform, prev});
 }
 
 
@@ -32,7 +39,7 @@ idk::RenderQueue::enque( int model, const idk::Transform &T, const IDK_Camera &c
 
     int lod_id = MA.getModel(model).LOD[level];
 
-    m_drawlist[lod_id].push_back(Transform::toGLM(T));
+    m_drawlist[lod_id].push_back({Transform::toGLM(T), Transform::toGLM(T)});
 }
 
 
@@ -102,14 +109,15 @@ idk::RenderQueue::genDrawCommands( idk::ModelAllocator         &MA,
 
         uint32_t og_transform_offset = transform_offset;
     
-        for (glm::mat4 &T: model_transforms)
+        for (auto &[T, prev]: model_transforms)
         {
             ssbo_buffer.transforms[transform_offset] = T;
+            ssbo_buffer.prev_transforms[transform_offset] = prev;
             transform_offset += 1;
         }
 
 
-        for (glm::mat4 &T: model_transforms)
+        for (auto &[T, prev]: model_transforms)
         {
             uint32_t trans_off = 0;
             uint32_t tex_off = 0;

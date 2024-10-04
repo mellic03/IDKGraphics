@@ -3,11 +3,13 @@
 #extension GL_GOOGLE_include_directive: require
 #include "../include/storage.glsl"
 #include "../include/util.glsl"
+#include "../include/taa.glsl"
 
 
 layout (location = 0) out vec4 fsout_albedo;
 layout (location = 1) out vec3 fsout_normal;
 layout (location = 2) out vec4 fsout_pbr;
+layout (location = 3) out vec4 fsout_vel;
 
 in vec3 fsin_fragpos;
 in vec3 fsin_normal;
@@ -15,6 +17,7 @@ in vec3 fsin_tangent;
 in vec2 fsin_texcoords;
 flat in uint drawID;
 
+in IDK_VelocityData fsin_vdata;
 
 in vec3 TBN_viewpos;
 in vec3 TBN_fragpos;
@@ -41,9 +44,12 @@ void main()
     // vec3 N = normalize(TBN * normalize(normal)); // normalize(fsin_normal);
         //  N = normalize(mix(N, normalize(fsin_normal), 0.5));
 
+
     fsout_albedo = vec4(albedo.rgb, 1.0);
     fsout_normal = TBN * normalize(normal);
-    fsout_pbr    = vec4(roughness, 0.0, ao, emissv);
+    fsout_pbr    = vec4(roughness, metallic, ao, 0.0);
     // fsout_pbr    = vec4(0.8, 0.001, 1.0, 0.0);
 
+
+    fsout_vel = PackVelocity(fsin_vdata);
 }

@@ -4,6 +4,7 @@
 #extension GL_ARB_bindless_texture: require
 
 #include "../include/storage.glsl"
+#include "../include/taa.glsl"
 #include "./water.glsl"
 
 
@@ -18,6 +19,9 @@ out FS_in
     vec3 fragpos;
     vec2 texcoord;
     float dist;
+    float dy;
+
+    IDK_VelocityData vdata;
 
 } vsout;
 
@@ -39,14 +43,23 @@ vec4 computeVertexPosition()
     uint clipID = gl_DrawID + gl_InstanceID;
 
     vec2 pos_xz = vsin_pos.xz;
+    pos_xz *= 4.0;
 
 
-    float max_scale   = IDK_TERRAIN_CLIP_W * pow(2, maxID);
+    // if (clipID > 0)
+    // {
+    //     if (pos_xz.x == 0.5 || pos_xz.y == 0.5)
+    //     {
+    //         clipID = clamp(clipID + 1, 0, maxID);
+    //         pos_xz *= 0.5;
+    //     }
+    // }
+
     float clip_scale  = IDK_TERRAIN_CLIP_W * pow(2, clipID);
-    float spacing     = clip_scale / IDK_TERRAIN_CLIP_W_VERTS;
+    float spacing     = 2.0 * clip_scale / IDK_TERRAIN_CLIP_W_VERTS;
 
 
-    pos_xz = (clip_scale * pos_xz) + cam_xz;
+    pos_xz = ((clip_scale * pos_xz) + cam_xz);
     pos_xz = floor(pos_xz / spacing) * spacing;
 
     return vec4(pos_xz, 0.0, 0.0);
@@ -84,6 +97,22 @@ vec4 computeVertexPosition()
 
 
 
+
+float TerrainComputeFinalHeight( float x, float z )
+{
+    mat4 M = IDK_SSBO_Terrain.transform;
+    float xscale = length(vec3(M[0]));
+    vec2 uv = (vec2(x, z) / xscale) + 0.5;
+
+    float height  = textureLod(IDK_SSBO_Terrain.height, uv, 0.0).r;
+          height *= IDK_SSBO_Terrain.scale.x * IDK_SSBO_Terrain.scale.y;
+          height += IDK_SSBO_Terrain.transform[3].y;
+
+    return height;
+}
+
+
+
 void main()
 {
     IDK_Camera camera = IDK_UBO_cameras[0];
@@ -92,40 +121,43 @@ void main()
 
     vec2 local = computeVertexPosition().xy;
     vsout.fragpos = vec3(local.x, 0.0, local.y);
-    vsout.texcoord = vsout.fragpos.xz;
+    vsout.texcoord = 2048.0 * TerrainWorldToUV(vsout.fragpos.xz);
 
-
-
-    float water_height = 0.0;
+    vec3 prev = vsout.fragpos;
+    vec3 curr = vsout.fragpos;
 
     {
         float xscale = IDK_SSBO_Terrain.water_scale.x;
         float yscale = IDK_SSBO_Terrain.water_scale.y;
         float wscale = IDK_SSBO_Terrain.water_scale[3];
 
-        float t  = IDK_GetTime();
-        float dt = IDK_GetDeltaTime();
-        vec2  pd = WaterComputeHeight(t-dt, vsout.texcoord.x/xscale, vsout.texcoord.y/xscale).yz;
-            // pd /= xscale;
-            pd *= yscale;
+        float prev_height, curr_height;
 
-        vsout.texcoord += pd * wscale;
+        float t0 = IDK_GetTime() - IDK_GetDeltaTime();
+        float t1 = IDK_GetTime();
+        vec3  hpd = WaterComputeHeight(t0, vsout.texcoord.x, vsout.texcoord.y).xyz;
 
+        vsout.texcoord -= hpd.yz;
 
-        water_height  = WaterComputeHeight(t, vsout.texcoord.x/xscale, vsout.texcoord.y/xscale)[0];
-        water_height *= yscale;
+        prev_height = hpd[0];
+        curr_height = WaterComputeHeight(t1, vsout.texcoord.x, vsout.texcoord.y)[0];
+
+        vsout.texcoord += hpd.yz;
+
+        prev.y = IDK_SSBO_Terrain.water_pos.y + prev_height;
+        curr.y = IDK_SSBO_Terrain.water_pos.y + curr_height;
+        vsout.vdata = PackVData(camera, curr, prev);
+
+        vsout.dy = curr.y - prev.y;
     }
 
-    {
-        float xscale = IDK_SSBO_Terrain.scale.x;
-        float yscale = IDK_SSBO_Terrain.scale.y;
+    vsout.fragpos.y = IDK_SSBO_Terrain.water_pos.y + curr.y;
 
-        float water_level = IDK_SSBO_Terrain.transform[3].y + xscale * yscale * (IDK_SSBO_Terrain.water_pos.y);
-        water_height += water_level;
-    }
+    // float theight = TerrainComputeFinalHeight(vsout.fragpos.x, vsout.fragpos.z);
+    // float alpha   = clamp(theight/vsout.fragpos.y, 0.0, 1.0);
 
+    // vsout.fragpos.y = mix(vsout.fragpos.y, IDK_SSBO_Terrain.water_pos.y, alpha);
 
-    vsout.fragpos.y = water_height;
 
 
     gl_Position = camera.P * camera.V * vec4(vsout.fragpos, 1.0);

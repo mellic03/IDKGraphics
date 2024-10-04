@@ -33,7 +33,6 @@ namespace idk
 };
 
 
-
 struct IDK_Camera
 {
     glm::vec4 position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -44,18 +43,19 @@ struct IDK_Camera
     glm::mat4 prev_P = glm::mat4(1.0f);
     glm::mat4 prev_V = glm::mat4(1.0f);
 
-    float width, height, near=0.05f, far=2048.0f;
-    float exposure=1.0f, gamma=2.2f, shutter, pad0;
-    float fov=90.0f, aspect=1.25f, bloom=0.01f, fov_offset=0.0f;
+    glm::vec4 jitter = glm::vec4(0.0f);
+    glm::vec4 prev_jitter = glm::vec4(0.0f);
+
+    glm::mat4 P_nojitter      = glm::mat4(1.0f);
+    glm::mat4 prev_P_nojitter = glm::mat4(1.0f);
+
+    float width, height, near, far;
+    float exposure, gamma, shutter, pad0;
+    float fov, aspect, bloom, fov_offset;
 
 
-    void setTransform( const glm::mat4 &T )
-    {
-        prev_V = V;
-        V = glm::inverse(T);
-
-        position = T[3];
-    }
+    IDK_Camera();
+    void setTransform( const glm::mat4 &T );
 };
 
 
@@ -64,6 +64,7 @@ struct IDK_Dirlight
     glm::mat4 transform;
     glm::mat4 transforms[4];
     glm::vec4 cascades;
+    glm::vec4 cascade_zmult;
 
     glm::vec4 direction;
     glm::vec4 ambient;
@@ -90,6 +91,8 @@ struct IDK_Spotlight
     glm::vec4 attenuation;
     glm::vec3 angle;
     float     radius;
+
+    IDK_Spotlight();
 };
 
 
@@ -120,6 +123,7 @@ struct idk::SSBO_Buffer
 {
     GLuint64    textures          [storage_buffer::MAX_TEXTURES];
     glm::mat4   transforms        [storage_buffer::MAX_TRANSFORMS];
+    glm::mat4   prev_transforms   [storage_buffer::MAX_TRANSFORMS];
     uint32_t    transform_offsets [storage_buffer::MAX_DRAW_CALLS];
     uint32_t    texture_offsets   [storage_buffer::MAX_DRAW_CALLS];
 };

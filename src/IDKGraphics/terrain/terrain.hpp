@@ -43,11 +43,12 @@ namespace idk::TerrainRenderer
 
     void init( idk::RenderEngine&, idk::ModelAllocator& );
     void update( idk::RenderEngine&, const IDK_Camera&, idk::ModelAllocator& );
-    void render( idk::RenderEngine&, idk::glFramebuffer&, float dt, const IDK_Camera&, idk::ModelAllocator& );
+    void render( idk::RenderEngine&, float dt, idk::glFramebuffer&, idk::glFramebuffer&, const IDK_Camera&, idk::ModelAllocator& );
+    void renderGrass( idk::RenderEngine&, idk::glFramebuffer&, const IDK_Camera&, idk::ModelAllocator& );
     void renderShadow( idk::RenderEngine&, idk::glFramebuffer&, idk::ModelAllocator& );
 
     void generateTerrain();
-    void generateGrass();
+    void generateGrass( const glm::vec3 &pos = glm::vec3(0.0f) );
 
 
     void setWaterActive( bool );
@@ -56,6 +57,9 @@ namespace idk::TerrainRenderer
 
     float heightQuery( float x, float z );
     glm::vec3 slopeQuery( float x, float z );
+
+    float waterHeightQuery( float x, float z );
+
 
     void setTerrainTransform( const glm::mat4& );
     TerrainDesc &getTerrainDesc();

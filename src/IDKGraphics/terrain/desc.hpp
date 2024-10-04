@@ -15,7 +15,6 @@ namespace idk::TerrainRenderer
         float octaves = 4.0f;
     };
 
-
     struct TerrainDesc
     {
         glm::vec4 clipmap_size = glm::vec4(32.0f, 5.0f, 1.0f, 1.0f);

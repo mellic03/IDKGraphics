@@ -1,12 +1,5 @@
 #version 460 core
+#extension GL_GOOGLE_include_directive: require
 
-in FS_in
-{
-    vec3 fragpos;
-} fsin;
-
-
-void main()
-{
-
-}
+#define CLIPMAP_SHADOW
+#include "clipmap-fs.glsl"

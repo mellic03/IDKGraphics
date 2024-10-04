@@ -2,11 +2,10 @@
 
 
 
-const std::vector<glm::vec4> &
+std::vector<glm::vec4>
 idk::glDepthCascade::get_corners( const glm::mat4 &P, const glm::mat4 &V )
 {
-    static std::vector<glm::vec4> corners(8);
-    corners.clear();
+    std::vector<glm::vec4> corners;
 
     glm::mat4 inv = glm::inverse(P * V);
 
@@ -32,10 +31,10 @@ idk::glDepthCascade::get_corners( const glm::mat4 &P, const glm::mat4 &V )
 }
 
 
-const glm::vec3 &
+glm::vec3
 idk::glDepthCascade::get_center( const std::vector<glm::vec4> &corners )
 {
-    static glm::vec3 center;
+    glm::vec3 center;
     center = glm::vec3(0.0f);
 
     for (const glm::vec4 &v: corners)
@@ -49,10 +48,10 @@ idk::glDepthCascade::get_center( const std::vector<glm::vec4> &corners )
 }
 
 
-const glm::mat4 &
+glm::mat4
 idk::glDepthCascade::get_view( const glm::vec3 &L, const std::vector<glm::vec4> &corners )
 {
-    static glm::mat4 view;
+    glm::mat4 view;
 
     glm::vec3 center = get_center(corners);
 
@@ -68,13 +67,13 @@ idk::glDepthCascade::get_view( const glm::vec3 &L, const std::vector<glm::vec4> 
 
 #include <iostream>
 
-const glm::mat4 &
+glm::mat4
 idk::glDepthCascade::get_projection( const float texture_width,
                                      const glm::vec3 &L,
                                      const glm::mat4 &V,
                                      const std::vector<glm::vec4> &corners )
 {
-    static glm::mat4 P;
+    glm::mat4 P;
 
     glm::vec3 minv = glm::vec3(+INFINITY);
     glm::vec3 maxv = glm::vec3(-INFINITY);
@@ -91,21 +90,11 @@ idk::glDepthCascade::get_projection( const float texture_width,
         maxv.z = glm::max(maxv.z, v.z);
     }
 
-    float w_texelspace = fabs(maxv.x - minv.x) / texture_width;
-    float h_texelspace = fabs(maxv.y - minv.y) / texture_width;
-
-    minv.x = w_texelspace * glm::floor(minv.x / w_texelspace);
-    maxv.x = w_texelspace * glm::floor(maxv.x / w_texelspace);
-    minv.y = h_texelspace * glm::floor(minv.y / h_texelspace);
-    maxv.y = h_texelspace * glm::floor(maxv.y / h_texelspace);
-
-    constexpr float zMult = 5.0f;
+    constexpr float zMult = 10.0f;
     minv.z *= (minv.z < 0) ? zMult : 1.0f/zMult;
     maxv.z *= (maxv.z < 0) ? 1.0f/zMult : zMult;
 
-    P = glm::ortho(
-        minv.x, maxv.x, minv.y, maxv.y, minv.z, maxv.z
-    ) * V;
+    P = glm::ortho(minv.x, maxv.x, minv.y, maxv.y, minv.z, maxv.z) * V;
 
     return P;
 }
@@ -116,14 +105,7 @@ idk::glDepthCascade::get_projection( const float texture_width,
 void
 idk::glDepthCascade::reset( int w, int h )
 {
-    _reset(w, h, 0);
 
-    static const idk::DepthAttachmentConfig config = {
-        .internalformat = GL_DEPTH_COMPONENT,
-        .datatype       = GL_FLOAT
-    };
-
-    depthArrayAttachment(NUM_CASCADES+1, config);
 }
 
 
@@ -159,34 +141,58 @@ idk::glDepthCascade::computeCascadeMatrices( float cam_fov,  float cam_aspect,
                                              float cam_near, float cam_far,
                                              float image_w,
                                              const glm::mat4 &cam_view,
-                                             const glm::vec3 &light_dir )
+                                             const glm::vec3 &light_dir,
+                                             const glm::vec4 &cascades,
+                                             const glm::vec4 &xyzmult )
 {
     std::vector<glm::mat4> cascade_matrices;
-    glm::vec4 cascade_depths = glm::vec4(8.0f, 16.0f, 32.0f, 64.0f);
+
+    float near = cam_near;
 
     for (int i=0; i<NUM_CASCADES; i++)
     {
-        float near = 1.0f;
-        float far  = cascade_depths[i];
+        float far = cam_near + cascades[i];
+        float near = (i==0) ? cam_near : cascades[i-1];
 
         glm::mat4 P = glm::perspective(
             cam_fov, cam_aspect, near, far
         );
 
-        const auto &corners = get_corners(P, cam_view);
+        auto corners = get_corners(P, cam_view);
         glm::mat4 V = get_view(light_dir, corners);
 
-        // V[3][0] = glm::floor(V[3][0] / bounds) * bounds;
-        // V[3][1] = glm::floor(V[3][1] / bounds) * bounds;
-        // V[3][2] = glm::floor(V[3][2] / bounds) * bounds;
 
-        // V[3][0] -= glm::mod(V[3][0], bounds);
-        // V[3][1] -= glm::mod(V[3][1], bounds);
-        // V[3][2] -= glm::mod(V[3][2], bounds);
+        glm::vec3 minv = glm::vec3(+INFINITY);
+        glm::vec3 maxv = glm::vec3(-INFINITY);
 
-        P = get_projection(image_w, light_dir, V, corners);
+        for (glm::vec4 v: corners)
+        {
+            glm::vec4 tmp = glm::vec4(V * v);
 
-        cascade_matrices.push_back(P);
+            minv.x = std::min(minv.x, tmp.x);
+            minv.y = std::min(minv.y, tmp.y);
+            minv.z = std::min(minv.z, tmp.z);
+            maxv.x = std::max(maxv.x, tmp.x);
+            maxv.y = std::max(maxv.y, tmp.y);
+            maxv.z = std::max(maxv.z, tmp.z);
+        }
+
+        glm::vec3 M = glm::max(xyzmult, 1.0f);
+
+        minv.x *= (minv.x < 0) ? M.x : 1.0f/M.x;
+        maxv.x *= (maxv.x < 0) ? 1.0f/M.x : M.x;
+
+        minv.y *= (minv.y < 0) ? M.x : 1.0f/M.x;
+        maxv.y *= (maxv.y < 0) ? 1.0f/M.x : M.x;
+
+        minv.z *= (minv.z < 0) ? M.x : 1.0f/M.x;
+        maxv.z *= (maxv.z < 0) ? 1.0f/M.x : M.x;
+
+        minv.z *= (minv.z < 0) ? M.z : 1.0f/M.z;
+        maxv.z *= (maxv.z < 0) ? 1.0f/M.z : M.z;
+
+        glm::mat4 proj =  glm::ortho(minv.x, maxv.x, minv.y, maxv.y, minv.z, maxv.z);
+        cascade_matrices.push_back(proj * V);
     }
 
     return cascade_matrices;

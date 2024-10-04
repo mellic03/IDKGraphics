@@ -1,390 +1,689 @@
 #include "idk_ui.hpp"
-
-#include <IDKGameEngine/IDKGameEngine.hpp>
-#include <IDKEvents/IDKEvents.hpp>
 #include <libidk/idk_geometry.hpp>
 
+#include <IDKGameEngine/IDKGameEngine.hpp>
+#include <IDKIO/IDKIO.hpp>
 
 
-// /*
-//     Try batching UI elements instead, it will probably be faster.
 
-//     struct Buffer
+// static glm::vec2 mouse_screen  = glm::vec2(0.0f);
+// static glm::vec2 mouse_delta   = glm::vec2(0.0f);
+// static bool      mouse_down    = false;
+// static bool      mouse_clicked = false;
+
+
+// int focus_depth = 0;
+// idkui::ElementBase *focus_element = nullptr;
+
+
+
+// void
+// idkui::ElementBase::update( glm::vec2 corner, glm::vec2 span, int depth,
+//                               idkui::UIRenderer &uiren )
+// {
 //     {
-//         glm::vec4 bounds[MAX_ELEMENTS];
-//         uint64_t  textures[MAX_ELEMENTS];
-//     };
+//         const glm::vec4 &margin = m_style.margin;
 
-// */
+//         m_bounds[0] = corner.x          + margin[0];
+//         m_bounds[1] = corner.x + span.x - margin[1];
+//         m_bounds[2] = corner.y          + margin[2];
+//         m_bounds[3] = corner.y + span.y - margin[3];
+
+//         auto [xmin, xmax, ymin, ymax] = m_bounds;
+
+//         if (m_style.invisible == false)
+//         {
+//             uiren.renderQuad(xmin, ymin, depth++, xmax-xmin, ymax-ymin, m_style.radius, m_style.bg);
+//         }
+//     }
 
 
-// // Make this an SSBO, use gl_DrawID as index into bounds and handles.
-// struct UI_RectBuffer
-// {
-//     glm::vec4 bounds[128];
-//     uint64_t  handles[128];
+//     const glm::vec4 &padding = m_style.padding;
+
+//     m_bounds[0] -= padding[0];
+//     m_bounds[1] -= padding[1];
+//     m_bounds[2] += padding[2];
+//     m_bounds[3] -= padding[3];
+
+//     auto [xmin, xmax, ymin, ymax] = m_bounds;
+
+
+//     m_focused = false;
+
+//     if (geometry::pointInRect(mouse_screen.x, mouse_screen.y, xmin, ymin, xmax-xmin, ymax-ymin))
+//     {
+//         m_focused = true;
+
+//         if (depth > focus_depth)
+//         {
+//             focus_element = this;
+//             focus_depth   = depth;
+//         }
+//     }
+
+//     _update(glm::vec2(xmin, ymin), glm::vec2(xmax-xmin, ymax-ymin), depth, uiren);
+
 // };
 
 
-// struct UI_Button
+
+
+
+// idkui::Grid::Grid( const std::string &name, const ElementStyle &style, int rows, int cols )
+// :   ElementBase       (name, style),
+//     m_rows            (rows),
+//     m_cols            (cols),
+//     m_children        (rows, std::vector<ElementBase*>(cols, nullptr)),
+//     m_row_proportions (rows, 1.0f / rows),
+//     m_col_proportions (cols, 1.0f / cols)
 // {
-//     float x, y;
-//     float w, h;
-    
-//     std::string text;
-//     std::function<void()> callback;
 
-//     glm::vec4 background = glm::vec4(0.0f);
-
-//     float clicked = 0.0f;
-//     bool hovered = false;
-//     bool dirty   = true;
-// };
+// }
 
 
-// struct UI_Panel
+
+// idkui::Split::Split( const std::string &name, const ElementStyle &style, float ratio,
+//                       ElementBase *left, ElementBase *right )
+// :   Grid    (name, style, 1, 2),
+//     m_ratio (ratio)
 // {
-//     float x, y;
-//     float w, h;
-
-//     bool hidden = false;
-
-//     std::vector<UI_Button> buttons;
-//     idk::ui::ElementStyle style;
-// };
-
-
-
-// static const idk::glTextureConfig texture_config = {
-//     .internalformat = GL_RGBA8,
-//     .format         = GL_RGBA,
-//     .minfilter      = GL_LINEAR,
-//     .magfilter      = GL_LINEAR,
-//     .datatype       = GL_UNSIGNED_BYTE,
-//     .genmipmap      = GL_FALSE
-// };
-
-
-// namespace
-// {
-//     idk::Allocator<UI_Panel> m_panels;
-//     TTF_Font *m_font;
-//     SDL_Surface *m_surface = nullptr;
+//     m_children[0][0] = left;
+//     m_children[0][1] = right;
+//     setColProportions({ratio, 1.0f - ratio});
 // }
 
 
 
 // void
-// idk::ui::init( const std::string &fontpath, int size )
+// idkui::Grid::setChild( int row, int col, ElementBase *element )
 // {
-//     // TTF_Init();
-//     m_font = TTF_OpenFont(fontpath.c_str(), size);
-//     m_surface = SDL_CreateRGBSurface(0, 32, 1024, 1024, 0, 0, 0, 0);
+//     std::string msg = element->m_label + " (row, col) is out of range of " + this->m_label + ".children";
+
+//     while (row < 0)       row += m_rows;
+//     while (row >= m_rows) row -= m_rows;
+
+//     while (col < 0)       col += m_cols;
+//     while (col >= m_cols) col -= m_cols;
+
+//     IDK_ASSERT(
+//         msg.c_str(),
+//         (row < m_rows) && (col < m_cols)
+//     );
+
+//     m_children[row][col] = element;
 // }
 
-// void
-// idk::ui::shutdown()
+
+// idkui::ElementBase*
+// idkui::Grid::getChild( int row, int col )
 // {
-//     TTF_CloseFont(m_font);
-
-//     // for (UI_Button &b: m_buttons)
-//     // {
-//     //     gl::deleteTextures(1, &b.texture);
-//     //     SDL_FreeSurface(b.surface);
-//     // }
-// }
-
-
-
-// int
-// idk::ui::createPanel( int direction, const ElementStyle &style )
-// {
-//     UI_Panel panel;
-
-//     panel.x = (direction == 0) ? 10 : 990;
-//     panel.y = 150;
-
-//     panel.w = 100;
-//     panel.h = 400;
-
-//     panel.style = style;
-
-//     return m_panels.create(panel);
+//     return m_children[row][col];
 // }
 
 
 // void
-// idk::ui::openPanel( int panel )
+// idkui::Grid::setRowProportions( const std::vector<float> &proportions )
 // {
-//     m_panels.get(panel).hidden = false;
+//     m_row_proportions = proportions;
+
+//     float length = 0.0f;
+//     for (int i=0; i<m_rows; i++)
+//     {
+//         length += m_row_proportions[i];
+//     }
+
+//     IDK_ASSERT("Cannot normalize proportions", length > 0.0001f);
+
+//     for (int i=0; i<m_rows; i++)
+//     {
+//         m_row_proportions[i] /= length;
+//     }
 // }
 
 
 // void
-// idk::ui::closePanel( int panel )
+// idkui::Grid::setColProportions( const std::vector<float> &proportions )
 // {
-//     m_panels.get(panel).hidden = true;
+//     m_col_proportions = proportions;
+
+//     float length = 0.0f;
+//     for (int i=0; i<m_cols; i++)
+//     {
+//         length += m_col_proportions[i];
+//     }
+
+//     IDK_ASSERT("Cannot normalize proportions", length > 0.0001f);
+
+//     for (int i=0; i<m_cols; i++)
+//     {
+//         m_col_proportions[i] /= length;
+//     }
 // }
-
-
-// void
-// idk::ui::togglePanel( int panel )
-// {
-//     bool hidden = m_panels.get(panel).hidden;
-//     m_panels.get(panel).hidden = !hidden;
-// }
-
 
 
 
 
 
 // void
-// idk::ui::createButton( int p, const std::string &text, std::function<void()> callback )
+// idkui::List::_update( glm::vec2 corner, glm::vec2 span, int depth,
+//                       idkui::UIRenderer &uiren )
 // {
-//     UI_Panel &panel = m_panels.get(p);
+//     auto [xmin, xmax, ymin, ymax] = m_bounds;
 
-//     std::cout << "X: " << panel.x + 10 << "\n";
+//     if (m_style.invisible == false)
+//     {
+//         uiren.renderQuad(corner.x, corner.y, depth++, span.x, span.y, m_style.radius, m_style.bg);
+//     }
 
-//     UI_Button button = {
-//         .x = panel.x + 10,
-//         .y = panel.y + panel.buttons.size()*(64 + 10),
-//         .w = 128,
-//         .h = 32,
-//         .text = text,
-//         .callback = callback
-//     };
+//     glm::vec2 offset     = glm::vec2(0.0f, 0.0f);
+//     glm::vec2 child_span = glm::vec2(span.x, 64.0f);
 
-//     panel.buttons.push_back(button);
+//     for (ElementBase *child: m_children_front)
+//     {
+//         child->update(corner+offset, child_span, depth+1, uiren);
+//         offset.y += 64.0f;
+//     }
+
+
+//     offset.y = span.y - 64.0f;
+
+//     for (ElementBase *child: m_children_back)
+//     {
+//         child->update(corner+offset, child_span, depth+1, uiren);
+//         offset.y -= 64.0f;
+//     }
 // }
 
 
 
 // void
-// _renderButton( UI_Button &button, const idk::ui::ElementStyle &es )
+// idkui::Button::_update( glm::vec2 corner, glm::vec2 span, int depth,
+//                         idkui::UIRenderer &uiren )
 // {
-//     glm::u8vec4 a = glm::u8vec4(255.0f * es.fg);
-//     glm::u8vec4 b = glm::u8vec4(255.0f * es.bg);
+//     auto [xmin, xmax, ymin, ymax] = m_bounds;
 
-//     SDL_Color fg = {a.x, a.y, a.z, a.a};
-//     SDL_Color bg = {b.x, b.y, b.z, b.a};
+//     glm::vec4 fg = m_style.fg;
+//     glm::vec4 bg = m_style.bg;
 
-//     if (button.clicked <= 0.0f && button.hovered == true)
+//     if (m_focused)
 //     {
 //         std::swap(fg, bg);
 //     }
 
-//     // Draw background rect
-//     // -----------------------------------------------------------------------------------------
-//     glm::ivec4 bb = glm::ivec4(button.x, button.y, button.w, button.h);
-//     SDL_Rect brect = { bb.x, bb.y, bb.z, bb.w };
-//     SDL_FillRect(m_surface, &brect, (bg.a << 24) + (bg.r << 16) + (bg.g << 8) + bg.b);
-//     // -----------------------------------------------------------------------------------------
+
+//     uiren.renderQuad(xmin, ymin, depth++, span.x, span.y, m_style.radius, bg);
+
+//     glm::vec2 center = glm::vec2(xmin+span.x/2.0f, ymin+span.y/2.0f);
+
+//     float label_w = float(m_label.length() * uiren.glyphWidth());
+//     float scale   = glm::min(label_w, span.x) / label_w;
+
+//     uiren.renderTextCentered(center.x, center.y, depth++, m_label, fg, scale);
+
+// }
 
 
-//     // Draw text
-//     // -----------------------------------------------------------------------------------------
-//     SDL_Surface *S0 = TTF_RenderText_Blended_Wrapped(m_font, button.text.c_str(), fg, 32);
-//     SDL_Rect src = {0, 0, S0->w, S0->h};
-//     SDL_Rect dst = {button.x, button.y, S0->w, S0->h};
+// void
+// idkui::Slider::on_down()
+// {
+//     auto [xmin, xmax, ymin, ymax] = m_bounds;
 
-//     SDL_BlitScaled(S0, &src, m_surface, &dst);
-//     // -----------------------------------------------------------------------------------------
+//     float dist_min_data = m_data - m_min;
+//     float dist_min_max  = m_max - m_min;
+//     float alpha         = dist_min_data / dist_min_max;
 
-//     SDL_FreeSurface(S0);
+
+//     float w = ymax - ymin;
+
+//     float left  = xmin + w/2;
+//     float right = xmax - w/2;
+//     float mx    = mouse_screen.x;
+
+//     alpha = (mx - left) / (right - left);
+
+//     float prev = m_data;
+//     m_data = m_min + alpha*dist_min_max;
+
+//     if (m_step > 0.0f)
+//     {
+//         m_data = std::round(m_data / m_step) * m_step;
+//     }
+
+//     if (fabs(m_data - prev) > m_step)
+//     {
+//         m_callback(m_data);
+//     }
+
+//     m_data = glm::clamp(m_data, m_min, m_max);
+// }
+
+
+// void
+// idkui::Slider::_update( glm::vec2 corner, glm::vec2 span, int depth,
+//                        idkui::UIRenderer &uiren )
+// {
+//     glm::vec4 fg = m_style.fg;
+//     glm::vec4 bg = m_style.bg;
+
+//     glm::vec4 fg2 = m_style.fg2;
+//     glm::vec4 bg2 = m_style.bg2;
+
+//     auto [xmin, xmax, ymin, ymax] = m_bounds;
+
+//     float w = span.y;
+//     float h = span.y;
+
+//     if (m_focused)
+//     {
+//         // std::swap(fg, bg);
+//     }
+
+//     if (geometry::pointInRect(mouse_screen.x, mouse_screen.y, xmin, ymin, span.x, span.y))
+//     {
+//         if (idkio::mouseDown(idkio::LMOUSE))
+//         {
+//             on_down();
+//         }
+//     }
+
+//     uiren.renderQuad(xmin, ymin, depth++, span.x, span.y, m_style.radius, bg);
+
+
+//     float alpha = (m_data - m_min) / (m_max - m_min);
+
+//     float x = (xmin + w/2) + alpha*(span.x - w);
+//     float y = ymin + span.y/2.0f;
+
+//     if (geometry::pointInRectCentered(mouse_screen.x, mouse_screen.y, x, y, w, h))
+//     {
+//         std::swap(fg2, bg2);
+//     }
+
+//     uiren.renderQuadCentered(x, y, depth++, w, h, m_style.radius, bg2);
+
 // }
 
 
 
 // void
-// _renderPanel( UI_Panel &panel, const idk::ui::ElementStyle &es )
+// idkui::TextInput::_update( glm::vec2 corner, glm::vec2 span, int depth,
+//                            idkui::UIRenderer &uiren )
 // {
-//     glm::u8vec4 a = glm::u8vec4(255.0f * es.fg);
-//     glm::u8vec4 b = glm::u8vec4(255.0f * es.bg);
+//     glm::vec4 margin = m_style.margin;
 
-//     SDL_Color bg = {b.x, b.y, b.z, b.a};
+//     float xmin = corner.x          + margin[0];
+//     float xmax = corner.x + span.x - margin[1];
+//     float ymin = corner.y          + margin[2];
+//     float ymax = corner.y + span.y - margin[3];
 
-//     // Draw background rect
-//     // -----------------------------------------------------------------------------------------
-//     glm::ivec4 bb = glm::ivec4(panel.x, panel.y, panel.w, panel.h);
-//     SDL_Rect brect = { bb.x, bb.y, bb.z, bb.w };
-//     SDL_FillRect(m_surface, &brect, (bg.a << 24) + (bg.r << 16) + (bg.g << 8) + bg.b);
-//     // -----------------------------------------------------------------------------------------
+//     corner = glm::vec2(xmin, ymin);
+//     span   = glm::vec2(xmax-xmin, ymax-ymin);
 
-// }
+//     glm::vec4 fg = m_style.fg;
+//     glm::vec4 bg = m_style.bg;
 
+//     // glm::vec4 fg2 = m_style.fg2;
+//     // glm::vec4 bg2 = m_style.bg2;
 
-
-// void
-// idk::ui::update( idk::EngineAPI &api )
-// {
-//     float dt = api.getEngine().deltaTime();
-//     auto &ren = api.getRenderer();
-//     auto &events = api.getEventSys();
-
-//     // if (events.mouseDown(idk::MouseButton::LEFT) == false)
+//     // if (m_focused)
 //     // {
-//     //     return;
+//     //     std::swap(fg, bg);
 //     // }
 
-//     glm::vec2 mouse = events.mousePosition();
-//     float mx = mouse.x;
-//     float my = mouse.y;
 
-//     idkui::TextManager::text(mx, my) << "(" << mx << ", " << my << ")";
+//     uiren.renderQuad(xmin, ymin, depth++, span.x, span.y, m_style.radius, bg);
 
-//     for (UI_Panel &panel: m_panels)
+//     if (m_text.length() == 0)
 //     {
-//         for (UI_Button &b: panel.buttons)
-//         {
-//             b.clicked -= dt;
-//             b.hovered = false;
-
-//             if (geometry::pointInRect(mx, my, b.x, b.y, b.w, b.h))
-//             {
-//                 b.hovered = true;
-
-//                 if (events.mouseClicked(idk::MouseButton::LEFT))
-//                 {
-//                     b.clicked = 0.05f;
-//                     b.callback();
-//                 }
-//             }
-//         }
+//         return;
 //     }
+
+//     float label_w = float(m_text.length() * uiren.glyphWidth());
+//     float new_w   = glm::min(label_w, span.x);
+//     float scale   =  new_w / label_w;
+
+//     uiren.renderText(xmin, ymin, depth++, m_text, fg, scale);
+
+
+//     float xcursor = xmin + label_w;
+//     uiren.renderQuad(xcursor, ymin+span.y, depth++, 32, 8, 0.0f, fg);
 
 // }
 
 
 // void
-// idk::ui::render( idk::EngineAPI &api )
+// idkui::TextInput::on_focus( idk::EngineAPI &api )
 // {
-//     auto &ren = api.getRenderer();
-
-
-//     static uint32_t texture;
-
-//     if (m_surface == nullptr)
+//     if (!m_text.empty() && idk::IO::keyTapped(Keycode::BACKSPACE))
 //     {
-//         m_surface = SDL_CreateRGBSurface(0, ren.width(), ren.height(), 32, 0, 0, 0, 0);
-//         SDL_SetSurfaceBlendMode(m_surface, SDL_BLENDMODE_ADD);
-
-//         texture = gltools::loadTexture2D(m_surface->w, m_surface->h, m_surface->pixels, texture_config);
+//         m_text.pop_back();
 //     }
 
-//     int rw = ren.width();
-//     int rh = ren.height();
-//     int sw = m_surface->w;
-//     int sh = m_surface->h;
-
-
-//     if (rw != sw || rh != sh)
+//     if (idk::IO::keyTapped(Keycode::PERIOD))
 //     {
-//         SDL_FreeSurface(m_surface);
-//         m_surface = SDL_CreateRGBSurface(0, ren.width(), ren.height(), 32, 0, 0, 0, 0);
-
-//         gl::deleteTextures(1, &texture);
-//         texture = gltools::loadTexture2D(m_surface->w, m_surface->h, m_surface->pixels, texture_config);
+//         m_text.push_back('.');
 //     }
 
-//     SDL_Rect rect = { 0, 0, m_surface->w, m_surface->h };
-//     SDL_FillRect(m_surface, &rect, 0);
-
-//     for (UI_Panel &panel: m_panels)
+//     if (idk::IO::keyTapped(Keycode::N0))
 //     {
-//         if (panel.hidden)
-//         {
-//             continue;
-//         }
+//         m_text.push_back('0');
+//     }
 
-//         _renderPanel(panel, panel.style);
-
-//         for (UI_Button &b: panel.buttons)
+//     for (uint32_t k=Keycode::N1; k<=Keycode::N9; k++)
+//     {
+//         if (idk::IO::keyTapped((Keycode)(k)))
 //         {
-//             _renderButton(b, panel.style);
+//             m_text += char(k - Keycode::N1 + '0');
 //         }
 //     }
 
-//     gl::deleteTextures(1, &texture);
-//     texture = gltools::loadTexture2D(m_surface->w, m_surface->h, m_surface->pixels, texture_config);
-    
-//     // gl::textureSubImage2D(
-//     //     texture, 0, 0, 0, 0, 0, GL_RGBA, GL_UNSIGNED_BYTE, m_surface->pixels
-//     // );
+// }
 
-//     ren.drawTextureOverlay(texture);
+
+
+// void
+// idkui::Title::_update( glm::vec2 corner, glm::vec2 span, int depth,
+//                        idkui::UIRenderer &uiren )
+// {
+//     auto [xmin, xmax, ymin, ymax] = m_bounds;
+
+//     corner = glm::vec2(xmin, ymin);
+//     span   = glm::vec2(xmax-xmin, ymax-ymin);
+
+//     glm::vec4 fg = m_style.fg;
+//     glm::vec4 bg = m_style.bg;
+
+//     glm::vec2 center = glm::vec2(xmin+span.x/2.0f, ymin+span.y/2.0f);
+
+//     uiren.renderQuadCentered(center.x, center.y, depth++, span.x, span.y, m_style.radius, m_style.bg);
+//     uiren.renderTextCentered(center.x, center.y, depth++, m_label, fg);
+
 // }
 
 
 
 
+// void
+// idkui::Label::_update( glm::vec2 corner, glm::vec2 span, int depth,
+//                         idkui::UIRenderer &uiren )
+// {
+//     auto [xmin, xmax, ymin, ymax] = m_bounds;
+
+//     corner = glm::vec2(xmin, ymin);
+//     span   = glm::vec2(xmax-xmin, ymax-ymin);
+
+//     glm::vec4 fg = m_style.fg;
+//     glm::vec4 bg = m_style.bg;
+
+//     glm::vec2 center = glm::vec2(xmin+span.x/2.0f, ymin+span.y/2.0f);
+
+
+//     int   label_w = m_label.length() * uiren.glyphWidth();
+//     int   quad_w  = span.x;
+//     int   width   = glm::min(label_w, quad_w);
+//     float scale   = float(width) / label_w;
+
+//     uiren.renderQuadCentered(center.x, center.y, depth++, span.x, span.y, m_style.radius, m_style.bg);
+//     uiren.renderTextCentered(center.x, center.y, depth++, m_label, fg, scale);
+
+// }
+
+
+
+// void
+// idkui::Grid::_update( glm::vec2 corner, glm::vec2 span, int depth,
+//                        idkui::UIRenderer &uiren )
+// {
+//     if (m_visible == false)
+//     {
+//         return;
+//     }
+
+//     auto [xmin, xmax, ymin, ymax] = m_bounds;
+
+//     if (m_style.uniform_size)
+//     {
+//         span = glm::vec2(glm::min(span.x, span.y));
+//     }
+
+
+//     if (m_style.invisible == false)
+//     {
+//         float width  = xmax - xmin;
+//         float height = ymax - ymin;
+//         // float label_w = float(m_label.length() * uiren.glyphWidth());
+//         // float scale   = glm::min(label_w, span.x) / label_w;
+
+
+//         uiren.renderQuad(corner.x, corner.y, depth++, width, height, m_style.radius, m_style.bg);
+//         // uiren.renderTextCenteredX((xmin+xmax)/2.0f, corner.y, depth++, m_label, m_style.fg, scale);
+//     }
+
+    
+//     glm::vec2 child_corner = corner;
+//     // glm::vec2 child_span   = span / glm::vec2(m_cols, m_rows);
+
+//     float x, y, w, h;
+
+//     y = corner.y;
+
+//     for (int row=0; row<m_rows; row++)
+//     {
+//         x = corner.x;
+//         h = span.y * m_row_proportions[row];
+
+//         for (int col=0; col<m_cols; col++)
+//         {
+//             w = span.x * m_col_proportions[col];
+            
+//             if (m_children[row][col])
+//             {
+//                 m_children[row][col]->update(glm::vec2(x, y), glm::vec2(w, h), depth+1, uiren);
+//             }
+
+//             x += w;
+//         }
+    
+//         y += h;
+//     }
+// }
+
+
+
+// void
+// idkui::SubMenu::_update( glm::vec2 corner, glm::vec2 span, int depth,
+//                           idkui::UIRenderer &uiren )
+// {
+//     if (m_visible == false)
+//     {
+//         return;
+//     }
+
+//     auto [xmin, xmax, ymin, ymax] = m_bounds;
+
+//     const auto &fg = m_style.fg;
+//     const auto &bg = m_style.bg;
+//     const float radius = m_style.radius;
+
+//     // Background
+//     // -----------------------------------------------------------------------------------------
+//     {
+//         int w = xmax-xmin;
+//         int h = ymax-ymin;
+//         uiren.renderQuad(xmin, ymin, depth++, w, h, radius, bg);
+//     }
+//     // -----------------------------------------------------------------------------------------
+
+//     // Title bar
+//     // -----------------------------------------------------------------------------------------
+//     float label_w = float(m_label.length() * uiren.glyphWidth());
+//     float label_h = float(uiren.glyphWidth());
+//     float scale   = glm::min(label_w, span.x) / label_w;
+
+//     float w = span.x;
+//     float h = 2.0f * label_h;
+
+//     float cx = xmin + 0.5f*w;
+//     float cy = ymin + 0.5f*h;
+
+//     uiren.renderQuadCentered(cx, cy, depth++, w, h, radius, bg);
+//     uiren.renderTextCentered(cx, cy, depth++, m_label, fg, scale);
+//     // -----------------------------------------------------------------------------------------
+
+//     corner.y += h;
+//     span.y   -= h;
+
+//     m_bounds[2] += h;
+//     m_bounds[3] -= h;
+
+//     idkui::Grid::_update(corner, span, depth+1, uiren);
+
+// }
 
 
 
 
+// void
+// idkui::Split::_update( glm::vec2 corner, glm::vec2 span, int depth,
+//                         idkui::UIRenderer &uiren )
+// {
+//     if (m_visible == false)
+//     {
+//         return;
+//     }
+
+//     auto [xmin, xmax, ymin, ymax] = m_bounds;
+
+//     const auto &fg = m_style.fg;
+//     const auto &bg = m_style.bg;
+//     const float radius = m_style.radius;
+
+//     float width  = xmax - xmin;
+//     float height = ymax - ymin;
+
+//     float xmin_L = xmin;
+//     float xmax_L = xmin_L + m_ratio*width;
+
+//     float xmin_R = xmax_L;
+//     float xmax_R = xmin_R + (1.0f - m_ratio)*width;
+
+//     glm::vec2 child_corner, child_span;
+
+//     // Left child
+//     child_corner = glm::vec2(xmin_L, ymin);
+//     child_span   = glm::vec2(xmax_L-xmin_L, span.y);
+//     m_children[0][0]->update(child_corner, child_span, depth+1, uiren);
+
+//     // Right child
+//     child_corner = glm::vec2(xmin_R, ymin);
+//     child_span   = glm::vec2(xmax_R-xmin_R, span.y);
+//     m_children[0][1]->update(child_corner, child_span, depth+1, uiren);
+// }
 
 
 
+// void
+// idkui::LayoutManager::updateNode( ElementBase *root, ElementBase *node, const glm::vec2 &span )
+// {
+//     if (node == nullptr)
+//     {
+//         return;
+//     }
+
+//     node->update(glm::vec2(0.0f), span, 1, m_UIRenderer);
+// }
+
+
+// void
+// idkui::LayoutManager::renderTexture( idk::EngineAPI &api, ElementBase *root )
+// {
+//     if (root == nullptr)
+//     {
+//         return;
+//     }
+
+//     auto &ren = api.getRenderer();
+//     auto size = glm::vec2(ren.winsize());
+
+//     root->update(glm::vec2(0.0f), size, 1, m_UIRenderer);
+
+
+//     if (idkio::mouseCaptured())
+//     {
+//         mouse_screen  = glm::vec2(-1024.0f);     
+//         mouse_delta   = glm::vec2(0.0f);
+//         mouse_clicked = false;
+//         mouse_down    = false;
+//     }
+
+//     else
+//     {
+//         mouse_screen  = idkio::mousePosition();
+//         mouse_delta   = idkio::mouseDelta();
+//         mouse_clicked = idkio::mouseClicked(idkio::LMOUSE);
+//         mouse_down    = idkio::mouseDown(idkio::RMOUSE);
+//     }
+
+
+//     {
+//         ElementBase *E = focus_element;
+
+//         if (E != nullptr)
+//         {
+//             E->on_focus(api);
+    
+//             auto [xmin, xmax, ymin, ymax] = E->m_bounds;
+
+//             if (mouse_clicked)
+//             {
+//                 E->on_click();
+//             }
+
+//             else if (mouse_down)
+//             {
+//                 E->on_down();
+//             }
+//         }
+
+//         focus_depth   = 0;
+//         focus_element = nullptr;
+//     }
 
 
 
+//     m_UIRenderer.renderTexture(api);
 
-
-
-
-
-
+// }
 
 
 void
-idkui::TextManager::init( const std::string &fontpath, int size )
-{
-    TTF_Init();
-    m_font = TTF_OpenFont(fontpath.c_str(), size);
-}
-
-
-void
-idkui::TextManager::render( SDL_Surface *dst )
-{
-    for (auto &f: m_streams)
+idkui::LayoutManager::updateInput( Element *node )
+{   
+    if (node == nullptr)
     {
-        f.writeToSurface(m_font, dst);
+        return;
     }
 
-    m_streams.clear();
+    if (Element::mouseOver(node->m_outer_bounds))
+    {
+        if (idkio::mouseClicked(idkio::LMOUSE))
+        {
+            node->onClick();
+        }
+
+        else
+        {
+            node->onHover();
+        }
+    }
+
+    else
+    {
+        node->offHover();
+    }
+
+    for (auto *child: node->children)
+    {
+        updateInput(child);
+    }
 }
-
-
-idkui::FontStream &
-idkui::TextManager::text( int x, int y )
-{
-    m_streams.push_back(FontStream(x, y));
-    return m_streams.back();
-}
-
-
-void
-idkui::FontStream::writeToSurface( TTF_Font *font, SDL_Surface *surface )
-{
-    SDL_Color fg = {150, 150, 150, 0};
-    SDL_Color bg = {255, 255, 255, 0};
-
-    SDL_Surface *S = TTF_RenderUTF8_Blended(font, m_ss.str().c_str(), fg);
-
-    SDL_Rect src, dst;
-
-    src.x = 0;
-    src.y = 0;
-    src.w = S->w;
-    src.h = S->h;
-
-    dst.x = m_x;
-    dst.y = m_y;
-    dst.w = S->w;
-    dst.h = S->h;
-
-    SDL_BlitScaled(S, &src, surface, &dst);
-
-    SDL_FreeSurface(S);
-};

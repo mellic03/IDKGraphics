@@ -14,22 +14,26 @@ Various video snippets showcasing this project can be found on my [youtube chann
 - Modern OpenGL 4.6 features (AZDO).
 - GPU-side particle systems. All particle systems are updated in parallel using compute shaders.
 - GPU-side skeletal animation.
+- Level of detail system.
 - Various natural phenomena:
     - Physically-based atmosphere rendering.
-    - Realistic water using fractional brownian motion.
+    - Realistic water rendering using fractional brownian motion.
     - Real-time terrain generation.
 - Physically-based Lambertian diffuse + Cook-Torrance lighting model.
 - Voxel cone tracing implementation for low-frequency global illumination.
 - Various lighting and post-processing effects:
-    - Screen space ambient occlusion.
-    - Screen space reflections.
+    - Temporal super sampling/anti-aliasing.
+    - Per-object motion blur
+    - Volume rendering.
     - Volumetric light sources.
+    - Screen space ambient occlusion, reflection and diffuse illumination.
     - Bloom.
     - Chromatic Aberration.
-    - Option for temporal accumulation of many post-processing effects.
-- Concurrent asset loading.
-- Engine-native binary file formats.
+- Concurrent asset loading of engine-native binary file formats.
 - Custom widget-based GUI system for in-game UI.
+
+# W.I.P
+- GPU-side instance culling.
 
 
 # Architecture

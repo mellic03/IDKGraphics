@@ -1,16 +1,8 @@
+#ifndef IDK_WATER
+#define IDK_WATER
+
 #include "./terrain.glsl"
 #include "../include/time.glsl"
-
-
-
-vec2 getDirection( int i )
-{
-    float u = float(i) / 256.0;
-    float v = float(i) / 128.0;
-    
-    vec2 dir = IDK_WhiteNoise(vec2(u, v)).rg * 2.0 - 1.0;
-    return normalize(dir);
-}
 
 
 vec3 WaterComputeHeight( float time, float x, float z )
@@ -25,15 +17,16 @@ vec3 WaterComputeHeight( float time, float x, float z )
     float t        = tscale * time;
     float height   = 0.0;
     vec2  gradient = vec2(0.0);
-    float a        = 1.0;
-    float w        = 1.0;
+    float a        = yscale;
+    float w        = 1.0 / xscale;
 
+    // int waves = clamp(int(NF.octaves), 1, IDK_WATER_OCTAVES);
 
-    int waves = clamp(int(NF.octaves), 1, 128);
+    int waves = int(NF.octaves);
 
     for (int i=0; i<waves; i++)
     {
-        vec2 dir = getDirection(i);
+        vec2 dir = IDK_SSBO_Water_dirs[(i+32)%IDK_WATER_OCTAVES];
         float xz = dot(vec2(x, z), dir);
 
         height   += a * sin(w*xz + t);
@@ -45,3 +38,7 @@ vec3 WaterComputeHeight( float time, float x, float z )
 
     return vec3(height, gradient);
 }
+
+
+
+#endif

@@ -13,7 +13,7 @@ layout(
 ) in;
 
 
-layout (binding=0, r32f)    readonly  uniform image2D un_input;
+layout (binding=0, rgba16f) readonly  uniform image2D un_input;
 layout (binding=1, rgba16f) writeonly uniform image2D un_output;
 
 
@@ -110,11 +110,15 @@ vec3 computeNormal( ivec2 texel )
 void main()
 {
     ivec2 texel  = ivec2(gl_GlobalInvocationID.xy);
-    float frequency = IDK_SSBO_Terrain.scale.x;
+    float xscale = length(vec3(IDK_SSBO_Terrain.transform[0]));
+    float width  = IDK_SSBO_Terrain.scale.x;
     float yscale = IDK_SSBO_Terrain.scale.y;
-    
-    float dX = (frequency / 6) * (yscale) * sobel_x(texel);
-    float dZ = (frequency / 6) * (yscale) * sobel_y(texel);
+
+    float ratio0 = (yscale / width) * (width / xscale);
+    float ratio  = xscale / yscale;
+
+    float dX = (256/xscale) * (ratio*ratio0) * yscale * sobel_x(texel);
+    float dZ = (256/xscale) * (ratio*ratio0) * yscale * sobel_y(texel);
 
     vec3 T = vec3(1.0, dX, 0.0);
     vec3 B = vec3(0.0, dZ, 1.0);

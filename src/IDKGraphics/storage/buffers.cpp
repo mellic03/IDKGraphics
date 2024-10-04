@@ -16,7 +16,41 @@
 
 IDK_Dirlight::IDK_Dirlight()
 {
-    cascades = glm::vec4(8.0f, 16.0f, 32.0f, 64.0f);
+    cascades = glm::vec4(16.0f,  32.0f,  128.0f, 512.0f);
+}
+
+
+IDK_Spotlight::IDK_Spotlight()
+{
+    diffuse     = glm::vec4(1.0f);
+    attenuation = glm::vec4(1.0f);
+    angle       = glm::vec3(0.75f, 0.95f, 1.0f);
+    radius      = 16.0f;
+}
+
+
+
+IDK_Camera::IDK_Camera()
+{
+    near       = 0.02f;
+    far        = 2048.0f;
+
+    exposure   = 1.0f;
+    gamma      = 2.2f;
+
+    fov        = 90.0f;
+    aspect     = 1.25f;
+    bloom      = 0.15f;
+    fov_offset = 0.0f;
+}
+
+
+void
+IDK_Camera::setTransform( const glm::mat4 &T )
+{
+    prev_V = V;
+    V = glm::inverse(T);
+    position = T[3];
 }
 
 

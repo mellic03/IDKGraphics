@@ -15,6 +15,7 @@ out vec3 fsin_fragpos;
 out vec3 fsin_normal;
 out vec2 fsin_texcoord;
 flat out uint idx;
+flat out uint drawID;
 uniform uint un_offset;
 
 
@@ -51,6 +52,7 @@ mat4 lookAt( vec3 eye, vec3 center, vec3 up )
 
 void main()
 {
+    drawID = gl_DrawID + un_offset;
     idx = un_offset + gl_InstanceID;
 
     IDK_Camera camera = IDK_UBO_cameras[0];
@@ -61,21 +63,13 @@ void main()
     mat4 T = mat4(1.0);
          T[3] = vec4(Particles[idx].pos.xyz, 1.0);
 
-    mat4 R = lookAt(vec3(0.0), normalize(Particles[idx].vel.xyz), vec3(0.0, 1.0, 0.0));
-         R = inverse(R);
+    mat4 R = lookAt(vec3(0.0), normalize(camera.position.xyz - Particles[idx].pos.xyz), vec3(0.0, 1.0, 0.0));
+         R = mat4(inverse(mat3(R)));
 
     model = T * R;
     vec3 pos = vsin_pos;
 
-//     float theta = Particles[idx].rot[0];
-//     float x1 = vsin_pos.x;
-//     float y1 = vsin_pos.y;
-//     float x2 = x1*cos(theta) - y1*sin(theta);
-//     float y2 = x1*sin(theta) + y1*cos(theta);
-//     vec3 pos = vec3(x2, y2, vsin_pos.z);
-
-
-    vec3 position = vec3(model * vec4(pos * Particles[idx].scale.xyz, 1.0));
+    vec3 position = vec3(model * vec4(pos * Particles[idx].sc[0], 1.0));
     vec3 normal   = vec3(model * vec4(vsin_normal,  0.0));
 
     fsin_fragpos   = position;

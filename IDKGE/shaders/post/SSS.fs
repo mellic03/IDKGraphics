@@ -5,244 +5,125 @@
 #include "../include/storage.glsl"
 #include "../include/util.glsl"
 #include "../include/pbr.glsl"
+#include "../include/noise.glsl"
+#include "../include/time.glsl"
 
 
 
 out vec4 fsout_frag_color;
-
 in vec2 fsin_texcoords;
 
-uniform sampler2D un_input;
-uniform sampler2D un_albedo;
 uniform sampler2D un_normal;
-uniform sampler2D un_pbr;
 uniform sampler2D un_fragdepth;
-uniform sampler2D un_BRDF_LUT;
-
 
 #define RAY_OFFSET 0.02
 #define RAY_STEP_SIZE 1.0
 #define RAY_MAX_STEPS 128
 
-#define MIPLEVEL_SPECULAR 4.0
 
-
-void main()
+float getFadeFactor()
 {
-    IDK_Camera  camera = IDK_RenderData_GetCamera();
-    vec3 viewpos = camera.position.xyz;
+    vec2 texcoord = gl_FragCoord.xy / textureSize(un_fragdepth, 0);
 
-    vec2  texcoord = fsin_texcoords;
-    vec3  position = IDK_WorldFromDepth(un_fragdepth, texcoord, camera.P, camera.V);
+    float edgeThickness = 0.05;
 
-    IDK_PBRSurfaceData surface = IDK_PBRSurfaceData_load(
-        camera,
-        texcoord,
-        un_fragdepth,
-        un_albedo,
-        un_normal,
-        un_pbr,
-        un_BRDF_LUT
-    );
+    float edgeFadeFactor = smoothstep(0.0, edgeThickness, texcoord.x) * 
+                           smoothstep(0.0, edgeThickness, texcoord.y) *
+                           smoothstep(1.0, 1.0 - edgeThickness, texcoord.x) * 
+                           smoothstep(1.0, 1.0 - edgeThickness, texcoord.y);
 
-    vec4 in_color = texture(un_input, texcoord);
-
-    if (surface.roughness > 0.05)
-    {
-        return;
-    }
-
-    if (surface.alpha < 1.0)
-    {
-        fsout_frag_color = in_color;
-        return;
-    }
-
-    // if (dot(surface.R, surface.V) > 0.0)
-    // {
-    //     fsout_frag_color = in_color;
-    //     return;
-    // }
+    return edgeFadeFactor;
+}
 
 
-    vec3 ray_pos = position + RAY_OFFSET*surface.N;
-    float initial_depth = IDK_WorldToUV(ray_pos, (camera.P * camera.V)).z;
+float DepthToViewZ( sampler2D depthtex, vec2 uv, mat4 P )
+{
+    float z = textureLod(depthtex, uv, 0.0).r * 2.0 - 1.0;
 
-    vec3 view_dir = inverse(mat3((camera.P * camera.V))) * vec3(fsin_texcoords * 2.0 - 1.0, 1.0);
-    vec3 ray_dir  = surface.R;
-
-    vec4  result  = vec4(0.0, 0.0, 0.0, 1.0);
-    int   count   = 0;
-    float cumdist = 0.0;
-
-    const mat4 PV = (camera.P * camera.V);
-
-    for (float i=0; i<RAY_MAX_STEPS; i++)
-    {
-        // Project ray into UV space
-        // ---------------------------------------------------------------------------
-        vec4 projected = PV * vec4(ray_pos, 1.0);
-        projected.xy /= projected.w;
-        projected.xy = projected.xy * 0.5 + 0.5;
-
-        ivec2 tx = ivec2(projected.xy * vec2(camera.width, camera.height));
-        vec2  uv = projected.xy;
-
-
-        // float frag_depth = (PV * imageLoad(un_position, tx)).z;
-        vec3 pos = IDK_WorldFromDepth(un_fragdepth, uv, camera.P, camera.V);
-
-        float frag_depth = (PV * vec4(pos, 1.0)).z;
-        float ray_depth  = IDK_WorldToUV(ray_pos, PV).z;
-        // ---------------------------------------------------------------------------
-
-        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
-        {
-            fsout_frag_color = vec4(0.0);
-            return;
-        }
-
-        else if (ray_depth >= frag_depth && frag_depth > initial_depth)
-        {
-            result = textureLod(un_input, uv, MIPLEVEL_SPECULAR*surface.roughness);
-            break;
-        }
-
-        ray_pos += RAY_STEP_SIZE * ray_dir;
-        cumdist += RAY_STEP_SIZE;
-    }
-
-    result.rgb *= fresnelSchlickR(surface.NdotV, surface.F0, surface.roughness);
-
-    result.rgb * 1.0 - max(dot(surface.R, surface.V), 0.0);
-
-
-    fsout_frag_color = vec4(result.rgb, 1.0);
+    vec4 pos  = vec4(uv * 2.0 - 1.0, z, 1.0);
+         pos  = inverse(P) * vec4(pos.xyz, 1.0);
+         pos /= pos.w;
+    
+    return pos.z;
 }
 
 
 
+void main()
+{
+    IDK_Camera camera = IDK_RenderData_GetCamera();
+    vec3 viewpos = camera.position.xyz;
+
+    vec2 texcoord = fsin_texcoords;
+    vec3 fragpos  = vec3(0.0);
+
+    {
+        float depth = textureLod(un_fragdepth, texcoord, 0.0).r;
+
+        vec4 ndc;
+             ndc.xy = texcoord * 2.0 - 1.0;
+             ndc.z  = depth * 2.0 - 1.0;
+             ndc.w  = 1.0;
+
+        vec4 view = inverse(camera.V) * inverse(camera.P) * ndc;
+
+        fragpos = (view.xyz / view.w);
+    }
 
 
-// #version 460 core
+    vec3 N = normalize(textureLod(un_normal, texcoord, 0.0).xyz);
+    vec3 L = -IDK_UBO_dirlights[0].direction.xyz;
 
-// #extension GL_GOOGLE_include_directive: require
-
-// #include "../include/storage.glsl"
-// #include "../include/util.glsl"
-// #include "../include/pbr.glsl"
-
-
-
-// out vec4 fsout_frag_color;
-
-// in vec2 fsin_texcoords;
-
-// uniform sampler2D un_input;
-// uniform sampler2D un_albedo;
-// uniform sampler2D un_normal;
-// uniform sampler2D un_pbr;
-// uniform sampler2D un_fragdepth;
-// uniform sampler2D un_BRDF_LUT;
+    vec2  tsize = textureSize(un_fragdepth, 0);
+    vec2  texel = tsize * (texcoord + IDK_GetIrrational());
+    vec2  bnoise = IDK_BlueNoiseTexel(ivec2(texel)).rg;
+    float n0 = bnoise[0] * 0.25;
+    float n1 = bnoise[1] + 0.5;
 
 
-// #define RAY_OFFSET 0.02
-// #define RAY_STEP_SIZE 1.0
-// #define RAY_MAX_STEPS 128
+    if (textureLod(un_fragdepth, texcoord, 0.0).r >= 1.0)
+    {
+        fsout_frag_color = vec4(1.0);
+        return;
+    }
 
-// #define MIPLEVEL_SPECULAR 4.0
+    #define MAXDIST    0.75
+    #define STEPS      32
+    #define STEP_SIZE (MAXDIST / STEPS)
+    #define THICKNESS  -0.05
 
+    float occlusion = 0.0;
 
-// void main()
-// {
-//     IDK_Camera camera = IDK_RenderData_GetCamera();
-//     vec3 viewpos = camera.position.xyz;
+    vec3 ro = (camera.V * vec4(fragpos, 1.0)).xyz;
+    vec3 rd = normalize((camera.V * vec4(L, 0.0)).xyz);
+    vec3 rn = normalize((camera.V * vec4(N, 0.0)).xyz);
+    vec3 rp = ro;
 
-//     vec2  texcoord = fsin_texcoords;
-//     vec3  position = IDK_WorldFromDepth(un_fragdepth, texcoord, camera.P, camera.V);
+    for (int i=0; i<STEPS; i++)
+    {
+        rp += STEP_SIZE*rd;
 
-//     IDK_PBRSurfaceData surface = IDK_PBRSurfaceData_load(
-//         camera,
-//         texcoord,
-//         un_fragdepth,
-//         un_albedo,
-//         un_normal,
-//         un_pbr,
-//         un_BRDF_LUT
-//     );
+        vec4 proj = camera.P * vec4(rp.xyz, 1.0);
+        vec2 uv   = (proj.xy / proj.w) * 0.5 + 0.5;
 
-//     vec4 in_color = texture(un_input, texcoord);
+        if (uv.x <= 0.0 || uv.x >= 1.0 || uv.y <= 0.0 || uv.y >= 1.0)
+        {
+            break;
+        }
 
-//     if (surface.alpha < 1.0)
-//     {
-//         fsout_frag_color = in_color;
-//         return;
-//     }
+        float tex_z = DepthToViewZ(un_fragdepth, uv, camera.P);
+        float delta = (rp.z) - (tex_z);
 
-//     if (dot(surface.R, surface.V) > 0.0)
-//     {
-//         fsout_frag_color = in_color;
-//         return;
-//     }
-
-
-//     vec3 ray_pos = position + RAY_OFFSET*surface.N;
-//     float initial_depth = IDK_WorldToUV(ray_pos, (camera.P * camera.V)).z;
-
-//     vec3 view_dir = inverse(mat3((camera.P * camera.V))) * vec3(fsin_texcoords * 2.0 - 1.0, 1.0);
-//     vec3 ray_dir  = surface.R;
-
-//     if (dot(view_dir, ray_dir) < 0.3)
-//     {
-//         fsout_frag_color = in_color;
-//         return;
-//     }
+        if ((delta < 0.0) && (delta > THICKNESS))
+        {
+            occlusion = 1.0;
+            break;
+        }
+    }
 
 
-
-//     vec4  result  = vec4(0.0, 0.0, 0.0, 1.0);
-//     int   count   = 0;
-//     float cumdist = 0.0;
-
-//     const mat4 PV = (camera.P * camera.V);
-
-//     for (float i=0; i<RAY_MAX_STEPS; i++)
-//     {
-//         // Project ray into UV space
-//         // ---------------------------------------------------------------------------
-//         vec4 projected = PV * vec4(ray_pos, 1.0);
-//         projected.xy /= projected.w;
-//         projected.xy = projected.xy * 0.5 + 0.5;
-
-//         ivec2 tx = ivec2(projected.xy * vec2(camera.near, camera.far));
-//         vec2  uv = projected.xy;
+    fsout_frag_color = vec4(0.0);
+}
 
 
-//         // float frag_depth = (PV * imageLoad(un_position, tx)).z;
-//         vec3 pos = IDK_WorldFromDepth(un_fragdepth, uv, camera.P, camera.V);
-
-//         float frag_depth = (PV * vec4(pos, 1.0)).z;
-//         float ray_depth  = IDK_WorldToUV(ray_pos, PV).z;
-//         // ---------------------------------------------------------------------------
-
-//         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
-//         {
-//             fsout_frag_color = in_color;
-//             return;
-//         }
-
-//         else if (ray_depth >= frag_depth && frag_depth > initial_depth)
-//         {
-//             result = textureLod(un_input, uv, MIPLEVEL_SPECULAR*surface.roughness);
-//             break;
-//         }
-
-//         ray_pos += RAY_STEP_SIZE * ray_dir;
-//         cumdist += RAY_STEP_SIZE;
-//     }
-
-//     result.rgb *= fresnelSchlickR(surface.NdotV, surface.F0, surface.roughness);
-
-//     fsout_frag_color = vec4(in_color.rgb + result.rgb, in_color.a);
-// }
 

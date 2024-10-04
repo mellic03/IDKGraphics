@@ -243,7 +243,7 @@ idk::ModelAllocator::loadModel( const std::string &filepath, uint32_t format )
 
     if (m_loaded_model_IDs.contains(filepath))
     {
-        std::cout << "Model already cached: \"" << filepath << "\"\n";
+        LOG_INFO() << "Model already cached: \"" << filepath << "\"";
         return m_loaded_model_IDs[filepath];
     }
 

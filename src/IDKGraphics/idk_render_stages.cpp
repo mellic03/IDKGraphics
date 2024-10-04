@@ -150,7 +150,7 @@ idk::RenderEngine::RenderStage_geometry( IDK_Camera &camera, float dtime,
     {
         buffer_out.bind();
 
-        idk::TerrainRenderer::render(*this, buffer_out, dtime, camera, m_model_allocator);
+        idk::TerrainRenderer::render(*this, dtime, buffer_out, m_temp_depthbuffer, camera, m_model_allocator);
 
         gl::bindVertexArray(m_model_allocator.getVAO());
         gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_DIB.ID());
@@ -163,7 +163,7 @@ idk::RenderEngine::RenderStage_geometry( IDK_Camera &camera, float dtime,
     {
         buffer_out.bind();
 
-        idk::ParticleSystem::render(m_model_allocator);
+        idk::ParticleSystem::render(*this, m_model_allocator);
 
         gl::bindVertexArray(m_model_allocator.getVAO());
         gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_DIB.ID());
@@ -223,27 +223,16 @@ idk::RenderEngine::RenderStage_volumetrics()
     gl::bindBuffer(GL_DRAW_INDIRECT_BUFFER, m_lightsource_DIB.ID());
 
 
-    static double irrational = 1.61803398875;
-    irrational += 1.61803398875;
+    m_volumetrics_buffer.bind();
+    m_volumetrics_buffer.clear(GL_COLOR_BUFFER_BIT);
 
-    m_volumetrics_buffers[0]->bind();
-    m_volumetrics_buffers[0]->clear(GL_COLOR_BUFFER_BIT);
-
-
-    auto &config = m_rendersettings->volumetrics;
+    // auto &config = m_rendersettings->volumetrics;
 
     auto &program = getProgram("dirlight-volumetric");
     program.bind();
 
-    program.set_float("un_samples",     config.samples);
-    program.set_float("un_attenuation", config.attenuation);
-    program.set_float("un_intensity",   config.intensity);
-    program.set_float("un_factor",      config.factor);
-
-    // // program.set_sampler2D("un_previous",  m_volumetrics_buffers[(idx+1)%2].attachments[0]);
-    program.set_float("un_irrational",    fmod(irrational, 1.0));
-
-    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[3]);
+    program.set_sampler2D("un_color",     m_lightbuffers[0]->attachments[0]);
+    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[4]);
     program.set_sampler2D("un_shadowmap", m_dirshadow_buffer.depth_attachment);
 
     gl::multiDrawElementsIndirect(
@@ -303,10 +292,13 @@ idk::RenderEngine::RenderStage_dirlights()
     auto &program = getProgram("deferred-dirlight");
     program.bind();
 
+
+    program.set_sampler2D("un_occlusion", m_SSAO_buffers[0].attachments[0]);
+
     program.set_sampler2D("un_texture_0", m_gbuffers[0]->attachments[0]);
     program.set_sampler2D("un_texture_1", m_gbuffers[0]->attachments[1]);
     program.set_sampler2D("un_texture_2", m_gbuffers[0]->attachments[2]);
-    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[3]);
+    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[4]);
     program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
 
     program.set_samplerCube("un_skybox", skyboxes[current_skybox]);
@@ -345,7 +337,7 @@ idk::RenderEngine::RenderStage_pointlights()
     program.set_sampler2D("un_texture_0", m_gbuffers[0]->attachments[0]);
     program.set_sampler2D("un_texture_1", m_gbuffers[0]->attachments[1]);
     program.set_sampler2D("un_texture_2", m_gbuffers[0]->attachments[2]);
-    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[3]);
+    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[4]);
     program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
 
     gl::multiDrawElementsIndirect(
@@ -379,7 +371,7 @@ idk::RenderEngine::RenderStage_spotlights()
     program.set_sampler2D("un_texture_0", m_gbuffers[0]->attachments[0]);
     program.set_sampler2D("un_texture_1", m_gbuffers[0]->attachments[1]);
     program.set_sampler2D("un_texture_2", m_gbuffers[0]->attachments[2]);
-    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[3]);
+    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[4]);
     program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
 
     gl::multiDrawElementsIndirect(
@@ -405,37 +397,74 @@ idk::RenderEngine::RenderStage_lighting( IDK_Camera &camera, float dtime,
 
     // SSAO
     // -----------------------------------------------------------------------------------------
-    static int SSAO_curr = 0;
-    static int SSAO_next = 1;
-    SSAO_curr = (SSAO_curr + 1) % 2;
-    SSAO_next = (SSAO_curr + 1) % 2;
-
     if (m_rendersettings->ssao.enabled)
     {
         auto &config = m_rendersettings->ssao;
 
-        static double irrational = 1.61803398875;
-        irrational += 1.61803398875;
-        // irrational = fmod(irrational, 1.61803398875);
+        {
+            m_SSAO_buffers[1].bind();
+            m_SSAO_buffers[1].clear(GL_COLOR_BUFFER_BIT);
 
-        m_SSAO_buffers[SSAO_curr].bind();
-        m_SSAO_buffers[SSAO_curr].clear(GL_COLOR_BUFFER_BIT);
+            auto &program = getBindProgram("SSAO");
+            program.set_sampler2D("un_gNormal",   m_gbuffers[0]->attachments[1]);
+            program.set_sampler2D("un_gDepth",    m_gbuffers[0]->attachments[4]);
 
-        auto &program = getProgram("SSAO");
+            program.set_float("un_intensity",     config.intensity);
+            program.set_float("un_factor",        config.factor);
+            program.set_int("un_samples",         config.samples);
+            program.set_float("un_ssao_radius",   config.radius);
+            program.set_float("un_ssao_bias",     config.bias);
 
-        program.bind();
-        program.set_sampler2D("un_gNormal",   m_gbuffers[0]->attachments[1]);
-        program.set_sampler2D("un_gDepth",    m_gbuffers[0]->attachments[3]);
-        program.set_sampler2D("un_prev",      m_SSAO_buffers[SSAO_next].attachments[0]);
+            gl::drawArrays(GL_TRIANGLES, 0, 6);
+        }
 
-        program.set_float("un_irrational",    fmod(irrational, 1.0));
-        program.set_float("un_intensity",     config.intensity);
-        program.set_float("un_factor",        config.factor);
-        program.set_int("un_samples",         config.samples);
-        program.set_float("un_ssao_radius",   config.radius);
-        program.set_float("un_ssao_bias",     config.bias);
 
-        gl::drawArrays(GL_TRIANGLES, 0, 6);
+        // Screen-space shadows
+        // -------------------------------------------------------------------------------------
+        // {
+        //     gl::enable(GL_BLEND);
+        //     gl::blendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
+
+        //     // m_shadow_buffer.bind();
+        //     // m_shadow_buffer.clear(GL_COLOR_BUFFER_BIT);
+
+        //     auto &program = getBindProgram("SSS");
+        //     program.set_sampler2D("un_normal",    m_gbuffers[0]->attachments[1]);
+        //     program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[4]);
+
+        //     gl::drawArrays(GL_TRIANGLES, 0, 6);
+        // }
+        // -------------------------------------------------------------------------------------
+
+
+        {
+            int G = glm::clamp(m_rendersettings->ssao.iterations, 0, 8);
+            auto &gaussian = getBindProgram("filter-gaussian");
+
+            for (int i=0; i<G; i++)
+            {
+                m_SSAO_buffers[0].bind();
+                m_SSAO_buffers[0].clear(GL_COLOR_BUFFER_BIT);
+                gaussian.set_sampler2D("un_input", m_SSAO_buffers[1].attachments[0]);
+                gaussian.set_int("un_horizontal", 0);
+                gl::drawArrays(GL_TRIANGLES, 0, 6);
+
+                m_SSAO_buffers[1].bind();
+                m_SSAO_buffers[1].clear(GL_COLOR_BUFFER_BIT);
+                gaussian.set_sampler2D("un_input", m_SSAO_buffers[0].attachments[0]);
+                gaussian.set_int("un_horizontal", 1);
+                gl::drawArrays(GL_TRIANGLES, 0, 6);
+            }
+
+            if (m_rendersettings->ssao.unsharp > 0)
+            {
+                auto &unsharp  = getBindProgram("filter-unsharp");
+                m_SSAO_buffers[0].bind();
+                m_SSAO_buffers[0].clear(GL_COLOR_BUFFER_BIT);
+                unsharp.set_sampler2D("un_input", m_SSAO_buffers[1].attachments[0]);
+                gl::drawArrays(GL_TRIANGLES, 0, 6);
+            }
+        }
     }
     // -----------------------------------------------------------------------------------------
 
@@ -443,19 +472,7 @@ idk::RenderEngine::RenderStage_lighting( IDK_Camera &camera, float dtime,
     gl::bindVertexArray(m_model_allocator.getVAO());
 
 
-    // Volumetrics
-    // -----------------------------------------------------------------------------------------
-    if (m_rendersettings->volumetrics.enabled)
-    {
-        RenderStage_volumetrics();
-    }
-    // -----------------------------------------------------------------------------------------
-
-
-
-
     buffer_out.bind();
-    buffer_out.clear(GL_COLOR_BUFFER_BIT);
 
     gl::enable(GL_BLEND, GL_CULL_FACE);
     gl::blendFunc(GL_ONE, GL_ONE);
@@ -470,45 +487,67 @@ idk::RenderEngine::RenderStage_lighting( IDK_Camera &camera, float dtime,
     gl::disable(GL_CULL_FACE, GL_DEPTH_TEST);
 
 
-    if (m_rendersettings->ssao.enabled)
-    {
-        gl::blendFunc(GL_DST_COLOR, GL_ZERO);
-
-        auto &program = getProgram("SSAO_composite");
-        program.bind();
-        program.set_sampler2D("un_input", m_SSAO_buffers[SSAO_curr].attachments[0]);
-        gl::drawArrays(GL_TRIANGLES, 0, 6);
-
-        gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
-    }
-
-
-
-    if (m_rendersettings->volumetrics.enabled)
-    {
-        gl::blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-        auto &program = getProgram("blit");
-        program.bind();
-        program.set_sampler2D("un_input", m_volumetrics_buffers[0]->attachments[0]);
-        gl::drawArrays(GL_TRIANGLES, 0, 6);
-
-        gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
-    }
-
-
-    // if (m_rendersettings->volumetrics.enabled)
+    // if (m_rendersettings->ssao.enabled)
     // {
-    //     gl::blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    //     gl::blendFunc(GL_DST_COLOR, GL_ZERO);
 
-    //     glShaderProgram &program = getProgram("composite");
+    //     auto &program = getProgram("SSAO_composite");
     //     program.bind();
-    //     program.set_sampler2D("un_input", m_volumetrics_buffers[0].attachments[0]);
+    //     program.set_sampler2D("un_input", m_SSAO_buffers[0].attachments[0]);
     //     gl::drawArrays(GL_TRIANGLES, 0, 6);
 
     //     gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
     // }
 
+    // Blit foliage
+    // -----------------------------------------------------------------------------------------
+    // {
+    //     gl::enable(GL_BLEND);
+    //     gl::blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    //     auto &program = getBindProgram("blit-foliage");
+    //     program.set_sampler2D("un_foliage_color", m_foliage_buffer.attachments[0]);
+    //     program.set_sampler2D("un_foliage_depth", m_foliage_buffer.attachments[1]);
+    //     program.set_sampler2D("un_gbuffer_depth", m_gbuffers[0]->attachments[4]);
+    
+    //     gl::drawArrays(GL_TRIANGLES, 0, 6);
+    // }
+    // -----------------------------------------------------------------------------------------
+
+
+    // Volumetrics
+    // -----------------------------------------------------------------------------------------
+    if (m_rendersettings->volumetrics.enabled)
+    {
+        gl::disable(GL_BLEND);
+        gl::bindVertexArray(m_model_allocator.getVAO());
+        RenderStage_volumetrics();
+
+        gl::enable(GL_BLEND);
+        gl::bindVertexArray(m_quad_VAO);
+        buffer_out.bind();
+
+        if (m_rendersettings->volumetrics.blend_mode == 0)
+        {
+            gl::blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        }
+    
+        else if (m_rendersettings->volumetrics.blend_mode == 1)
+        {
+            gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
+        }
+    
+        else
+        {
+            gl::blendFunc(GL_ONE, GL_ONE);
+        }
+
+        auto &program = getProgram("blit-volumetrics");
+        program.bind();
+        program.set_sampler2D("un_input", m_volumetrics_buffer.attachments[0]);
+        gl::drawArrays(GL_TRIANGLES, 0, 6);
+    }
+    // ----------------------------------------------------------------------------------------
 
     gl::enable(GL_CULL_FACE);
     gl::cullFace(GL_BACK);
@@ -531,40 +570,89 @@ idk::RenderEngine::PostProcess_chromatic_aberration( glFramebuffer &buffer_in,
 
 
 void
-idk::RenderEngine::PostProcess_SSR( glFramebuffer &buffer_in, glFramebuffer &buffer_out )
+idk::RenderEngine::PostProcess_SSR( glFramebuffer &buffer_out )
 {
-    // glBlitNamedFramebuffer(
-    //     buffer_in.m_FBO,
-    //     m_mip_scratchbuffer.m_FBO,
-    //     0, 0, m_mip_scratchbuffer.size().x, m_mip_scratchbuffer.size().y,
-    //     0, 0, width(), height(),
-    //     GL_COLOR_BUFFER_BIT,
-    //     GL_LINEAR
-    // );
+    // IDK_GLCALL(
+    //     glBlitNamedFramebuffer(
+    //         buffer_out.m_FBO,
+    //         m_mipbuffer[0].m_FBO,
+    //         0, 0, width(), height(),
+    //         0, 0, width()/2, height()/2,
+    //         GL_COLOR_BUFFER_BIT,
+    //         GL_NEAREST
+    //     );
+    // )
+    // gl::generateTextureMipmap(m_mipbuffer[0].attachments[0]);
 
-    // gl::enable(GL_BLEND);
-    // gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
+    {
+        auto &program = getBindProgram("SSR-downsample");
+        auto size     = m_mipbuffer[0].size();
 
-    // gl::generateTextureMipmap(m_mip_scratchbuffer.attachments[0]);
+        for (int i=0; i<6; i++)
+        {
+            uint32_t src;
+
+            if (i == 0)
+            {
+                src = buffer_out.attachments[0];
+                program.set_int("un_scale", 2);
+            }
+
+            else
+            {
+                src = m_mipbuffer[1].attachments[i-1];
+                program.set_int("un_scale", 1);
+            }
+
+
+            program.set_sampler2D("un_input", src);
+
+            gl::bindImageTexture(
+                1, m_mipbuffer[1].attachments[i], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F
+            );
+
+            program.set_int("un_miplevel", i);
+            program.dispatch(size.x/8, size.y/8, 1);
+
+            gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+        }
+    }
+
 
     buffer_out.bind();
-    buffer_out.clear(GL_COLOR_BUFFER_BIT);
+    gl::enable(GL_BLEND);
+
+    if (m_rendersettings->ssr.blend_mode == 0)
+    {
+        gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
+    }
+
+    else
+    {
+        gl::blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
 
 
-    auto &program = getProgram("SSR");
-    program.bind();
+    {
+        auto &program = getBindProgram("SSR");
+    
+        for (int i=0; i<6; i++)
+        {
+            std::string label = "un_input[" + std::to_string(i) + "]";
+            program.set_sampler2D(label, m_mipbuffer[1].attachments[i]);
+        }
 
-    program.set_sampler2D("un_input",  buffer_in.attachments[0]);
-    program.set_sampler2D("un_albedo", m_gbuffers[0]->attachments[0]);
-    program.set_sampler2D("un_normal", m_gbuffers[0]->attachments[1]);
-    program.set_sampler2D("un_pbr",    m_gbuffers[0]->attachments[2]);
-    program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[3]);
-    program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
-    program.set_samplerCube("un_skybox",  skyboxes[current_skybox]);
+        program.set_sampler2D("un_albedo",    m_gbuffers[0]->attachments[0]);
+        program.set_sampler2D("un_normal",    m_gbuffers[0]->attachments[1]);
+        program.set_sampler2D("un_pbr",       m_gbuffers[0]->attachments[2]);
+        program.set_sampler2D("un_fragdepth", m_gbuffers[0]->attachments[4]);
+        program.set_sampler2D("un_BRDF_LUT",  BRDF_LUT);
+        program.set_sampler2D("un_occlusion", m_SSAO_buffers[0].attachments[0]);
+        program.set_samplerCube("un_skybox",  skyboxes[current_skybox]);
+        gl::drawArrays(GL_TRIANGLES, 0, 6);
+    }
 
-    gl::drawArrays(GL_TRIANGLES, 0, 6);
-
-    // gl::disable(GL_BLEND);
+    gl::disable(GL_BLEND);
 }
 
 
@@ -631,32 +719,6 @@ idk::RenderEngine::PostProcess_colorgrading( IDK_Camera &camera,
 
 
 void
-idk::RenderEngine::PostProcess_text( glFramebuffer &buffer_out )
-{
-    static const idk::glTextureConfig config = {
-        .internalformat = GL_RGBA16,
-        .format         = GL_RGBA,
-        .minfilter      = GL_LINEAR,
-        .magfilter      = GL_LINEAR,
-        .datatype       = GL_UNSIGNED_BYTE,
-        .genmipmap      = GL_FALSE
-    };
-
-    GLuint texture = gltools::loadTexture2D(width(), height(), m_textsurface->pixels, config);
-
-    gl::bindImageTexture(0, buffer_out.attachments[0], 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
-
-    glShaderProgram &program = getProgram("text");
-    program.bind();
-
-    program.set_sampler2D("un_text", texture);
-    program.dispatch(width()/8, height()/8, 1);
-
-    gl::deleteTextures(1, &texture);
-}
-
-
-void
 idk::RenderEngine::PostProcess_ui( glFramebuffer &buffer_out )
 {
     buffer_out.bind();
@@ -714,35 +776,72 @@ idk::RenderEngine::RenderStage_postprocessing( IDK_Camera   &camera,
                                                glFramebuffer &buffer_in,
                                                glFramebuffer &buffer_out )
 {
-    // idk::glFramebuffer *src = &m_scratchbuffers2[0];
-    // idk::glFramebuffer *dst = &buffer_out;
 
-    // PostProcess_SSR(buffer_in, m_scratchbuffers2[0]);
-    PostProcess_bloom(buffer_in);
+    if (m_rendersettings->ssr.enabled)
+    {
+        PostProcess_SSR(*(m_lightbuffers[0]));
+    }
+
+
+    m_lightbuffers[1]->bind();
+    // m_lightbuffers[1]->clear(GL_COLOR_BUFFER_BIT);
+
+    // TAA
+    // -----------------------------------------------------------------------------------------
+    {
+        gl::disable(GL_BLEND);
+        // gl::blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        auto &program = getBindProgram("TAA");
+        program.set_sampler2D("un_curr_color", m_lightbuffers[0]->attachments[0]);
+        program.set_sampler2D("un_prev_color", m_lightbuffers[2]->attachments[0]);
+
+        program.set_sampler2D("un_curr_depth", m_gbuffers[0]->attachments[4]);
+        program.set_sampler2D("un_prev_depth", m_gbuffers[1]->attachments[4]);
+    
+        program.set_sampler2D("un_velocity",   m_gbuffers[0]->attachments[3]);
+        program.set_sampler2D("un_prev_velocity", m_gbuffers[1]->attachments[3]);
+
+        gl::drawArrays(GL_TRIANGLES, 0, 6);
+    }
+
+
+    IDK_GLCALL(
+        glBlitNamedFramebuffer(
+            m_lightbuffers[1]->m_FBO,
+            m_lightbuffers[2]->m_FBO,
+            0, 0, width(), height(),
+            0, 0, width(), height(),
+            GL_COLOR_BUFFER_BIT,
+            GL_NEAREST
+        );
+    )
+
+
+    PostProcess_bloom(*(m_lightbuffers[1]));
     // std::swap(src, dst);
 
     // // PostProcess_chromatic_aberration(*A, *B);
     // // std::swap(src, dst);
 
-    PostProcess_colorgrading(camera, buffer_in, m_scratchbuffers2[1]);
+    // PostProcess_colorgrading(camera, buffer_in, *m_lightbuffers[0]);
     // // std::swap(src, dst);
 
 
     buffer_out.bind();
+    buffer_out.clear(GL_COLOR_BUFFER_BIT);
 
-    // FXAA
-    // -----------------------------------------------------------------------------------------
     {
-        auto &program = getProgram("fxaa");
-        program.bind();
-        program.set_sampler2D("un_input", m_scratchbuffers2[1].attachments[0]);
-
-        gl::drawArrays(GL_TRIANGLES, 0, 6);
+        auto &program = getBindProgram("colorgrade");
+        program.set_sampler2D("un_input", m_lightbuffers[1]->attachments[0]);
+        program.set_sampler2D("un_bloom", m_bloom_buffers[0].attachments[0]);
+        gl::drawArrays(GL_TRIANGLES, 0, 6);   
     }
+
+
+
     // -----------------------------------------------------------------------------------------
 
-    PostProcess_text(buffer_out);
-    gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
     PostProcess_ui(buffer_out);
     gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -757,8 +856,8 @@ idk::RenderEngine::RenderStage_postprocessing( IDK_Camera   &camera,
             glBlitNamedFramebuffer(
                 buffer_out.m_FBO,
                 0,
-                0, 0, width(), height(),
-                0, 0, width(), height(),
+                0, 0, m_winsize.x, m_winsize.y,
+                0, 0, m_winsize.x, m_winsize.y,
                 GL_COLOR_BUFFER_BIT,
                 GL_NEAREST
             );

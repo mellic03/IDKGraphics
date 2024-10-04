@@ -30,7 +30,7 @@ struct idk::RenderQueueConfig
 class idk::RenderQueue
 {
 private:
-    std::unordered_map<int, std::vector<glm::mat4>> m_drawlist;
+    std::unordered_map<int, std::vector<std::pair<glm::mat4, glm::mat4>>> m_drawlist;
 
     size_t    m_drawcmd_offset = 0;
     size_t    m_num_drawcmd    = 0;
@@ -45,6 +45,7 @@ public:
     int                    ID = -1;
 
     void enque( int, const glm::mat4& );
+    void enque( int, const glm::mat4&, const glm::mat4& );
     void enque( int, const idk::Transform&, const IDK_Camera&, ModelAllocator& );
     void clear();
     bool empty() { return m_drawlist.empty(); };
@@ -53,7 +54,7 @@ public:
     size_t numDrawCommands()      { return m_num_drawcmd;     };
     bool   empty2()               { return m_num_drawcmd > 0; };
 
-    std::vector<glm::mat4> &getDrawList( int model)
+    std::vector<std::pair<glm::mat4, glm::mat4>> &getDrawList( int model)
     {
         return m_drawlist[model];
     }

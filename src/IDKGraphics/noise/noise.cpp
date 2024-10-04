@@ -4,12 +4,50 @@
 #include <libidk/idk_gl.hpp>
 #include <libidk/idk_random.hpp>
 #include <libidk/idk_noisegen.hpp>
+#include "../idk_noisegen.hpp"
 
 #include <iostream>
 
 
 using namespace idk;
 
+#define TEX_W 512
+
+struct f32bufferREE
+{
+    glm::vec2 data[TEX_W*TEX_W];
+
+    glm::vec2 sampleNearest_i32( int x, int y )
+    {
+        x %= TEX_W;
+        y %= TEX_W;
+
+        return data[TEX_W*y + x];
+    }
+
+    glm::vec2 sampleBillinear( float u, float v )
+    {
+        u *= TEX_W;
+        v *= TEX_W;
+
+        float x_factor = (u - floor(u)) / (ceil(u) - floor(u));
+        float y_factor = (v - floor(v)) / (ceil(v) - floor(v));
+
+        int x = int(u) % TEX_W;
+        int y = int(v) % TEX_W;
+
+        glm::vec2 u00 = sampleNearest_i32(x+0, y+0);
+        glm::vec2 u01 = sampleNearest_i32(x+1, y+0);
+        glm::vec2 u10 = sampleNearest_i32(x+0, y+1);
+        glm::vec2 u11 = sampleNearest_i32(x+1, y+1);
+
+        glm::vec2 u0 = glm::mix(u00, u01, x_factor);
+        glm::vec2 u1 = glm::mix(u10, u11, x_factor);
+
+        return glm::mix(u0, u1, y_factor);
+    }
+
+};
 
 
 struct NoiseGenBuffer
@@ -21,67 +59,22 @@ struct NoiseGenBuffer
 
 
 
+struct SSBO_Noise_buffer
+{
+    uint64_t handles[7];
+    glm::vec2 directions[16];
+};
+
+
 namespace
 {
+    f32bufferREE *m_bluenoise;
     idk::glShaderProgram m_program_sobel;
     uint32_t m_voronoi_test;
+
+    SSBO_Noise_buffer m_buffer;
 }
 
-
-// uint32_t idk::noise::getVoronoiTest()
-// {
-//     return m_voronoi_test;
-// }
-
-
-
-
-
-
-// static void
-// generate_voronoi( int cells, int tex_w, uint32_t texture )
-// {
-//     static idk::glBufferObject<GL_SHADER_STORAGE_BUFFER> SSBO(
-//         shader_bindings::SSBO_NoiseGen, sizeof(NoiseGenBuffer), GL_DYNAMIC_COPY
-//     );
-
-//     static NoiseGenBuffer *buffer = new NoiseGenBuffer;
-
-
-//     float grid_w   = cells;
-//     float cell_w = 0.5f / (tex_w / cells);
-
-//     std::cout << grid_w << ", " << cell_w << "\n";
-
-//     for (int row=0; row<cells; row++)
-//     {
-//         for (int col=0; col<cells; col++)
-//         {
-//             glm::vec2 texcoord = glm::vec2(col*cell_w, row*cell_w);
-//                       texcoord += idk::randvec2(0.0f, cell_w);
-
-//             float h  = idk::randf();
-
-//             buffer->data[row][col] = glm::vec4(texcoord.x, texcoord.y, h, 0.0f);
-//         }
-//     }
-
-//     buffer->input_bounds  = glm::vec4(float(grid_w));
-//     buffer->output_bounds = glm::vec4(float(tex_w));
-
-//     SSBO.bufferSubData(0, sizeof(NoiseGenBuffer), (void *)(buffer));
-
-//     {
-//         gl::bindImageTexture(0, texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
-
-//         auto &program = m_program_voronoi;
-//         program.bind();
-//         program.dispatch(tex_w/8, tex_w/8, 1);
-
-//         gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-//     }
-
-// }
 
 
 
@@ -94,8 +87,6 @@ uint32_t do_thing( const std::string &name, const std::string &ext,
     for (int i=0; i<8; i++)
     {
         std::string path = "IDKGE/resources/noise/" + name + "/" + std::to_string(i) + ext;
-
-        std::cout << path << "\n";
         paths.push_back(path);
     }
 
@@ -108,8 +99,15 @@ uint32_t do_thing( const std::string &name, const std::string &ext,
 void
 idk::internal::upload_noise()
 {
+    for (int i=0; i<16; i++)
+    {
+        m_buffer.directions[i] = idk::randvec2(0.0f, 1.0f) * 2.0f - 1.0f;
+    }
+
+
+
+
     uint32_t textures[7];
-    uint64_t handles[7];
 
     idk::glTextureConfig noise_config = {
         .internalformat = GL_RGBA8,
@@ -122,21 +120,7 @@ idk::internal::upload_noise()
         .genmipmap      = GL_FALSE
     };
 
-    // idk::glTextureConfig voronoi_config = {
-    //     .internalformat = GL_R16F,
-    //     .format         = GL_RED,
-    //     .minfilter      = GL_LINEAR,
-    //     .magfilter      = GL_LINEAR,
-    //     .wrap_s         = GL_REPEAT,
-    //     .wrap_t         = GL_REPEAT,
-    //     .datatype       = GL_FLOAT,
-    //     .genmipmap      = GL_FALSE
-    // };
-
     m_program_sobel = idk::glShaderProgram("IDKGE/shaders/generative/sobel.comp");
-    // m_voronoi_test = gltools::loadTexture2D(512, 512, nullptr, voronoi_config);
-    // generate_voronoi(32, 512, m_voronoi_test);
-
 
     // White
     {
@@ -144,10 +128,9 @@ idk::internal::upload_noise()
         textures[0] = gltools::loadTexture2D(256, 256, pixels.get(), noise_config);
     }
 
-
     // Blue
     {
-        textures[1] = gltools::loadTexture("IDKGE/resources/noise/blue/0.png", noise_config);
+        textures[1] = gltools::loadTexture("IDKGE/resources/noise/blue/1.png", noise_config);
     }
 
 
@@ -157,20 +140,49 @@ idk::internal::upload_noise()
     textures[5] = do_thing("vein", ".jpg",          512,  noise_config);
     textures[6] = do_thing("crater", ".jpg",        512,  noise_config);
 
-
     for (int i=0; i<7; i++)
     {
-        handles[i] = gl::getTextureHandleARB(textures[i]);
-        gl::makeTextureHandleResidentARB(handles[i]);
+        m_buffer.handles[i] = gl::getTextureHandleARB(textures[i]);
+        gl::makeTextureHandleResidentARB(m_buffer.handles[i]);
     }
 
 
     idk::glBufferObject<GL_SHADER_STORAGE_BUFFER> SSBO;
 
     SSBO.init(shader_bindings::SSBO_Noise);
-    SSBO.bufferData(sizeof(handles), &handles, GL_STATIC_COPY);
+    SSBO.bufferData(sizeof(m_buffer), &m_buffer, GL_STATIC_COPY);
     SSBO.bind(shader_bindings::SSBO_Noise);
 
+
+    gl::memoryBarrier(GL_ALL_BARRIER_BITS);
+
+    m_bluenoise = new f32bufferREE;
+
+    IDK_GLCALL(
+        glGetTextureImage(
+            textures[1],
+            0,
+            GL_RG,
+            GL_FLOAT,
+            TEX_W*TEX_W*sizeof(glm::vec2),
+            &(m_bluenoise->data[0])
+        );
+    )
+
+    gl::memoryBarrier(GL_ALL_BARRIER_BITS);
 }
 
 
+
+glm::vec2
+idk::noise::BlueRG( float u, float v )
+{ 
+    return m_bluenoise->sampleBillinear(u, v);
+}
+
+
+glm::vec2
+idk::noise::Randvec2( int i )
+{
+    return m_buffer.directions[i%16];
+}

@@ -1,8 +1,10 @@
 #version 460 core
 
 out vec4 fsout_frag_color;
+in  vec2 fsin_texcoords;
 
-in vec2 fsin_texcoords;
+
+uniform sampler2D un_prev_color;
 uniform sampler2D un_input;
 uniform sampler2D un_SSAO;
 
@@ -90,7 +92,10 @@ vec3 hsv2rgb(vec3 c)
 
 void main()
 {
-    vec3 color = fxaa(un_input, textureSize(un_input, 0), fsin_texcoords);
+    // vec3 color = fxaa(un_input, textureSize(un_input, 0), fsin_texcoords);
+    vec3 color = textureLod(un_input, fsin_texcoords, 0.0).rgb;
+    // vec3 color1 = textureLod(un_prev_color, fsin_texcoords, 0.0).rgb;
+    // vec3 color  = (7.0/8.0)*color1 + (1.0/8.0)*color0;
 
     fsout_frag_color = vec4(color, 1.0);
 }

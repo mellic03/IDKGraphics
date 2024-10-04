@@ -4,6 +4,7 @@
 #include "./include/storage.glsl"
 
 layout (location = 0) in vec3 vsin_pos;
+layout (location = 1) in vec3 vsin_normal;
 
 
 uniform uint un_light_id;
@@ -18,8 +19,6 @@ void main()
     const uint drawID = gl_DrawID + un_draw_offset;
     const uint offset = IDK_SSBO_transform_offsets[drawID];
     const mat4 model  = IDK_SSBO_transforms[offset + gl_InstanceID];
-
-    // gl_Position = light.transform * model * vec4(vsin_pos, 1.0);
 
     mat4 transform = (un_cascade <= 3) ? light.transforms[un_cascade] : light.transform;
 

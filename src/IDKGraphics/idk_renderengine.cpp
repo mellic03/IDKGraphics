@@ -1,6 +1,7 @@
 #include "idk_renderengine.hpp"
 #include "idk_render_settings.hpp"
 
+#include "lighting/idk_shadowcascade.hpp"
 #include "render/idk_initflags.hpp"
 #include "render/idk_vxgi.hpp"
 #include "render/cubemap.hpp"
@@ -8,17 +9,117 @@
 #include "particle/particle_system.hpp"
 #include "terrain/terrain.hpp"
 #include "storage/bindings.hpp"
-#include "./noise/noise.hpp"
+#include "noise/noise.hpp"
+#include "time/time.hpp"
+
+#include "renderstage/ssr.hpp"
 
 #include <libidk/GL/idk_glShaderStage.hpp>
 #include <libidk/idk_image.hpp>
 #include <libidk/idk_texturegen.hpp>
 #include <libidk/idk_log.hpp>
 
-#include "./UI/idk_ui.hpp"
-
 
 static float delta_time = 1.0f;
+
+
+static glm::vec2 halton_sequence[128];
+
+// static glm::vec2 taa_sequence[5];
+
+// static glm::vec2 halton_sequence[16] {
+//     glm::vec2(0.500000, 0.333333),
+//     glm::vec2(0.250000, 0.666667),
+//     glm::vec2(0.750000, 0.111111),
+//     glm::vec2(0.125000, 0.444444),
+//     glm::vec2(0.625000, 0.777778),
+//     glm::vec2(0.375000, 0.222222),
+//     glm::vec2(0.875000, 0.555556),
+//     glm::vec2(0.062500, 0.888889),
+//     glm::vec2(0.562500, 0.037037),
+//     glm::vec2(0.312500, 0.370370),
+//     glm::vec2(0.812500, 0.703704),
+//     glm::vec2(0.187500, 0.148148),
+//     glm::vec2(0.687500, 0.481481),
+//     glm::vec2(0.437500, 0.814815),
+//     glm::vec2(0.937500, 0.259259),
+//     glm::vec2(0.031250, 0.592593)
+// };
+
+
+float create_halton( int idx, int base )
+{
+    float f = 1;
+    float r = 0;
+    int current = idx;
+
+    do
+    {
+        f = f / base;
+        r = r + f * (current % base);
+        current = glm::floor(current / base);
+    } while (current > 0);
+
+    return r;
+}
+
+
+idk::RenderEngine::RenderEngine( const std::string &name, int w, int h, int gl_major,
+                                 int gl_minor, uint32_t flags )
+:
+    m_windowsys      (name.c_str(), w, h, gl_major, gl_minor, flags),
+    m_winsize        (w, h),
+    m_resolution     (w, h),
+    m_rendersettings (new RenderSettings),
+    m_config         (new RenderConfig)
+{
+    gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
+
+    init_all(name, w, h);
+    resize(w, h);
+
+    idk::ParticleSystem::init(*this);
+    idk::TerrainRenderer::init(*this, m_model_allocator);
+
+
+    // taa_sequence[0] = glm::vec2(-1, -1);
+    // taa_sequence[1] = glm::vec2(-1, +1);
+    // taa_sequence[2] = glm::vec2( 0,  0);
+    // taa_sequence[3] = glm::vec2(+0, -1);
+    // taa_sequence[4] = glm::vec2(+0, +1);
+
+    // Generate Halton sequence
+    for (int i=0; i<128; i++)
+    {
+        halton_sequence[i].x = create_halton(i+1, 2);
+        halton_sequence[i].y = create_halton(i+1, 3);
+    }
+
+    // {
+    //     idk::glTextureConfig config = {
+    //         .internalformat = GL_RGBA16F,
+    //         .format         = GL_RGBA,
+    //         .minfilter      = GL_LINEAR,
+    //         .magfilter      = GL_LINEAR,
+    //         .datatype       = GL_FLOAT,
+    //         .genmipmap      = GL_FALSE
+    //     };
+
+    //     m_postprocess_fb = createFramebuffer(1.0f, 1.0f, 1);
+    //     auto &fb = getFramebuffer(m_postprocess_fb);
+    //           fb.addAttachment(0, new FramebufferAttachment(config));
+    // }
+
+    // m_render_stages.push_back(dynamic_cast<idk::RenderStage*>(new idk::RenderStageB));
+
+    // for (auto *RS: m_render_stages)
+    // {
+    //     RS->init(*this);
+    // }
+}
+
+
+
 
 
 void
@@ -51,6 +152,7 @@ idk::RenderEngine::init_screenquad()
     // ------------------------------------------------------------------------------------
 }
 
+
 void
 idk::RenderEngine::compileShaders()
 {
@@ -58,6 +160,7 @@ idk::RenderEngine::compileShaders()
     createProgram("button-rect",  "IDKGE/shaders/", "button-rect.vs", "button-rect.fs");
     createProgram("ui-text",      "IDKGE/shaders/", "ui-text.vs", "ui-text.fs");
     createProgram("ui-quad",      "IDKGE/shaders/", "ui-quad.vs", "ui-quad.fs");
+    // createProgram("ui-image",     "IDKGE/shaders/", "ui-image.vs", "ui-image.fs");
 
     createProgram("overlay",      glShaderProgram("IDKGE/shaders/overlay.comp"));
     createProgram("overlay-fill", glShaderProgram("IDKGE/shaders/overlay-fill.comp"));
@@ -67,6 +170,7 @@ idk::RenderEngine::compileShaders()
     createProgram("gpass",           "IDKGE/shaders/deferred/", "gpass.vs", "gpass.fs");
     createProgram("gpass-decal",     "IDKGE/shaders/deferred/", "gpass.vs", "gpass-decal.fs");
 
+    createProgram("shadowcascade-split", glShaderProgram("IDKGE/shaders/shadowcascade-split.comp"));
 
     // Probe-based GI
     // -----------------------------------------------------------------------------------------
@@ -114,20 +218,28 @@ idk::RenderEngine::compileShaders()
 
 
     createProgram("blit", "IDKGE/shaders/", "screenquad.vs", "post/blit.fs");
-
-
+    createProgram("blit-volumetrics", "IDKGE/shaders/", "screenquad.vs", "post/blit-volumetrics.fs");
+    createProgram("blit-foliage", "IDKGE/shaders/", "screenquad.vs", "post/blit-foliage.fs");
     createProgram("composite", "IDKGE/shaders/", "screenquad.vs", "post/composite.fs");
 
     createProgram("dirshadow-indirect", "IDKGE/shaders/", "dirshadow-indirect.vs", "dirshadow.fs");
     createProgram("SSR", "IDKGE/shaders/", "screenquad.vs", "post/SSR.fs");
+    createProgram("SSR-downsample", glShaderProgram("IDKGE/shaders/post/SSR-downsample.comp"));
+
+    createProgram("SSS", "IDKGE/shaders/", "screenquad.vs", "post/SSS.fs");
+
 
     createProgram("bloom-first", "IDKGE/shaders/", "screenquad.vs", "post/bloom-first.fs");
     createProgram("bloom-down",  "IDKGE/shaders/", "screenquad.vs", "post/bloom-down.fs");
     createProgram("bloom-up",    "IDKGE/shaders/", "screenquad.vs", "post/bloom-up.fs");
 
     createProgram("screenquad", "IDKGE/shaders/", "screenquad.vs", "screenquad.fs");
+    createProgram("filter-gaussian", "IDKGE/shaders/", "screenquad.vs", "post/filter-gaussian.fs");
+    createProgram("filter-unsharp", "IDKGE/shaders/", "screenquad.vs", "post/filter-unsharp.fs");
 
-    createProgram("fxaa",           "IDKGE/shaders/", "screenquad.vs", "post/fxaa.fs");
+    // createProgram("fxaa",           "IDKGE/shaders/", "screenquad.vs", "post/aa-fxaa.fs");
+    createProgram("TAA", "IDKGE/shaders/", "screenquad.vs", "post/aa-taa.fs");
+
     createProgram("colorgrade",     "IDKGE/shaders/", "screenquad.vs", "post/colorgrade.fs");
     createProgram("alpha-0-1",      "IDKGE/shaders/", "screenquad.vs", "post/alpha-0-1.fs");
 
@@ -158,8 +270,16 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     w = glm::clamp(w, 128, 4096);
     h = glm::clamp(h, 128, 4096);
 
-
     idk::glTextureConfig config = {
+        .internalformat = GL_RGB10_A2,
+        .format         = GL_RGBA,
+        .minfilter      = GL_LINEAR,
+        .magfilter      = GL_LINEAR,
+        .datatype       = GL_UNSIGNED_BYTE,
+        .genmipmap      = GL_FALSE
+    };
+
+    idk::glTextureConfig SSR_config = {
         .internalformat = GL_RGBA16F,
         .format         = GL_RGBA,
         .minfilter      = GL_LINEAR,
@@ -168,7 +288,7 @@ idk::RenderEngine::init_framebuffers( int w, int h )
         .genmipmap      = GL_FALSE
     };
 
-    idk::glTextureConfig SSR_config = {
+    idk::glTextureConfig foliage_config = {
         .internalformat = GL_RGBA8,
         .format         = GL_RGBA,
         .minfilter      = GL_LINEAR,
@@ -187,7 +307,7 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     };
 
     idk::glTextureConfig vol_config = {
-        .internalformat = GL_RGBA16,
+        .internalformat = GL_RGBA8,
         .format         = GL_RGBA,
         .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
@@ -204,50 +324,92 @@ idk::RenderEngine::init_framebuffers( int w, int h )
         .genmipmap      = GL_FALSE
     };
 
-    static const idk::DepthAttachmentConfig depth_config = {
+    idk::glTextureConfig shadow_config = {
+        .internalformat = GL_R8,
+        .format         = GL_RED,
+        .minfilter      = GL_LINEAR,
+        .magfilter      = GL_LINEAR,
+        .datatype       = GL_FLOAT,
+        .genmipmap      = GL_FALSE
+    };
+
+    idk::glTextureConfig velocity_config = {
+        .internalformat = GL_RGBA16F,
+        .format         = GL_RGBA,
+        .minfilter      = GL_LINEAR,
+        .magfilter      = GL_LINEAR,
+        .datatype       = GL_FLOAT,
+        .genmipmap      = GL_FALSE
+    };
+
+    idk::glTextureConfig depth_config = {
         .internalformat = GL_DEPTH_COMPONENT24,
+        .format         = GL_RED,
+        .minfilter      = GL_NEAREST,
+        .magfilter      = GL_NEAREST,
         .datatype       = GL_FLOAT
     };
 
-    m_dirshadow_buffer.reset(2048, 2048, 0);
+    idk::glTextureConfig depth2_config =  {
+        .internalformat = GL_R8,
+        .format         = GL_RED
+    };
+
+    // static const idk::DepthAttachmentConfig depth_config = {
+    //     .internalformat = GL_DEPTH_COMPONENT32F,
+    //     .datatype       = GL_FLOAT
+    // };
+
+    m_dirshadow_buffer.reset(2048, 2048, 1);
     m_dirshadow_buffer.depthArrayAttachment(5, depth_config);
 
-    m_radiance_buffer.reset(w, h, 1);
-    m_radiance_buffer.colorAttachment(0, radiance_config);
+    m_dirshadow2_buffer.reset(2048, 2048, 4);
+    m_dirshadow2_buffer.colorAttachment(0, depth2_config);
+    m_dirshadow2_buffer.colorAttachment(1, depth2_config);
+    m_dirshadow2_buffer.colorAttachment(2, depth2_config);
+    m_dirshadow2_buffer.colorAttachment(3, depth2_config);
 
-    m_volumetrics_buffers[0] = new idk::glFramebuffer;
-    m_volumetrics_buffers[0]->reset(w/4, h/4, 1);
-    m_volumetrics_buffers[0]->colorAttachment(0, vol_config);
+    // m_shadow_buffer.reset(w/1, h/1, 1);
+    // m_shadow_buffer.colorAttachment(0, shadow_config);
+
+
+    int div = m_rendersettings->volumetrics.res_divisor;
+    m_volumetrics_buffer.reset(w/div, h/div, 1);
+    m_volumetrics_buffer.colorAttachment(0, vol_config);
     // m_volumetrics_buffers[1].reset(w/2, h/2, 1);
     // m_volumetrics_buffers[1].colorAttachment(0, vol_config);
 
     // m_foliage_buffer.reset(w, h, 2);
-    // m_foliage_buffer.colorAttachment()
+    // m_foliage_buffer.colorAttachment(0, foliage_config);
+    // m_foliage_buffer.depthAttachment(1, depth_config);
 
 
-    m_SSAO_buffers[0].reset(w/2, h/2, 1);
-    m_SSAO_buffers[1].reset(w/2, h/2, 1);
+    m_SSAO_buffers[0].reset(w/1, h/1, 1);
+    m_SSAO_buffers[1].reset(w/1, h/1, 1);
     m_SSAO_buffers[0].colorAttachment(0, SSAO_config);
     m_SSAO_buffers[1].colorAttachment(0, SSAO_config);
 
-
-    m_finalbuffer.reset(w, h, 1);
+    m_finalbuffer.reset(m_winsize.x, m_winsize.y, 1);
     m_finalbuffer.colorAttachment(0, config);
 
-    m_mainbuffer_0.reset(w, h, 2);
-    m_mainbuffer_0.colorAttachment(0, config);
-    m_mainbuffer_0.colorAttachment(1, config);
-
-    m_mip_scratchbuffer.reset(w, h, 1);
-    m_mip_scratchbuffer.colorAttachment(0, SSR_config);
-
-    for (int i=0; i<2; i++)
+    for (int i=0; i<3; i++)
     {
-        m_scratchbuffers2[i].reset(w, h, 1);
-        m_scratchbuffers2[i].colorAttachment(0, config);
+        m_lightbuffers[i] = new idk::glFramebuffer;
+        m_lightbuffers[i]->reset(w, h, 1);
+        m_lightbuffers[i]->colorAttachment(0, config);
     }
 
-    m_ui_buffer.reset(w, h, 2);
+
+    m_mipbuffer[0].reset(w/2, h/2, 1);
+    m_mipbuffer[1].reset(w/2, h/2, 6);
+    m_mipbuffer[0].colorAttachment(0, SSR_config);
+    for (int i=0; i<6; i++)
+    {
+        m_mipbuffer[1].colorAttachment(i, SSR_config);
+    }
+
+
+    m_ui_buffer.reset(m_winsize.x, m_winsize.y, 2);
     m_ui_buffer.colorAttachment(0, config);
     m_ui_buffer.depthAttachment(1, depth_config);
 
@@ -280,16 +442,15 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     };
 
 
-    m_gbuffers[0] = new idk::glFramebuffer;
-    // m_gbuffers[1] = new idk::glFramebuffer;
-
-    for (int i=0; i<1; i++)
+    for (int i=0; i<2; i++)
     {
-        m_gbuffers[i]->reset(w, h, 4);
+        m_gbuffers[i] = new idk::glFramebuffer;
+        m_gbuffers[i]->reset(w, h, 5);
         m_gbuffers[i]->colorAttachment(0, albedo_config);
         m_gbuffers[i]->colorAttachment(1, normal_config);
         m_gbuffers[i]->colorAttachment(2, pbr_config);
-        m_gbuffers[i]->depthAttachment(3, depth_config);
+        m_gbuffers[i]->colorAttachment(3, velocity_config);
+        m_gbuffers[i]->depthAttachment(4, depth_config);
 
         // for (int j=0; j<4; j++)
         // {
@@ -298,6 +459,9 @@ idk::RenderEngine::init_framebuffers( int w, int h )
         //     m_gbuffers[i]->handles.push_back(handle);
         // }
     }
+
+    m_temp_depthbuffer.reset(w, h, 1);
+    m_temp_depthbuffer.depthAttachment(0, depth_config);
 
     // for (int i=0; i<4; i++)
     // {
@@ -326,43 +490,42 @@ idk::RenderEngine::init_framebuffers( int w, int h )
 void
 idk::RenderEngine::_gen_envprobes()
 {
-    idk::glTextureConfig envprobe_config = {
-        .target         = GL_TEXTURE_CUBE_MAP,
-        .internalformat = GL_RGBA8,
-        .format         = GL_RGBA,
-        .minfilter      = GL_LINEAR,
-        .magfilter      = GL_LINEAR,
-        .datatype       = GL_UNSIGNED_BYTE,
-        .genmipmap      = GL_FALSE,
-    };
+    // idk::glTextureConfig envprobe_config = {
+    //     .target         = GL_TEXTURE_CUBE_MAP,
+    //     .internalformat = GL_RGBA8,
+    //     .format         = GL_RGBA,
+    //     .minfilter      = GL_LINEAR,
+    //     .magfilter      = GL_LINEAR,
+    //     .datatype       = GL_UNSIGNED_BYTE,
+    //     .genmipmap      = GL_FALSE,
+    // };
 
-    idk::DepthAttachmentConfig envprobe_depthconfig = {
-        .internalformat = GL_DEPTH_COMPONENT16,
-        .format         = GL_DEPTH_COMPONENT,
-        .datatype       = GL_FLOAT,
-        .compare_func   = GL_LESS,
-    };
+    // idk::DepthAttachmentConfig envprobe_depthconfig = {
+    //     .internalformat = GL_DEPTH_COMPONENT16,
+    //     .format         = GL_DEPTH_COMPONENT,
+    //     .datatype       = GL_FLOAT,
+    //     .compare_func   = GL_LESS,
+    // };
 
-    idk::glTextureConfig lightprobe_config = {
-        .target         = GL_TEXTURE_CUBE_MAP_ARRAY,
-        .internalformat = GL_RGBA8,
-        .format         = GL_RGBA,
-        .minfilter      = GL_LINEAR,
-        .magfilter      = GL_LINEAR,
-        .datatype       = GL_UNSIGNED_BYTE,
-        .genmipmap      = GL_FALSE,
-    };
+    // idk::glTextureConfig lightprobe_config = {
+    //     .target         = GL_TEXTURE_CUBE_MAP_ARRAY,
+    //     .internalformat = GL_RGBA8,
+    //     .format         = GL_RGBA,
+    //     .minfilter      = GL_LINEAR,
+    //     .magfilter      = GL_LINEAR,
+    //     .datatype       = GL_UNSIGNED_BYTE,
+    //     .genmipmap      = GL_FALSE,
+    // };
 
+    // m_envprobe_buffer.reset(256, 256, 1);
+    // m_envprobe_buffer.cubeColorAttachment(0, envprobe_config);
+    // m_envprobe_buffer.cubeDepthAttachment(envprobe_depthconfig);
 
-    m_envprobe_buffer.reset(256, 256, 1);
-    m_envprobe_buffer.cubeColorAttachment(0, envprobe_config);
-    m_envprobe_buffer.cubeDepthAttachment(envprobe_depthconfig);
+    // int nprobes = m_rendersettings->envprobe.nprobes;
+    // idk_printvalue(nprobes);
 
-    int nprobes = m_rendersettings->envprobe.nprobes;
-    idk_printvalue(nprobes);
-
-    m_lightprobe_buffer.reset(16, 16, 1);
-    m_lightprobe_buffer.cubeArrayColorAttachment(0, nprobes, lightprobe_config);
+    // m_lightprobe_buffer.reset(16, 16, 1);
+    // m_lightprobe_buffer.cubeArrayColorAttachment(0, nprobes, lightprobe_config);
 
 }
 
@@ -444,28 +607,6 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
 
 
 
-idk::RenderEngine::RenderEngine( const std::string &name, int w, int h, int gl_major,
-                                 int gl_minor, uint32_t flags )
-:
-    m_windowsys      (name.c_str(), w, h, gl_major, gl_minor, flags),
-    m_rendersettings (new RenderSettings)
-{
-    m_resolution = glm::ivec2(w, h);
-    gl::enable(GL_DEPTH_TEST, GL_CULL_FACE);
-
-    m_textsurface = SDL_CreateRGBSurface(0, w, h, 16, 0, 0, 0, 0);
-    idkui::TextManager::init("./IDKGE/resources/fonts/Ubuntu/18/Ubuntu-Medium.ttf", 18);
-
-    init_all(name, w, h);
-    resize(w, h);
-
-    idk::ParticleSystem::init();
-    idk::TerrainRenderer::init(*this, m_model_allocator);
-
-}
-
-
-
 int
 idk::RenderEngine::createProgram( const std::string &name, const idk::glShaderProgram &program )
 {
@@ -483,6 +624,26 @@ idk::RenderEngine::createProgram( const std::string &name, const std::string &ro
     auto FS = idk::glShaderStage((root+fs).c_str());
     return createProgram(name, idk::glShaderProgram(VS, FS));
 }
+
+
+int
+idk::RenderEngine::createFramebuffer( float wscale, float hscale, int attachments )
+{
+    int id = m_framebuffers.create();
+
+    auto &fb = m_framebuffers.get(id);
+          fb.init(int(wscale*width()), int(hscale*height()), attachments);
+
+    return id;
+}
+
+
+idk::Framebuffer&
+idk::RenderEngine::getFramebuffer( int fb )
+{
+    return m_framebuffers.get(fb);
+}
+
 
 
 
@@ -770,6 +931,12 @@ idk::RenderEngine::drawModel( int model, const glm::mat4 &transform )
     _getRenderQueue(m_RQ).enque(model, transform);
 }
 
+void
+idk::RenderEngine::drawModel( int model, const glm::mat4 &transform, const glm::mat4 &prev )
+{
+    _getRenderQueue(m_RQ).enque(model, transform, prev);
+}
+
 
 void
 idk::RenderEngine::drawModel( int model, const idk::Transform &T )
@@ -892,6 +1059,7 @@ idk::RenderEngine::skipAllRenderOverlays()
 }
 
 
+
 void
 idk::RenderEngine::update_UBO_camera( idk::UBO_Buffer &buffer )
 {
@@ -905,13 +1073,36 @@ idk::RenderEngine::update_UBO_camera( idk::UBO_Buffer &buffer )
         camera.position = glm::inverse(camera.V)[3];
 
         camera.P = glm::perspective(
-            glm::radians(camera.fov + camera.fov_offset),
+            glm::radians(camera.fov - camera.fov_offset),
             camera.aspect,
             camera.near,
             camera.far
         );
 
-        buffer.cameras[offset++] = camera;
+        glm::vec2 jitter = halton_sequence[idk::getFrame() % 128];
+                  jitter = jitter * 2.0f - 1.0f;
+                  jitter *= m_rendersettings->taa.scale;
+                  jitter /= glm::vec2(camera.width, camera.height);
+
+        camera.prev_jitter = camera.jitter;
+        camera.jitter      = glm::vec4(jitter, 0.0f, 0.0f);
+
+
+        buffer.cameras[offset] = camera;
+
+        glm::mat4 J = glm::mat4(1.0f);
+        J[3][0] += jitter.x;
+        J[3][1] += jitter.y;
+
+        IDK_Camera &bcam = buffer.cameras[offset];
+
+        bcam.P          = J * camera.P;
+        bcam.P_nojitter = camera.P;
+
+        camera.prev_P          = bcam.P;
+        camera.prev_P_nojitter = bcam.P_nojitter;
+
+        offset += 1;
 
         if (offset >= m_cameras.size())
         {
@@ -953,10 +1144,10 @@ idk::RenderEngine::update_UBO_lightsources( idk::UBO_Buffer &buffer )
         auto matrices = glDepthCascade::computeCascadeMatrices(
             camera.fov, camera.aspect, camera.near, camera.far,
             2048.0f,
-            camera.V, glm::vec3(light.direction)
+            camera.V, glm::vec3(light.direction), light.cascades, light.cascade_zmult
         );
 
-        light.cascades = glm::vec4(8.0f, 16.0f, 32.0f, 64.0f);
+        // light.cascades = glm::vec4(16.0f,  32.0f,  128.0f, 512.0f);
 
         glm::mat4 P = glm::ortho(-35.0f, +35.0f, -35.0f, +35.0f, -35.0f, +35.0f);
         glm::mat4 V = glm::lookAt(
@@ -1007,22 +1198,131 @@ idk::RenderEngine::update_UBO_lightsources( idk::UBO_Buffer &buffer )
 }
 
 
-void
-idk::RenderEngine::applyRenderSettings( const RenderSettings &settings )
+static bool memsame( const void *a, const void *b, uint32_t nbytes )
 {
-    // *m_rendersettings = settings;
+    uint8_t *buf0 = (uint8_t *)(a);
+    uint8_t *buf1 = (uint8_t *)(b);
+
+    for (uint32_t i=0; i<nbytes; i++)
+    {
+        if (buf0[i] != buf1[i])
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+
+void
+idk::RenderEngine::applyRenderSettings( const RenderSettings &settings, bool refresh )
+{
+    // RenderConfig &rconfig = *m_config;
+
+    // if (rconfig.changed == false)
+    // {
+    //     return;
+    // }
+    // rconfig.changed = false;
+
+
+    // for (auto &[group_name, group]: rconfig.groups)
+    // {
+    //     if (group.changed == false)
+    //     {
+    //         continue;
+    //     }
+    //     group.changed = false;
+
+
+    //     // auto &program = getBindProgram(group.program);
+
+    //     // for (auto &[field_name, field]: group)
+    //     // {
+    //     //     program.set_float("un_"+field_name, field.getValue());
+    //     // }
+    // }
+
+
+
+    // auto prev = *m_rendersettings;
+    // auto curr = settings;
+
+    if (refresh == false)
+    {
+        if (memsame(m_rendersettings, &settings, sizeof(RenderSettings)) == true)
+        {
+            return;
+        }
+    }
+
+    LOG_INFO() << "Render settings changed";
+
+
+
+    // TAA
+    {
+        auto prev = m_rendersettings->taa;
+        auto curr = settings.taa;
+
+        // if (memsame(prev, curr) == false)
+        {
+            // LOG_INFO() << "TAA settings changed";
+
+            auto &program = getBindProgram("TAA");
+            program.set_float("un_factor", float(settings.taa.factor));
+        }
+
+        // m_rendersettings->taa = settings.taa;
+    }
+
 
     // SSAO
     {
-        auto prev = m_rendersettings->ssao;
-        auto curr = settings.ssao;
+        // auto prev = m_rendersettings->ssao;
+        // auto curr = settings.ssao;
 
-        m_rendersettings->ssao = curr;
+        // m_rendersettings->ssao = curr;
     }
 
     // Volumetrics
     {
-        m_rendersettings->volumetrics = settings.volumetrics;
+        auto prev = m_rendersettings->volumetrics;
+        auto curr = settings.volumetrics;
+
+        // if (memsame(prev, curr) == false)
+        {
+            // LOG_INFO() << "Volumetrics settings changed";
+
+            idk::glTextureConfig vol_config = {
+                .internalformat = GL_RGBA8,
+                .format         = GL_RGBA,
+                .minfilter      = GL_LINEAR,
+                .magfilter      = GL_LINEAR,
+                .datatype       = GL_UNSIGNED_BYTE,
+                .genmipmap      = GL_FALSE
+            };
+
+            // int div = m_rendersettings->volumetrics.res_divisor;
+            // m_volumetrics_buffer.reset(m_resolution.x/div, m_resolution.y/div, 1);
+            // m_volumetrics_buffer.colorAttachment(0, vol_config);
+
+            auto &program = getBindProgram("deferred-dirlight");
+            // program.set_int("un_samples",          settings.volumetrics.samples);
+            // program.set_int("un_samples_sun",      settings.volumetrics.samples_sun);
+            program.set_float("un_intensity",      settings.volumetrics.intensity);
+            program.set_float("un_height_offset",  settings.volumetrics.height_offset);
+            program.set_float("un_height_falloff", settings.volumetrics.height_falloff);
+            // program.set_float("un_scatter_coeff",  settings.volumetrics.scatter_coeff);
+            // program.set_float("un_absorb_coeff",   settings.volumetrics.absorb_coeff);
+            // program.set_float("un_worley_amp",     settings.volumetrics.worley_amp);
+            // program.set_float("un_worley_wav",     settings.volumetrics.worley_wav);
+        }
+
+
+        // m_rendersettings->volumetrics = settings.volumetrics;
     }
 
     // // Environment probes
@@ -1043,6 +1343,8 @@ idk::RenderEngine::applyRenderSettings( const RenderSettings &settings )
     //     m_rendersettings->envprobe = curr;
     // }
 
+    *m_rendersettings = settings;
+
 }
 
 
@@ -1062,28 +1364,14 @@ idk::RenderEngine::beginFrame()
     gl::clearColor(0.0f, 0.0f, 0.0f, 1.0f);
     gl::clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    SDL_FillRect(m_textsurface, NULL, 0);
-
-
     if (m_should_recompile)
     {
         _recompileShaders();
+        applyRenderSettings(*m_rendersettings, true);
         m_should_recompile = false;
     }
 
-
-    static idk::glBufferObject<GL_UNIFORM_BUFFER> UBO_time(
-        shader_bindings::UBO_Time, sizeof(glm::vec4), GL_DYNAMIC_COPY
-    );
-
-    static glm::vec4 time = glm::vec4(0.0f);
-
-    time[0] += delta_time; // glm::mod(time[0]+delta_time, 2.0f*3.14159f);
-    // time[0] = glm::mod(time[0]+delta_time, 2.0f*3.14159f);
-    time[1] = delta_time;
-
-    UBO_time.bufferSubData(0, sizeof(glm::vec4), &(time[0]));
-
+    idk::updateTime(delta_time);
 }
 
 
@@ -1142,15 +1430,9 @@ idk::RenderEngine::endFrame( float dt )
     }
 
 
-    // Render text
-    // -----------------------------------------------------------------------------------------
-    idkui::TextManager::render(m_textsurface);
-    // -----------------------------------------------------------------------------------------
-
-
     // Update particle emitters
     // -----------------------------------------------------------------------------------------
-    idk::ParticleSystem::update(dt, camera.position, _getRenderQueue(m_particle_RQ));
+    idk::ParticleSystem::update(*this, dt, camera.position, _getRenderQueue(m_particle_RQ));
     // -----------------------------------------------------------------------------------------
 
     // Update terrain rendering
@@ -1240,6 +1522,7 @@ idk::RenderEngine::endFrame( float dt )
     // -----------------------------------------------------------------------------------------
     gl::bindVertexArray(m_model_allocator.getVAO());
 
+    std::swap(m_gbuffers[0], m_gbuffers[1]);
     m_gbuffers[0]->bind();
     m_gbuffers[0]->clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1251,32 +1534,64 @@ idk::RenderEngine::endFrame( float dt )
     // -----------------------------------------------------------------------------------------
     gl::bindVertexArray(m_model_allocator.getVAO());
     gl::disable(GL_CULL_FACE);
-
+    gl::enable(GL_POLYGON_OFFSET_FILL);
+    IDK_GLCALL( glPolygonOffset(1.0f, 1.0f); )
     // gl::cullFace(GL_FRONT);
     shadowpass_dirlights();
     shadowpass_pointlights();
     shadowpass_spotlights();
     // gl::cullFace(GL_BACK);
+    gl::enable(GL_CULL_FACE);
+
+    {
+        auto &program = getBindProgram("shadowcascade-split");
+        gl::bindImageTextures(0, 4, m_dirshadow2_buffer.attachments.data());
+
+        program.set_sampler2DArray("un_input", m_dirshadow_buffer.depth_attachment);
+
+        program.set_int("un_image_w", 2048);
+        program.set_int("un_image_h", 2048);
+        program.dispatch(2048/8, 2048/8, 1);
+        gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    }
+    // -----------------------------------------------------------------------------------------
+
+
+    // Foliage
+    // -----------------------------------------------------------------------------------------
+    // gl::bindVertexArray(m_model_allocator.getVAO());
+
+    // m_foliage_buffer.bind();
+    // m_foliage_buffer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // idk::TerrainRenderer::renderGrass(*this, m_foliage_buffer, camera, m_model_allocator);
     // -----------------------------------------------------------------------------------------
 
 
     // Lighting pass
     // -----------------------------------------------------------------------------------------
-    m_mainbuffer_0.bind();
-    m_mainbuffer_0.clear(GL_COLOR_BUFFER_BIT);
+    std::swap(m_lightbuffers[0], m_lightbuffers[1]);
+    m_lightbuffers[0]->bind();
+    m_lightbuffers[0]->clear(GL_COLOR_BUFFER_BIT);
 
-    RenderStage_lighting(camera, dt, *(m_gbuffers[0]), m_mainbuffer_0);
+    RenderStage_lighting(camera, dt, *(m_gbuffers[0]), *(m_lightbuffers[0]));
+    // -----------------------------------------------------------------------------------------
+
+
+    // Custom post processing render stages
+    // -----------------------------------------------------------------------------------------
+    // for (auto *RS: m_render_stages)
+    // {
+    //     RS->update(*this, getFramebuffer(m_postprocess_fb));
+    // }
     // -----------------------------------------------------------------------------------------
 
 
     // Post processing pass
     // -----------------------------------------------------------------------------------------
     gl::disable(GL_DEPTH_TEST, GL_CULL_FACE);
-
-    m_finalbuffer.clear(GL_COLOR_BUFFER_BIT);
-
-    RenderStage_postprocessing(camera, m_mainbuffer_0, m_finalbuffer);
+    RenderStage_postprocessing(camera, *(m_lightbuffers[0]), m_finalbuffer);
     // -----------------------------------------------------------------------------------------
+
 
     // Clear render queues
     // -----------------------------------------------------------------------------------------
@@ -1308,18 +1623,34 @@ idk::RenderEngine::swapWindow()
 }
 
 
+
+void
+idk::RenderEngine::setRenderScale( float scale )
+{
+    m_renderscale = scale;
+    resize(m_winsize.x, m_winsize.y);
+}
+
+
+
 void
 idk::RenderEngine::resize( int w, int h )
 {
     w = 8 * (w / 8);
     h = 8 * (h / 8);
 
-    m_resolution.x = w;  m_resolution.y = h;
-    init_framebuffers(w, h);
+
+    m_winsize = glm::ivec2(w, h);
+    m_resolution = glm::ivec2(glm::vec2(m_winsize) * m_renderscale);
+
+    // m_resolution.x = w;  m_resolution.y = h;
+    init_framebuffers(m_resolution.x, m_resolution.y);
     getCamera().aspect = float(w) / float(h);
 
-    SDL_FreeSurface(m_textsurface);
-    m_textsurface = SDL_CreateRGBSurface(0, w, h, 32, 0, 0, 0, 0);
+    // for (auto &[id, fb]: m_framebuffers)
+    // {
+    //     fb.resize(w, h);
+    // }
 
     SDL_SetWindowSize(getWindow(), w, h);
 

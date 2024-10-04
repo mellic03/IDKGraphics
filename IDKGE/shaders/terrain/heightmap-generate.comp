@@ -12,8 +12,7 @@ layout(
 ) in;
 
 
-layout (binding=0, r32f) writeonly uniform image2D un_height;
-
+layout (binding=0, rgba16f) writeonly uniform image2D un_height;
 
 
 
@@ -58,16 +57,9 @@ void main()
     float yscale = IDK_SSBO_Terrain.scale.y;
 
     float height = TerrainComputeHeight(texcoord);
+    float detail = TerrainComputeDetail(texcoord);
+    float grass  = TerrainComputeGrassness(texcoord);
 
-    // float dX = 0.05 * sobel_x(texel);
-    // float dZ = 0.05 * sobel_y(texel);
-    // float dY = sqrt(1.0 - dX*dX - dZ*dZ);
-
-    // vec3 N = normalize(vec3(-dX, dZ, dY));
-    //      N = vec3(-N.x, N.z, N.y);
-    //      N = N * 0.5 + 0.5;
-
-    imageStore(un_height, texel, vec4(height));
-    // imageStore(un_normal, texel, vec4(0.2));
+    imageStore(un_height, texel, vec4(height, grass, detail, 1.0));
 }
 

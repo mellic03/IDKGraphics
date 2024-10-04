@@ -6,6 +6,7 @@
 #include <libidk/idk_log.hpp>
 #include <libidk/idk_noisegen.hpp>
 
+#include "../idk_renderengine.hpp"
 #include "../batching/idk_render_queue.hpp"
 #include "../batching/idk_model_allocator.hpp"
 #include "../storage/bindings.hpp"
@@ -13,45 +14,43 @@
 
 using namespace idk;
 
-#define EMITTER_MAX_PARTICLES 64
+#define EMITTER_MAX_PARTICLES 512
 #define MAX_EMITTERS 128
 
-struct SSBO_ParticleDesc
-{
-    glm::vec4 count;
 
-    glm::vec4 origin;
-    glm::vec4 origin_rng;
-
-    glm::vec4 velocity;
-    glm::vec4 velocity_rng;
-
-    glm::vec4 scale;
-    glm::vec4 scale_factor;
-    glm::vec4 scale_rng;
-
-    glm::vec4 timer;
-    glm::vec4 duration;
-    glm::vec4 duration_rng;
-};
+using EmitterDesc  = idk::ParticleSystem::EmitterDesc;
+using ParticleDesc = idk::ParticleSystem::ParticleDesc;
 
 
 struct SSBO_Particle
 {
-    glm::vec4 timer = glm::vec4(0.0f);
-    glm::vec4 scale = glm::vec4(1.0f);
-
-    glm::vec4 pos   = glm::vec4(0.0f);
-    glm::vec4 vel   = glm::vec4(0.0f);
-    glm::vec4 rot   = glm::vec4(0.0f);
-    glm::vec4 color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+    glm::vec4 t   = glm::vec4(0.0f);
+    glm::vec4 sc  = glm::vec4(1.0f);
+    glm::vec4 pos = glm::vec4(0.0f);
+    glm::vec4 vel = glm::vec4(0.0f);
+    glm::vec4 col = glm::vec4(1.0f);
 };
 
 
-struct SSBO_Emitter
+struct SSBO_ParticleDesc
+{
+    glm::uvec4 count;
+    glm::vec4 pos, posRNG;
+    glm::vec4 vel, velRNG;
+    glm::vec4 scA, scB, scRNG;
+    glm::vec4 dur, durRNG;
+    glm::vec4 stime;
+};
+
+
+
+
+struct SSBO_ParticleBuffer
 {
     SSBO_Particle particles[EMITTER_MAX_PARTICLES * MAX_EMITTERS];
 };
+
+
 
 
 namespace
@@ -60,12 +59,6 @@ namespace
 
     uint32_t                m_quad_VAO;
     uint32_t                m_quad_VBO;
-
-    uint32_t                m_noise;
-
-    idk::glShaderProgram    m_program_gpass;
-    idk::glShaderProgram    m_program_update;
-    idk::glShaderProgram    m_program_clear;
 
     idk::glBufferObject<GL_SHADER_STORAGE_BUFFER> m_SSBO;
     idk::glBufferObject<GL_SHADER_STORAGE_BUFFER> m_SSBO_desc;
@@ -77,24 +70,24 @@ static void ParticleSystem_genQuadVAO();
 
 
 void
-idk::ParticleSystem::init()
+idk::ParticleSystem::init( idk::RenderEngine &ren )
 {
     auto VS = idk::glShaderStage("IDKGE/shaders/particle/particle-gpass.vs");
     auto FS = idk::glShaderStage("IDKGE/shaders/particle/particle-gpass.fs");
     auto CS1 = idk::glShaderStage("IDKGE/shaders/particle/particle-update.comp");
     auto CS2 = idk::glShaderStage("IDKGE/shaders/particle/particle-clear.comp");
 
-    m_program_gpass  = idk::glShaderProgram(VS, FS);
-    m_program_update = idk::glShaderProgram(CS1);
-    m_program_clear  = idk::glShaderProgram(CS2);
+    ren.createProgram("particle-gpass", idk::glShaderProgram(VS, FS));
+    ren.createProgram("particle-update", idk::glShaderProgram(CS1));
+    ren.createProgram("particle-clear", idk::glShaderProgram(CS2));
 
     ParticleSystem_genQuadVAO();
 
     m_SSBO.init(shader_bindings::SSBO_Particles);
-    m_SSBO.bufferData(sizeof(SSBO_Emitter), nullptr, GL_DYNAMIC_DRAW);
+    m_SSBO.bufferData(sizeof(SSBO_ParticleBuffer), nullptr, GL_DYNAMIC_DRAW);
 
     m_SSBO_desc.init(shader_bindings::SSBO_ParticleDesc);
-    m_SSBO_desc.bufferData(MAX_EMITTERS * sizeof(SSBO_ParticleDesc),  nullptr, GL_DYNAMIC_DRAW);
+    m_SSBO_desc.bufferData(MAX_EMITTERS*sizeof(SSBO_ParticleDesc), nullptr, GL_DYNAMIC_DRAW);
 
     m_DIB.init();
     m_DIB.bufferData(
@@ -102,42 +95,22 @@ idk::ParticleSystem::init()
     );
 
     {
-        auto &program = m_program_clear;
-        program.bind();
+        auto &program = ren.getBindProgram("particle-clear");
 
         for (int id=0; id<MAX_EMITTERS; id++)
         {
             program.set_uint("un_offset", uint32_t(EMITTER_MAX_PARTICLES * id));
-
-            gl::memoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-            program.dispatch(1, 1, 1);
+            program.dispatch(EMITTER_MAX_PARTICLES/32, 1, 1);
         }
+        gl::memoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
     }
-
-
-    // Generate white noise
-    // -----------------------------------------------------------------------------------------
-    idk::glTextureConfig noise_config = {
-        .internalformat = GL_RGBA8,
-        .format         = GL_RGBA,
-        .minfilter      = GL_NEAREST,
-        .magfilter      = GL_NEAREST,
-        .wrap_s         = GL_REPEAT,
-        .wrap_t         = GL_REPEAT,
-        .datatype       = GL_UNSIGNED_BYTE,
-        .genmipmap      = GL_FALSE
-    };
-
-    auto pixels = noisegen2D::white_u8(256, 256, 4);
-    m_noise = gltools::loadTexture2D(256, 256, pixels.get(), noise_config);
-    // -----------------------------------------------------------------------------------------
 }
 
 
 
 
 void
-idk::ParticleSystem::update( float dt, const glm::vec3 &view, idk::RenderQueue &queue )
+idk::ParticleSystem::update( idk::RenderEngine &ren, float dt, const glm::vec3 &view, idk::RenderQueue &queue )
 {
     static std::vector<int> cull(128);
     cull.clear();
@@ -145,9 +118,8 @@ idk::ParticleSystem::update( float dt, const glm::vec3 &view, idk::RenderQueue &
     for (auto &[id, emitter]: m_emitters)
     {
         int model = emitter.edesc.model_id;
-        // auto &drawlist = queue.getDrawList(model);
 
-        if (emitter.finished())
+        if (emitter.edesc.duration > 0.0f && emitter.finished())
         {
             cull.push_back(id);
         }
@@ -159,69 +131,51 @@ idk::ParticleSystem::update( float dt, const glm::vec3 &view, idk::RenderQueue &
     }
 
     {
-        auto &program = m_program_clear;
-        program.bind();
+        auto &program = ren.getBindProgram("particle-clear");
 
         for (int id: cull)
         {
             destroyEmitter(id);
-        
             program.set_uint("un_offset", uint32_t(EMITTER_MAX_PARTICLES * id));
-            program.dispatch(1, 1, 1);
+            program.dispatch(EMITTER_MAX_PARTICLES/32, 1, 1);
         }
 
         gl::memoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
     }
 
 
-
-    static double irrational = 0.25;
-    irrational += 0.0025 * 1.61803398875;
-    irrational = fmod(irrational, 1.0);
-
-
-
     static std::vector<SSBO_ParticleDesc> descriptors;
     descriptors.clear();
 
-    auto &program = m_program_update;
-    program.bind();
+
+    auto &program = ren.getBindProgram("particle-update");
 
     for (auto &[id, emitter]: m_emitters)
     {
         SSBO_ParticleDesc desc = {
-            .count           = glm::vec4(emitter.edesc.particles),
-
-            .origin          = glm::vec4(emitter.position, 1.0f),
-            .origin_rng      = glm::vec4(emitter.pdesc.origin_rng, 0.0f),
-
-            .velocity        = glm::vec4(emitter.pdesc.velocity, 0.0f),
-            .velocity_rng    = glm::vec4(emitter.pdesc.velocity_rng, 0.0f),
-
-            .scale           = glm::vec4(emitter.pdesc.scale, 0.0),
-            .scale_factor    = glm::vec4(emitter.pdesc.scale_factor, 0.0),
-            .scale_rng       = glm::vec4(emitter.pdesc.scale_rng),
-
-            .timer           = glm::vec4(emitter.getTimer()),
-            .duration        = glm::vec4(emitter.pdesc.duration),
-            .duration_rng    = glm::vec4(emitter.pdesc.duration_rng),
+            .count    = glm::vec4(emitter.pdesc.count),
+            .pos      = glm::vec4(emitter.pdesc.origin, 1.0f),
+            .posRNG   = glm::vec4(emitter.pdesc.origin_rng, 1.0f),
+            .vel      = glm::vec4(emitter.pdesc.vel, 1.0f),
+            .velRNG   = glm::vec4(emitter.pdesc.vel_rng, 1.0f),
+            .scA      = glm::vec4(emitter.pdesc.scale_start),
+            .scB      = glm::vec4(emitter.pdesc.scale_end),
+            .scRNG    = glm::vec4(emitter.pdesc.scale_rng),
+            .dur      = glm::vec4(emitter.pdesc.duration),
+            .durRNG   = glm::vec4(emitter.pdesc.duration_rng),
+            .stime    = glm::vec4(emitter.pdesc.spawn_time)
         };
-
+    
         descriptors.push_back(desc);
-
         m_SSBO_desc.bufferSubData(
             0, sizeof(SSBO_ParticleDesc) * descriptors.size(), descriptors.data()
         );
 
-        program.set_sampler2D("un_noise", 0, m_noise);
-        program.set_float("un_dtime", dt);
-        program.set_float("un_irrational", irrational);
-
         program.set_uint("un_offset", uint32_t(EMITTER_MAX_PARTICLES * id));
-
-        program.dispatch(descriptors.size(), 1, 1);
-
+        program.dispatch(EMITTER_MAX_PARTICLES/32, 1, 1);
         descriptors.clear();
+
+        gl::memoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
     }
 
 }
@@ -230,11 +184,13 @@ idk::ParticleSystem::update( float dt, const glm::vec3 &view, idk::RenderQueue &
 
 
 void
-idk::ParticleSystem::render( idk::ModelAllocator &MA )
+idk::ParticleSystem::render( idk::RenderEngine &ren, idk::ModelAllocator &MA )
 {
-    glDepthMask(GL_FALSE);
-    gl::enable(GL_BLEND);
-    gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
+    // glDepthMask(GL_FALSE);
+    gl::disable(GL_BLEND);
+    glDepthMask(GL_TRUE);
+    // gl::enable(GL_BLEND);
+    // gl::blendFunc(GL_SRC_ALPHA, GL_ONE);
 
     static const idk::glTextureConfig config = {
         .target         = GL_TEXTURE_2D,
@@ -255,19 +211,17 @@ idk::ParticleSystem::render( idk::ModelAllocator &MA )
     commands.clear();
 
 
-    auto &program = m_program_gpass;
-    program.bind();
+    auto &program = ren.getBindProgram("particle-gpass");
 
     for (auto &[id, emitter]: m_emitters)
     {
         int model_id = emitter.edesc.model_id;
 
-        // for (auto &mesh: MA.getModel(model_id).meshes)
         auto &mesh = MA.getModel(model_id).meshes[0];
         {
             idk::glDrawCmd cmd = {
                 .count         = mesh.numIndices,
-                .instanceCount = uint32_t(emitter.edesc.particles),
+                .instanceCount = uint32_t(emitter.pdesc.count),
                 .firstIndex    = mesh.firstIndex,
                 .baseVertex    = mesh.baseVertex,
                 .baseInstance  = 0
@@ -303,74 +257,16 @@ idk::ParticleSystem::render( idk::ModelAllocator &MA )
 
 
 
-ParticleSystem::Emitter::Emitter( const glm::vec3 &pos, const glm::vec3 &dir,
-                                  const ParticleDesc &pd, const EmitterDesc &ed )
-:   m_timer(0.0f)
-    // m_particles(ed.particles)
+ParticleSystem::Emitter::Emitter( const ParticleDesc &pd, const EmitterDesc &ed )
+:   m_timer(0.0f), pdesc(pd), edesc(ed)
 {
-    position  = pos; // glm::vec3(T[3]);
-    direction = dir; // glm::vec3(T * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f));
-    direction = glm::normalize(direction);
-    pdesc     = pd;
-    edesc     = ed;
 
-
-    // for (Particle &p: m_particles)
-    // {
-    //     _reset_particle(p);
-    // }
-
-}
-
-
-void
-ParticleSystem::Emitter::_reset_particle( Particle &p )
-{
-    p.timer  = pdesc.duration_rng * idk::randf(-1.0f, +1.0f);
-
-    p.pos    = position;
-    p.pos   += pdesc.origin_rng * idk::randf(-1.0f, +1.0f);
-
-    // p.vel    = direction; // glm::vec3(transform * glm::vec4(direction, 0.0f));
-    p.vel    = pdesc.velocity; // * glm::normalize(p.vel);
-    p.vel   += pdesc.velocity_rng * idk::randvec3(-1.0f, +1.0f);
-
-    // p.scale  = pdesc.scale;
-    // p.scale += pdesc.scale_rng * idk::randf(-1.0f, +1.0f);
 }
 
 
 void
 ParticleSystem::Emitter::update( float dt )
 {
-    static const glm::mat4 I = glm::mat4(1.0f);
-
-    // for (Particle &p: m_particles)
-    // {
-    //     p.pos += dt*p.vel;
-
-    //     p.timer += dt;
-    //     p.scale = pdesc.scale * (p.timer / pdesc.duration);
-    //     p.scale = glm::clamp(p.scale, 0.01f, p.scale);
-
-    //     glm::mat4 T = glm::translate(I, p.pos);
-    //     glm::mat4 S = glm::scale(I, glm::vec3(p.scale));
-    //     glm::mat4 R = glm::inverse(
-    //         glm::lookAt(
-    //             glm::vec3(0.0f),
-    //             glm::normalize(p.pos - view),
-    //             glm::vec3(0.0f, 1.0f, 0.0f)
-    //         )
-    //     );
-
-    //     drawlist.push_back(T * R * S);
-
-    //     if (p.timer >= pdesc.duration)
-    //     {
-    //         _reset_particle(p);
-    //     }
-    // }
-
     if (edesc.duration > 0.0f)
     {
         m_timer += dt;
@@ -381,10 +277,9 @@ ParticleSystem::Emitter::update( float dt )
 
 
 int
-idk::ParticleSystem::createEmitter( const glm::vec3 &pos, const glm::vec3 &dir,
-                                    const EmitterDesc &ed, const ParticleDesc &pd )
+idk::ParticleSystem::createEmitter( const EmitterDesc &ed, const ParticleDesc &pd )
 {
-    int id = m_emitters.create(Emitter(pos, dir, pd, ed));
+    int id = m_emitters.create(Emitter(pd, ed));
     LOG_DEBUG() << "Created particle emitter with id " << id;
     return id;
 }
@@ -404,8 +299,6 @@ idk::ParticleSystem::getEmitter( int id )
 {
     return m_emitters.get(id);
 }
-
-
 
 
 
