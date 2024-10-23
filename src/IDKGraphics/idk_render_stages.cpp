@@ -731,9 +731,6 @@ idk::RenderEngine::PostProcess_ui( glFramebuffer &buffer_out )
 
     program.set_sampler2D("un_input", m_ui_buffer.attachments[0]);
     gl::drawArrays(GL_TRIANGLES, 0, 6);
-
-    gl::disable(GL_BLEND);
-
 }
 
 
@@ -741,32 +738,26 @@ idk::RenderEngine::PostProcess_ui( glFramebuffer &buffer_out )
 void
 idk::RenderEngine::PostProcess_overlay( idk::glFramebuffer &buffer_out )
 {
-    gl::bindImageTexture(0, buffer_out.attachments[0], 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
-
     if (m_overlayfills.empty() == false)
     {
         RenderOverlayFill &overlay = m_overlayfills.front();
 
-        glShaderProgram &program = getProgram("overlay-fill");
-        program.bind();
-
+        glShaderProgram &program = getBindProgram("overlay-fill");
         program.set_float ("un_alpha", overlay.alpha);
         program.set_vec3  ("un_color", overlay.fill);
 
-        program.dispatch(width()/8, height()/8, 1);
+        gl::drawArrays(GL_TRIANGLES, 0, 6);
     }
 
     if (m_overlays.empty() == false)
     {
         RenderOverlay &overlay = m_overlays.front();
 
-        glShaderProgram &program = getProgram("overlay");
-        program.bind();
-
+        glShaderProgram &program = getBindProgram("overlay");
         program.set_float     ("un_alpha", overlay.alpha);
         program.set_sampler2D ("un_input", overlay.texture.ID());
 
-        program.dispatch(width()/8, height()/8, 1);
+        gl::drawArrays(GL_TRIANGLES, 0, 6);
     }
 }
 
@@ -841,13 +832,10 @@ idk::RenderEngine::RenderStage_postprocessing( IDK_Camera   &camera,
 
 
     // -----------------------------------------------------------------------------------------
-
-
+    gl::enable(GL_BLEND);
     PostProcess_ui(buffer_out);
-    gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
     PostProcess_overlay(buffer_out);
-    gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    gl::disable(GL_BLEND);
 
     {
         gl::bindFramebuffer(GL_FRAMEBUFFER, 0);

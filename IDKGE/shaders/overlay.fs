@@ -3,16 +3,8 @@
 #extension GL_GOOGLE_include_directive: require
 #include "./include/storage.glsl"
 
-
-layout (
-    local_size_x = 8,
-    local_size_y = 8,
-    local_size_z = 1
-) in;
-
-
-layout (binding = 0, rgba16f) uniform image2D un_output;
-
+out vec4 fsout_frag_color;
+in vec2 fsin_texcoords;
 
 uniform float     un_alpha;
 uniform sampler2D un_input;
@@ -24,8 +16,7 @@ void main()
     vec2  dst_size = vec2(camera.width, camera.height);
     vec2  src_size = textureSize(un_input, 0);
 
-    ivec2 dst_texel    = ivec2(gl_GlobalInvocationID.xy);
-
+    ivec2 dst_texel    = ivec2(fsin_texcoords * dst_size);
 
     vec2 dst_center = dst_size / 2.0;
     vec2 delta      = (vec2(dst_texel) - dst_center) / src_size;
@@ -35,9 +26,11 @@ void main()
 
 
     vec3 src = texture(un_input, src_texcoord).rgb;
-    vec3 dst = imageLoad(un_output, dst_texel).rgb;
+    fsout_frag_color = vec4(src, un_alpha);
 
-    vec3 result = (1.0 - un_alpha)*dst + (un_alpha)*src;
+    // vec3 dst = imageLoad(un_output, dst_texel).rgb;
 
-    imageStore(un_output, dst_texel, vec4(result, 1.0));
+    // vec3 result = (1.0 - un_alpha)*dst + (un_alpha)*src;
+
+    // imageStore(un_output, dst_texel, vec4(result, 1.0));
 }

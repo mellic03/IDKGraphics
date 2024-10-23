@@ -69,6 +69,29 @@ float DepthToViewZ( sampler2D depthtex, vec2 uv, mat4 P )
 
 
 
+bool depth_clamp( vec2 curr_uv, vec2 prev_uv, mat4 P )
+{
+    vec2  tsize = 1.0 / textureSize(un_curr_depth, 0);
+    float curr_depth = DepthToViewZ(un_curr_depth, curr_uv, P);
+
+    float  min_depth  = min(+1000.0, curr_depth);
+    float  max_depth  = max(-1000.0, curr_depth);
+
+    for (int i=-1; i<=1; i++)
+    {
+        for (int j=-1; j<=1; j++)
+        {
+            float depth = DepthToViewZ(un_curr_depth, prev_uv + tsize*vec2(j, i), P);
+            min_depth = min(min_depth, depth);
+            max_depth = max(max_depth, depth);
+        }
+    }
+
+    return (max_depth - curr_depth > 1.0);
+}
+
+
+
 void main()
 {
     IDK_Camera camera = IDK_UBO_cameras[0];
@@ -85,31 +108,7 @@ void main()
 
     vec3 curr_color = texture(un_curr_color, curr_uv).rgb;
 
-    // Velocity based blur
-    {
-        float fps   = 1.0 / IDK_GetDeltaTime();
-        float scale = 0.25 * (fps / 60.0);
-        vec2  wvel  = scale*vdata.zw;
-
-        // float vlength = length(wvel);
-        float samples = 32.0; // clamp(vlength, 1, 64);
-
-        vec2 rd  = wvel / samples;
-        vec2 rp0 = curr_uv;
-        vec2 rp1 = curr_uv;
-
-        for (int i=0; i<int(samples); i++)
-        {
-            rp0 -= rd;
-            rp1 += rd;
-
-            curr_color += texture(un_curr_color, rp0).rgb;
-            curr_color += texture(un_curr_color, rp1).rgb;
-        }
-
-        curr_color /= 2.0*samples + 1;
-    }
-
+ 
 
     vec3  min_color  = min(vec3(+1000.0), curr_color);
     vec3  max_color  = max(vec3(-1000.0), curr_color);
@@ -129,6 +128,11 @@ void main()
 
     float alpha  = 1.0 / un_factor;
     vec3  result = mix(prev_color, curr_color, alpha);
+
+    // if (depth_clamp(curr_uv, prev_uv, camera.P))
+    // {
+    //     result = curr_color;
+    // }
 
     fsout_frag_color = vec4(result, 1.0);
 }

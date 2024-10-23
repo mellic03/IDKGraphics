@@ -145,6 +145,8 @@ vec3 raymarch( int steps, float maxdist, mat4 P, mat4 V, vec3 R, float roughness
         }
     }
 
+    result = textureLod(un_input[level], uv, 0.0).rgb;
+
 
     vec3 N = textureLod(un_normal, uv, 0.0).xyz;
          N = normalize((V * vec4(N, 0.0)).xyz);

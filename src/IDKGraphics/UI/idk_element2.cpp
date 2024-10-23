@@ -322,16 +322,14 @@ idkui::ImageAbsolute::render( idkui::UIRenderer &ren )
 
 
     Primitive p1 = p0;
-    p1.corner -= 0.5f * m_size;
-    // p1.span    = m_size;
+    p1.corner = m_position - 0.5f * p1.span;
 
     ren.renderImage(p1, m_texture);
 
     for (auto &pos: m_positions)
     {
         p1 = p0;
-        p1.corner -= 0.5f * m_size;
-        // p1.span    = m_size;
+        p1.corner = pos - 0.5f * p1.span;
 
         ren.renderImage(p1, m_texture);
     }

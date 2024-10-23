@@ -16,6 +16,8 @@
 
 IDK_Dirlight::IDK_Dirlight()
 {
+    diffuse  = glm::vec4(1.0f);
+    ambient  = glm::vec4(0.05f);
     cascades = glm::vec4(16.0f,  32.0f,  128.0f, 512.0f);
 }
 

@@ -162,8 +162,10 @@ idk::RenderEngine::compileShaders()
     createProgram("ui-quad",      "IDKGE/shaders/", "ui-quad.vs", "ui-quad.fs");
     // createProgram("ui-image",     "IDKGE/shaders/", "ui-image.vs", "ui-image.fs");
 
-    createProgram("overlay",      glShaderProgram("IDKGE/shaders/overlay.comp"));
-    createProgram("overlay-fill", glShaderProgram("IDKGE/shaders/overlay-fill.comp"));
+    // createProgram("overlay",      glShaderProgram("IDKGE/shaders/overlay.comp"));
+    // createProgram("overlay-fill", glShaderProgram("IDKGE/shaders/overlay-fill.comp"));
+    createProgram("overlay",       "IDKGE/shaders/", "screenquad.vs", "overlay.fs");
+    createProgram("overlay-fill",  "IDKGE/shaders/", "screenquad.vs", "overlay-fill.fs");
 
     createProgram("background", "IDKGE/shaders/", "screenquad.vs", "deferred/background.fs");
 

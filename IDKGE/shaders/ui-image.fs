@@ -37,10 +37,10 @@ void main()
 
     vec4 src = texture(un_texture, uv);
 
-    // if (src.a < 0.9)
-    // {
-    //     discard;
-    // }
+    if (src.a < 0.9)
+    {
+        discard;
+    }
 
     fsout_frag_color = src;
 }

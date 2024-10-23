@@ -20,7 +20,7 @@ using namespace idk;
 
 #define WATER_OCTAVES 512
 
-#define GRASS_TILE_W   4.0
+#define GRASS_TILE_W   8.0
 #define GRASS_TILES_XZ 8
 
 
@@ -856,25 +856,26 @@ generate_grass_tile( float xmin, float zmin, float div, std::vector<glm::vec2> &
         {
             glm::vec2 uv = world_to_uv(x, z);
 
-            if (m_grass_readback.sampleBillinear(uv.x, uv.y) < 0.65f)
+            if (m_grass_readback.sampleBillinear(uv.x, uv.y) < 0.25f)
             {
                 continue;
             }
 
-            float th = idk::TerrainRenderer::heightQuery(x, z);
-            float wh = idk::TerrainRenderer::waterHeightQuery(x, z);
+            // float th = idk::TerrainRenderer::heightQuery(x, z);
+            // float wh = idk::TerrainRenderer::waterHeightQuery(x, z);
 
-            if (wh > th)
-            {
-                continue;
-            }
+            // if (wh > th)
+            // {
+            //     continue;
+            // }
 
-            if (idk::TerrainRenderer::slopeQuery(x, z).y < 0.95f)
-            {
-                continue;
-            }
+            // if (idk::TerrainRenderer::slopeQuery(x, z).y < 0.95f)
+            // {
+            //     continue;
+            // }
+            uv = glm::vec2(x, z) / 512.0f;
 
-            glm::vec2 offset = idk::noise::BlueRG(4.0f*uv.x, 4.0f*uv.y) * 2.0f - 1.0f;
+            glm::vec2 offset = idk::noise::BlueRG(uv.x, uv.y) * 2.0f - 1.0f;
             glm::vec2 pos    = glm::vec2(x, z);
 
             pos.x += step_size * offset.x;
@@ -927,10 +928,10 @@ idk::TerrainRenderer::generateGrass( const glm::vec3 &pos )
 
                     float div = 1.0f;
 
-                         if (dist <  4*GRASS_TILE_W)  div = 6;
-                    else if (dist <  8*GRASS_TILE_W)  div = 5;
-                    else if (dist < 16*GRASS_TILE_W)  div = 4;
-                    else if (dist < 32*GRASS_TILE_W)  div = 3;
+                         if (dist <  4*GRASS_TILE_W)  div = 14;
+                    else if (dist <  8*GRASS_TILE_W)  div = 9;
+                    else if (dist < 16*GRASS_TILE_W)  div = 7;
+                    else if (dist < 32*GRASS_TILE_W)  div = 5;
                     // else if (dist < 30*GRASS_TILE_W)  div = 2;
                     // else if (dist < 38*GRASS_TILE_W)  div = 1;
                     // else if (dist < 46*GRASS_TILE_W)  div = 1;
