@@ -604,7 +604,9 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     idk::internal::upload_noise();
 
     m_active_camera_id = createCamera();
-    loadSkybox("IDKGE/resources/skybox/");
+    int skybox0 = loadSkybox("IDKGE/resources/skybox/skybox0/");
+    int skybox1 = loadSkybox("IDKGE/resources/skybox/skybox1/");
+    useSkybox(skybox1);
 }
 
 
