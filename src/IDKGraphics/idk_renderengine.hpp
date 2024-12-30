@@ -70,7 +70,6 @@ namespace idk
 class IDK_VISIBLE idk::RenderEngine
 {
 public:
-
     struct Prim
     {
         glm::vec4 albedo = glm::vec4(1.0f);
@@ -98,7 +97,6 @@ public:
 
 
 private:
-
     struct TextQuad
     {
         float x, y, w, h;

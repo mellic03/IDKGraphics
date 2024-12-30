@@ -34,7 +34,7 @@ private:
 public:
     int   model = -1;
     float radSq = 64.0f;
-    glm::mat4 transform;    
+    glm::mat4 transform;
 
     RenderNode *parent;
     std::vector<RenderNode*> children;
