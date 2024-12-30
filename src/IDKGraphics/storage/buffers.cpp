@@ -2,7 +2,6 @@
 #include <libidk/idk_serialize.hpp>
 
 
-
 // uint32_t idk::storage_buffer::MAX_CAMERAS     = 1;
 // uint32_t idk::storage_buffer::MAX_DIRLIGHTS   = 1;
 // uint32_t idk::storage_buffer::MAX_POINTLIGHTS = 32;
@@ -16,9 +15,17 @@
 
 IDK_Dirlight::IDK_Dirlight()
 {
+    transform = glm::mat4(1.0f);
+
+    for (int i=0; i<4; i++)
+    {
+        transforms[i] = glm::mat4(1.0f);
+    }
+
     diffuse  = glm::vec4(1.0f);
     ambient  = glm::vec4(0.05f);
     cascades = glm::vec4(16.0f,  32.0f,  128.0f, 512.0f);
+    cascade_zmult = glm::vec4(1.0f);
 }
 
 

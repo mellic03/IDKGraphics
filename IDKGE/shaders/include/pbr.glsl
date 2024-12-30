@@ -303,21 +303,3 @@ vec3 IDK_PBR_Dirlight( IDK_Dirlight light, IDK_PBRSurfaceData surface, vec3 frag
 }
 
 
-vec3 IDK_PBR_Dirlight2( IDK_Dirlight light, IDK_PBRSurfaceData surface, vec3 fragpos )
-{
-    const vec3 L = normalize(-light.direction.xyz);
-    const vec3 H = normalize(surface.V + L);
-    float NdotL  = PBR_DOT(surface.N, L);
-
-    float ndf   = NDF(surface.roughness, surface.N, H);
-    float G     = GSF(surface.roughness, surface.N, surface.V, L);
-
-    vec3  numerator   = ndf * G * surface.F;
-    float denominator = 4.0 * surface.NdotV * NdotL + PBR_EPSILON;
-    vec3  specular    = numerator / denominator;
-
-    vec3 radiance = light.diffuse.rgb * light.diffuse.a;
-         radiance = (radiance / PBR_PI) * fresnelDisney(surface.N, surface.V, L, surface.roughness);
-
-    return ((surface.Kd * surface.albedo) / PBR_PI + specular) * radiance * NdotL;
-}

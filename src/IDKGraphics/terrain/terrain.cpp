@@ -137,7 +137,7 @@ namespace
 
     bool      m_terrain_wireframe = false;
     bool      m_water_wireframe   = false;
-    bool      m_water_enabled     = true;
+    bool      m_water_enabled     = false;
     bool      m_grass_enabled     = true;
 
     uint32_t  m_diff_textures;
@@ -486,8 +486,8 @@ world_to_uv( float x, float z )
     float xscale = glm::length(glm::vec3(terrain.transform[0]));
     float yscale = terrain.scale.y;
 
-    glm::vec3 minv  = xscale * glm::vec4(-0.5f, 0.0f, -0.5f, 1.0f);
-    glm::vec3 maxv  = xscale * glm::vec4(+0.5f, 0.0f, +0.5f, 1.0f);
+    glm::vec3 minv  = xscale * glm::vec3(-0.5f, 0.0f, -0.5f);
+    glm::vec3 maxv  = xscale * glm::vec3(+0.5f, 0.0f, +0.5f);
 
     float u = (x - minv.x) / (maxv.x - minv.x);
     float v = (z - minv.z) / (maxv.z - minv.z);
@@ -529,21 +529,24 @@ waterComputeHeight( float time, float x, float z )
     float a        = yscale;
     float w        = 1.0 / xscale;
 
-    int waves = glm::clamp(64, 1, WATER_OCTAVES);
+    int waves = glm::clamp(int(m_terrain_desc.water.octaves), 1, WATER_OCTAVES);
 
     for (int i=0; i<waves; i++)
     {
-        glm::vec2 dir = m_water_dirs[i];
+        glm::vec2 dir  = m_water_dirs[i];
+                  dir += 2.0f * (m_water_dirs[(i+5)%WATER_OCTAVES] * 0.5f + 0.5f);
+                  dir  = glm::normalize(dir);
+
         float xz = glm::dot(glm::vec2(x, z), dir);
 
-        height += a * sin(w*xz + t);
+        height   += a * sin(w*xz + t);
         gradient += a * w * dir * cos(w*xz + t);
 
         a *= NF.amp;
         w *= NF.wav;
     }
 
-    height += m_terrain_desc.water_pos.y;
+    // height += m_terrain_desc.water_pos.y;
 
     return glm::vec3(height, gradient);
 }
@@ -551,22 +554,32 @@ waterComputeHeight( float time, float x, float z )
 
 
 
+
+
 float
-idk::TerrainRenderer::waterHeightQuery( float x, float z )
+idk::TerrainRenderer::waterHeightQuery( float x, float z, float *dx, float *dz )
 {
+    float wscale = m_terrain_desc.water_scale[3];
+
     glm::vec2 uv = 2048.0f * world_to_uv(x, z);
 
-    float t  = idk::getTime();
-    float dt = idk::getDeltaTime();
+    float t0 = idk::getTime() - idk::getDeltaTime();
+    float t1 = idk::getTime();
 
-    glm::vec3 pdh = waterComputeHeight(t-dt, uv.x, uv.y);
+    glm::vec3 hpd = waterComputeHeight(t0, uv.x, uv.y);
 
-    uv.x -= pdh[1];
-    uv.y -= pdh[2];
+    uv.x -= wscale*hpd[1];
+    uv.y -= wscale*hpd[2];
 
-    pdh = waterComputeHeight(t, uv.x, uv.y);
-    
-    return pdh[0];
+    hpd = waterComputeHeight(t1, uv.x, uv.y);
+
+    if (dx && dz)
+    {
+        *dx = hpd[1];
+        *dz = hpd[2];
+    }
+
+    return m_terrain_desc.water_pos.y + hpd[0];
 }
 
 
@@ -722,6 +735,7 @@ idk::TerrainRenderer::render( idk::RenderEngine &ren, float dt,
 
         auto &program = ren.getBindProgram("terrain-water");
         program.set_sampler2D("un_tmp_depth", tmp_depth.attachments[0]);
+        program.set_sampler2D("un_prev_albedo", ren.m_gbuffers[1]->attachments[0]);
 
         if (m_water_wireframe)
         {

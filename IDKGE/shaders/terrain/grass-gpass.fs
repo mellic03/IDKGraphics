@@ -43,9 +43,6 @@ void main()
         // discard;
     // }
 
-    fsout_vel = PackVelocity(fsin.vdata);
-
-
     if (albedo.a < 0.05)
     {
         discard;
@@ -66,5 +63,6 @@ void main()
     fsout_albedo = vec4(albedo.rgb, 1.0);
     fsout_normal = normalize(fsin.normal);
     fsout_pbr    = vec4(0.95, 0.0, ao, 0.0);
+    fsout_vel = PackVelocity(fsin.vdata);
 
 }

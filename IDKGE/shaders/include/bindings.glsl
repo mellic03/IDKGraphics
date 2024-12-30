@@ -5,6 +5,8 @@
 #define IDK_BINDING_UBO_EnvProbes     2
 #define IDK_BINDING_SSBO_SVOctree     1
 
+#define IDK_BINDING_UBO_Primitives    3
+
 #define IDK_BINDING_SSBO_ParticleDesc 3
 #define IDK_BINDING_SSBO_Particles    4
 

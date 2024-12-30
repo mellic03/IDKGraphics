@@ -9,6 +9,7 @@ namespace idk
     struct TAASettings;
     struct SSAOSettings;
     struct SSRSettings;
+    struct SSGISettings;
     struct VolumetricSettings;
     struct EnvProbeSettings;
 }
@@ -16,23 +17,20 @@ namespace idk
 
 struct idk::TAASettings
 {
-    bool enabled = true;    uint32_t pad0[8];
-    int  factor  = 16;      uint32_t pad1[7];
-    float scale  = 1.0f;
+    bool  enabled = true;
+    int   factor  = 4;
+    float scale   = 1.0f;
 };
 
 
 struct idk::SSAOSettings
 {
-    bool  enabled   = false;
-    int   unsharp   = 1;        uint32_t pad0[7];
+    bool  enabled   = true;
+    int   samples   = 4;
     float factor    = 4.0f;
-    float intensity = 0.45f;    uint32_t pad1[8];
-
-    int   samples    = 9;
-    int   iterations = 1;
-    float radius     = 0.5f;
-    float bias       = -0.02f;   uint32_t pad2[7];
+    float intensity = 0.45f;
+    float radius    = 0.5f;
+    float bias      = -0.02f;
 };
 
 
@@ -45,23 +43,32 @@ struct idk::SSRSettings
 };
 
 
+struct idk::SSGISettings
+{
+    bool  enabled     = false;
+    int   factor      = 4;
+    float intensity   = 1.0f;
+    int   samples     = 32;
+};
+
+
 struct idk::VolumetricSettings
 {
-    bool  enabled        = true;    uint32_t pad0[8];
+    bool  enabled        = false;
 
     int   res_divisor    = 2;
     int   blend_mode     = 0;
     int   samples        = 16;
-    float intensity      = 0.25f;   uint32_t pad1[8];
+    float intensity      = 0.25f;
 
     int   samples_sun    = 4;
     float height_offset  = 0.0f;
     float height_falloff = 1.0f;
     float scatter_coeff  = 1.0f;
-    float absorb_coeff   = 3.0f;    uint32_t pad2[8];
+    float absorb_coeff   = 3.0f;
 
     float worley_amp     = 1.0f;
-    float worley_wav     = 1.0f;    uint32_t pad3[8];
+    float worley_wav     = 1.0f;
 };
 
 
@@ -83,6 +90,7 @@ struct idk::RenderSettings
     TAASettings        taa;
     SSAOSettings       ssao;
     SSRSettings        ssr;
+    SSGISettings       ssgi;
     VolumetricSettings volumetrics;
     EnvProbeSettings   envprobe;
 };

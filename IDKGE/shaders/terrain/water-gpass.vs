@@ -137,7 +137,7 @@ void main()
         float t1 = IDK_GetTime();
         vec3  hpd = WaterComputeHeight(t0, vsout.texcoord.x, vsout.texcoord.y).xyz;
 
-        vsout.texcoord -= hpd.yz;
+        vsout.texcoord -= wscale*hpd.yz;
 
         prev_height = hpd[0];
         curr_height = WaterComputeHeight(t1, vsout.texcoord.x, vsout.texcoord.y)[0];
@@ -151,7 +151,7 @@ void main()
         vsout.dy = curr.y - prev.y;
     }
 
-    vsout.fragpos.y = IDK_SSBO_Terrain.water_pos.y + curr.y;
+    vsout.fragpos.y = curr.y;
 
     // float theight = TerrainComputeFinalHeight(vsout.fragpos.x, vsout.fragpos.z);
     // float alpha   = clamp(theight/vsout.fragpos.y, 0.0, 1.0);

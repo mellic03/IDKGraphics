@@ -146,50 +146,50 @@ float dirlight_shadow_2( IDK_Camera camera, IDK_Dirlight light, mat4 V, vec3 pos
 
 
 
-float get_ssetness( vec3 L )
-{
-    float ssetness = 1.0 - max(L.y, 0.0);
-          ssetness = pow(ssetness, 3.0);
-    return ssetness;
-}
+// float get_ssetness( vec3 L )
+// {
+//     float ssetness = 1.0 - max(L.y, 0.0);
+//           ssetness = pow(ssetness, 3.0);
+//     return ssetness;
+// }
 
 
 
-vec3 computeSomeShit( vec3 diffuse, vec2 texcoord, vec3 L, vec3 rp, vec3 rd )
-{
-    vec3 result = vec3(0.0);
+// vec3 computeSomeShit( vec3 diffuse, vec2 texcoord, vec3 L, vec3 rp, vec3 rd )
+// {
+//     vec3 result = vec3(0.0);
 
-    rp -= vec3(0.0, un_height_offset, 0.0);
+//     rp -= vec3(0.0, un_height_offset, 0.0);
 
 
-    vec3  color = VolumetricFogColor(L, rd);
+//     vec3  color = VolumetricFogColor(L, rd);
 
-    if (textureLod(un_fragdepth, texcoord, 0.0).r >= 1.0)
-    {
-        vec3 sunset = pow(color, vec3(2.0));
+//     if (textureLod(un_fragdepth, texcoord, 0.0).r >= 1.0)
+//     {
+//         vec3 sunset = pow(color, vec3(2.0));
     
-        float sunsetness = 0.15 * max(dot(rd, vec3(0, 1, 0)), 0.0);
-        vec3  blueness   = pow(vec3(0.4, 0.8, 1.0)+sunsetness, vec3(4.0));
+//         float sunsetness = 0.15 * max(dot(rd, vec3(0, 1, 0)), 0.0);
+//         vec3  blueness   = pow(vec3(0.4, 0.8, 1.0)+sunsetness, vec3(4.0));
 
-        color += blueness;
+//         color += blueness;
 
 
-        float sunness = max(dot(L, rd), 0.0);
-              sunness = pow(sunness, 256.0);
+//         float sunness = max(dot(L, rd), 0.0);
+//               sunness = pow(sunness, 256.0);
             
-        vec3 sun = vec3(1.0, 0.95, 0.85);
-             sun = pow(sun, vec3(4.0));
+//         vec3 sun = vec3(1.0, 0.95, 0.85);
+//              sun = pow(sun, vec3(4.0));
             
-        result = mix(result, diffuse*sun, sunness);
-    }
+//         result = mix(result, diffuse*sun, sunness);
+//     }
 
-    vec3 ree = vec3(255, 70, 0) / 255.0;
+//     vec3 ree = vec3(255, 70, 0) / 255.0;
 
-    float ssetness = get_ssetness(L);
-    ree = diffuse * mix(vec3(1.0), ree, ssetness);
+//     float ssetness = get_ssetness(L);
+//     ree = diffuse * mix(vec3(1.0), ree, ssetness);
 
-    return ree*color;
-}
+//     return ree*color;
+// }
 
 
 void main()
@@ -211,13 +211,7 @@ void main()
 
     surface.ao *= textureLod(un_occlusion, texcoord, 0.0).r;
 
-
     vec3 worldpos = surface.position;
-    vec3 L   = -light.direction.xyz;
-    vec3 rp  = camera.position.xyz;
-    vec3 rd  = -surface.V;
-    vec3 pos = rp - vec3(0.0, un_height_offset, 0.0);
-
 
     float shadow  = dirlight_shadow_2(camera, light, camera.V, worldpos, surface.N);
     vec3  result  = IDK_PBR_Dirlight(light, surface, worldpos);
@@ -225,26 +219,14 @@ void main()
           result += light.ambient.rgb * surface.albedo.rgb * surface.ao;
 
 
-    float alpha = VolumetricFogAlpha(
-        un_height_falloff, un_intensity, pos, rd, distance(rp, worldpos)
-    );
-
-
     // IBL
     // -----------------------------------------------------------------------------------------
     vec3 IBL_contribution = vec3(0.0);
 
-
-    float ssetness = get_ssetness(L);
-    vec3  ssetcol  = light.diffuse.rgb * mix(vec3(1.0),  vec3(255, 70, 0) / 255.0, ssetness);
-
-    // vec3 shieeet0 = result * computeSomeShit(light.diffuse.rgb, texcoord, L, rp, surface.N);
-    // vec3 shieeet1 = result * computeSomeShit(light.diffuse.rgb, texcoord, L, rp, surface.R);
-
     vec3 irradiance = textureLod(un_skybox_diffuse, surface.N, surface.roughness).rgb;
-    vec3 diffuse    = ssetcol * surface.Kd * irradiance * surface.albedo;
+    vec3 diffuse    = surface.Kd * irradiance * surface.albedo;
     vec3 prefilter  = textureLod(un_skybox_specular, surface.R, surface.roughness*4.0).rgb;
-    vec3 specular   = ssetcol * prefilter * surface.brdf;
+    vec3 specular   = prefilter * surface.brdf;
     vec3 ambient    = (diffuse + specular) * surface.ao;
 
     // #if DIRSHADOW_AMBIENT == 1
@@ -256,24 +238,12 @@ void main()
 
     result += surface.emission * surface.albedo;
 
-
-
-    if (textureLod(un_fragdepth, texcoord, 0.0).r >= 1.0)
+    if (texture(un_fragdepth, texcoord).r >= 1.0)
     {
-        float sunness = max(dot(L, rd), 0.0);
-              sunness = pow(sunness, 256.0);
-            
-        vec3 sun = vec3(1.0, 0.95, 0.85);
-             sun = pow(sun, vec3(4.0));
-            
-        result = mix(result, light.diffuse.rgb*sun, sunness);
+        result = textureLod(un_skybox, -surface.V, 0.0).rgb;
     }
 
-    vec3 shit = computeSomeShit(light.diffuse.rgb, texcoord, L, rp, rd);
-    result = mix(result, shit, alpha);
-
     fsout_frag_color = vec4(result, 1.0);
-    // fsout_frag_color = vec4(surface.ao, surface.ao, surface.ao, 1.0);
 }
 
 

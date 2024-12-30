@@ -22,11 +22,11 @@ namespace idk::ui
     {
         enum Alignment: uint32_t { LEFT, RIGHT, TOP, BOTTOM, CENTER };
 
-        glm::vec4 margin    = glm::vec4(0.0f);
-        glm::vec4 padding   = glm::vec4(0.0f);
-        glm::vec4 radius    = glm::vec4(0.0f);
-        glm::vec4 fg        = glm::vec4(1.0f);
-        glm::vec4 bg        = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        glm::vec4 margin    = glm::vec4(4.0f);
+        glm::vec4 padding   = glm::vec4(4.0f);
+        glm::vec4 radius    = glm::vec4(4.0f);
+        glm::vec4 fg        = glm::vec4(0.8f);
+        glm::vec4 bg        = glm::vec4(0.5f, 0.5f, 0.5f, 1.0f);
         glm::vec4 border    = glm::vec4(0.0f);
         Alignment align     = CENTER;
         glm::vec2 minbounds = glm::vec2(0.0f);

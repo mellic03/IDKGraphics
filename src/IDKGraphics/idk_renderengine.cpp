@@ -156,6 +156,10 @@ idk::RenderEngine::init_screenquad()
 void
 idk::RenderEngine::compileShaders()
 {
+    idk::glShaderStage VS_quad("IDKGE/shaders/screenquad.vs");
+
+
+
     createProgram("text",         glShaderProgram("IDKGE/shaders/text.comp"));
     createProgram("button-rect",  "IDKGE/shaders/", "button-rect.vs", "button-rect.fs");
     createProgram("ui-text",      "IDKGE/shaders/", "ui-text.vs", "ui-text.fs");
@@ -169,8 +173,15 @@ idk::RenderEngine::compileShaders()
 
     createProgram("background", "IDKGE/shaders/", "screenquad.vs", "deferred/background.fs");
 
-    createProgram("gpass",           "IDKGE/shaders/deferred/", "gpass.vs", "gpass.fs");
-    createProgram("gpass-decal",     "IDKGE/shaders/deferred/", "gpass.vs", "gpass-decal.fs");
+    createProgram("gpass",       "IDKGE/shaders/deferred/",  "gpass.vs", "gpass.fs");
+    createProgram("gpass-decal", "IDKGE/shaders/deferred/",  "gpass.vs", "gpass-decal.fs");
+
+    {
+        auto VS = idk::glShaderStage("IDKGE/shaders/primitive/prim-gpass.vs");
+        auto FS = idk::glShaderStage("IDKGE/shaders/primitive/prim-gpass.fs");
+        createProgram("gpass-prim",  idk::glShaderProgram(VS, FS));
+    }
+
 
     createProgram("shadowcascade-split", glShaderProgram("IDKGE/shaders/shadowcascade-split.comp"));
 
@@ -213,9 +224,8 @@ idk::RenderEngine::compileShaders()
     // -----------------------------------------------------------------------------------------
 
 
-    idk::glShaderStage VS_SSAO("IDKGE/shaders/screenquad.vs");
     idk::glShaderStage FS_SSAO("IDKGE/shaders/post/SSAO.fs");
-    createProgram("SSAO", idk::glShaderProgram(VS_SSAO, FS_SSAO));
+    createProgram("SSAO", idk::glShaderProgram(VS_quad, FS_SSAO));
     createProgram("SSAO_composite", "IDKGE/shaders/", "screenquad.vs", "post/SSAO_composite.fs");
 
 
@@ -225,10 +235,14 @@ idk::RenderEngine::compileShaders()
     createProgram("composite", "IDKGE/shaders/", "screenquad.vs", "post/composite.fs");
 
     createProgram("dirshadow-indirect", "IDKGE/shaders/", "dirshadow-indirect.vs", "dirshadow.fs");
-    createProgram("SSR", "IDKGE/shaders/", "screenquad.vs", "post/SSR.fs");
+
+    {
+        auto FS = idk::glShaderStage("IDKGE/shaders/post/SSR.fs", {"SSGI_DIFFUSE"});
+        createProgram("SSR", idk::glShaderProgram(VS_quad, FS));
+    }
     createProgram("SSR-downsample", glShaderProgram("IDKGE/shaders/post/SSR-downsample.comp"));
 
-    createProgram("SSS", "IDKGE/shaders/", "screenquad.vs", "post/SSS.fs");
+    // createProgram("SSS", "IDKGE/shaders/", "screenquad.vs", "post/SSS.fs");
 
 
     createProgram("bloom-first", "IDKGE/shaders/", "screenquad.vs", "post/bloom-first.fs");
@@ -290,23 +304,23 @@ idk::RenderEngine::init_framebuffers( int w, int h )
         .genmipmap      = GL_FALSE
     };
 
-    idk::glTextureConfig foliage_config = {
-        .internalformat = GL_RGBA8,
-        .format         = GL_RGBA,
-        .minfilter      = GL_LINEAR,
-        .magfilter      = GL_LINEAR,
-        .datatype       = GL_UNSIGNED_BYTE,
-        .genmipmap      = GL_FALSE
-    };
+    // idk::glTextureConfig foliage_config = {
+    //     .internalformat = GL_RGBA8,
+    //     .format         = GL_RGBA,
+    //     .minfilter      = GL_LINEAR,
+    //     .magfilter      = GL_LINEAR,
+    //     .datatype       = GL_UNSIGNED_BYTE,
+    //     .genmipmap      = GL_FALSE
+    // };
 
-    idk::glTextureConfig radiance_config = {
-        .internalformat = GL_RGBA16F,
-        .format         = GL_RGBA,
-        .minfilter      = GL_LINEAR,
-        .magfilter      = GL_LINEAR,
-        .datatype       = GL_FLOAT,
-        .genmipmap      = GL_FALSE
-    };
+    // idk::glTextureConfig radiance_config = {
+    //     .internalformat = GL_RGBA16F,
+    //     .format         = GL_RGBA,
+    //     .minfilter      = GL_LINEAR,
+    //     .magfilter      = GL_LINEAR,
+    //     .datatype       = GL_FLOAT,
+    //     .genmipmap      = GL_FALSE
+    // };
 
     idk::glTextureConfig vol_config = {
         .internalformat = GL_RGBA8,
@@ -320,7 +334,7 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     idk::glTextureConfig SSAO_config = {
         .internalformat = GL_R8,
         .format         = GL_RED,
-        .minfilter      = GL_NEAREST,
+        .minfilter      = GL_LINEAR,
         .magfilter      = GL_LINEAR,
         .datatype       = GL_UNSIGNED_BYTE,
         .genmipmap      = GL_FALSE
@@ -347,8 +361,8 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     idk::glTextureConfig depth_config = {
         .internalformat = GL_DEPTH_COMPONENT24,
         .format         = GL_RED,
-        .minfilter      = GL_NEAREST,
-        .magfilter      = GL_NEAREST,
+        .minfilter      = GL_LINEAR,
+        .magfilter      = GL_LINEAR,
         .datatype       = GL_FLOAT
     };
 
@@ -365,7 +379,7 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     m_dirshadow_buffer.reset(2048, 2048, 1);
     m_dirshadow_buffer.depthArrayAttachment(5, depth_config);
 
-    m_dirshadow2_buffer.reset(2048, 2048, 4);
+    m_dirshadow2_buffer.reset(512, 512, 4);
     m_dirshadow2_buffer.colorAttachment(0, depth2_config);
     m_dirshadow2_buffer.colorAttachment(1, depth2_config);
     m_dirshadow2_buffer.colorAttachment(2, depth2_config);
@@ -385,14 +399,23 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     // m_foliage_buffer.colorAttachment(0, foliage_config);
     // m_foliage_buffer.depthAttachment(1, depth_config);
 
+    for (int i=0; i<2; i++)
+    {
+        m_SSAO_buffers[i] = new idk::glFramebuffer;
+        m_SSAO_buffers[i]->reset(w/1, h/1, 1);
+        m_SSAO_buffers[i]->colorAttachment(0, SSAO_config);
 
-    m_SSAO_buffers[0].reset(w/1, h/1, 1);
-    m_SSAO_buffers[1].reset(w/1, h/1, 1);
-    m_SSAO_buffers[0].colorAttachment(0, SSAO_config);
-    m_SSAO_buffers[1].colorAttachment(0, SSAO_config);
+        m_SSGI_buffers[i] = new idk::glFramebuffer;
+        m_SSGI_buffers[i]->reset(w/2, h/2, 1);
+        m_SSGI_buffers[i]->colorAttachment(0, SSR_config);
+    }
 
-    m_finalbuffer.reset(m_winsize.x, m_winsize.y, 1);
-    m_finalbuffer.colorAttachment(0, config);
+    m_mipbuffer.reset(w/2, h/2, 6);
+    for (int i=0; i<6; i++)
+    {
+        m_mipbuffer.colorAttachment(i, SSR_config);
+    }
+
 
     for (int i=0; i<3; i++)
     {
@@ -402,13 +425,8 @@ idk::RenderEngine::init_framebuffers( int w, int h )
     }
 
 
-    m_mipbuffer[0].reset(w/2, h/2, 1);
-    m_mipbuffer[1].reset(w/2, h/2, 6);
-    m_mipbuffer[0].colorAttachment(0, SSR_config);
-    for (int i=0; i<6; i++)
-    {
-        m_mipbuffer[1].colorAttachment(i, SSR_config);
-    }
+    m_finalbuffer.reset(m_winsize.x, m_winsize.y, 1);
+    m_finalbuffer.colorAttachment(0, config);
 
 
     m_ui_buffer.reset(m_winsize.x, m_winsize.y, 2);
@@ -572,6 +590,13 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
 
     m_lightsource_DIB.init();
     m_lightsource_DIB.bufferData(sizeof(glDrawCmd), nullptr, GL_DYNAMIC_DRAW);
+
+
+    m_prim_UBO.init(shader_bindings::UBO_Primitives);
+    m_prim_UBO.bufferData(4096*sizeof(Prim),  nullptr, GL_DYNAMIC_DRAW);
+
+    m_prim_DIB.init();
+    m_prim_DIB.bufferData(2*sizeof(glDrawCmd), nullptr, GL_DYNAMIC_DRAW);
     // -----------------------------------------------------------------------------------------
 
 
@@ -606,7 +631,9 @@ idk::RenderEngine::init_all( std::string name, int w, int h )
     m_active_camera_id = createCamera();
     int skybox0 = loadSkybox("IDKGE/resources/skybox/skybox0/");
     int skybox1 = loadSkybox("IDKGE/resources/skybox/skybox1/");
-    useSkybox(skybox1);
+    int skybox4 = loadSkybox("IDKGE/resources/skybox/skybox4/");
+    int skybox8 = loadSkybox("IDKGE/resources/skybox/skybox8/");
+    useSkybox(skybox8);
 }
 
 
@@ -885,9 +912,15 @@ idk::RenderEngine::drawSphere( const glm::mat4 &M )
 
 
 void
-idk::RenderEngine::drawRect( const glm::mat4 &M )
+idk::RenderEngine::drawRect( const glm::mat4 &T)
 {
-    drawModel(m_unit_cube, M);
+    drawModel(m_unit_cube, T);
+}
+
+void
+idk::RenderEngine::drawRect( const glm::mat4 &T, const glm::mat4 &prev_T )
+{
+    drawModel(m_unit_cube, T, prev_T);
 }
 
 
@@ -913,6 +946,31 @@ idk::RenderEngine::drawCapsule( const glm::vec3 top, const glm::vec3 bottom, flo
     drawSphere(bottom, thickness);
     drawLine(top, bottom, 2.0f*thickness);
 }
+
+
+int
+idk::RenderEngine::createPrimitive( PrimType ptype, const Prim &prim )
+{
+    return m_primitives[ptype].create(prim);
+}
+
+
+idk::RenderEngine::Prim&
+idk::RenderEngine::getPrimitive( PrimType ptype, int id )
+{
+    return m_primitives[ptype].get(id);
+}
+
+
+void
+idk::RenderEngine::destroyPrimitive( PrimType ptype, int id )
+{
+    m_primitives[ptype].destroy(id);
+}
+
+
+
+
 
 
 int
@@ -1223,37 +1281,6 @@ static bool memsame( const void *a, const void *b, uint32_t nbytes )
 void
 idk::RenderEngine::applyRenderSettings( const RenderSettings &settings, bool refresh )
 {
-    // RenderConfig &rconfig = *m_config;
-
-    // if (rconfig.changed == false)
-    // {
-    //     return;
-    // }
-    // rconfig.changed = false;
-
-
-    // for (auto &[group_name, group]: rconfig.groups)
-    // {
-    //     if (group.changed == false)
-    //     {
-    //         continue;
-    //     }
-    //     group.changed = false;
-
-
-    //     // auto &program = getBindProgram(group.program);
-
-    //     // for (auto &[field_name, field]: group)
-    //     // {
-    //     //     program.set_float("un_"+field_name, field.getValue());
-    //     // }
-    // }
-
-
-
-    // auto prev = *m_rendersettings;
-    // auto curr = settings;
-
     if (refresh == false)
     {
         if (memsame(m_rendersettings, &settings, sizeof(RenderSettings)) == true)
@@ -1285,10 +1312,26 @@ idk::RenderEngine::applyRenderSettings( const RenderSettings &settings, bool ref
 
     // SSAO
     {
-        // auto prev = m_rendersettings->ssao;
-        // auto curr = settings.ssao;
+        auto prev = m_rendersettings->ssao;
+        auto curr = settings.ssao;
 
-        // m_rendersettings->ssao = curr;
+        auto &program = getBindProgram("SSAO");
+        program.set_float("un_factor", float(curr.factor));
+
+        m_rendersettings->ssao = curr;
+    }
+
+
+    // SSR/SSGI
+    {
+        auto prev = m_rendersettings->ssgi;
+        auto curr = settings.ssgi;
+
+        auto &program = getBindProgram("SSR");
+        program.set_float("un_factor",    float(curr.factor));
+        program.set_float("un_intensity", float(curr.intensity));
+
+        m_rendersettings->ssgi = curr;
     }
 
     // Volumetrics
@@ -1436,7 +1479,7 @@ idk::RenderEngine::endFrame( float dt )
 
     // Update particle emitters
     // -----------------------------------------------------------------------------------------
-    idk::ParticleSystem::update(*this, dt, camera.position, _getRenderQueue(m_particle_RQ));
+    idk::ParticleSystem::update(*this, dt, camera.position);
     // -----------------------------------------------------------------------------------------
 
     // Update terrain rendering
@@ -1555,7 +1598,7 @@ idk::RenderEngine::endFrame( float dt )
 
         program.set_int("un_image_w", 2048);
         program.set_int("un_image_h", 2048);
-        program.dispatch(2048/8, 2048/8, 1);
+        program.dispatch(512/8, 512/8, 1);
         gl::memoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
     }
     // -----------------------------------------------------------------------------------------
@@ -1596,6 +1639,7 @@ idk::RenderEngine::endFrame( float dt )
     RenderStage_postprocessing(camera, *(m_lightbuffers[0]), m_finalbuffer);
     // -----------------------------------------------------------------------------------------
 
+    std::swap(m_SSAO_buffers[0], m_SSAO_buffers[1]);
 
     // Clear render queues
     // -----------------------------------------------------------------------------------------

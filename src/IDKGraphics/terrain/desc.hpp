@@ -17,7 +17,7 @@ namespace idk::TerrainRenderer
 
     struct TerrainDesc
     {
-        glm::vec4 clipmap_size = glm::vec4(32.0f, 5.0f, 1.0f, 1.0f);
+        glm::vec4 clipmap_size = glm::vec4(4.0f, 8.0f, 1.0f, 1.0f);
 
         glm::vec4 texscale[1];
     
@@ -35,7 +35,7 @@ namespace idk::TerrainRenderer
         NoiseFactor exponent;
         NoiseFactor domainwarp;
 
-        glm::mat4 transform    = glm::mat4(1.0f);
+        glm::mat4 transform    = glm::scale(glm::mat4(1.0f), glm::vec3(2048, 1, 1));
         glm::vec4 scale        = glm::vec4(1.0f, 0.2f, 0.5f, 1.0f);
         glm::vec4 slope_blend  = glm::vec4(0.6f, 0.75f, 0.1f, 0.5f);
         glm::vec4 height_blend = glm::vec4(0.6f, 0.75f, 0.1f, 0.5f);

@@ -119,7 +119,7 @@ vec4 PackVelocity( IDK_VelocityData vdata )
     vec2 wcurr = (vdata.wcurr.xy / vdata.wcurr.w) * 0.5 + 0.5;
     vec2 wprev = (vdata.wprev.xy / vdata.wprev.w) * 0.5 + 0.5;
 
-    return 10.0 * vec4(curr-prev, wcurr-wprev);
+    return 1.0 * vec4(curr-prev, wcurr-wprev);
 
     // vec4 v = vec4(curr-prev, wcurr-wprev) * 0.5 + 0.5;
     // return pow(v, vec4(3.0));
@@ -127,7 +127,7 @@ vec4 PackVelocity( IDK_VelocityData vdata )
 
 vec4 UnpackVelocity( vec4 vel )
 {
-    return (1.0 / 10.0) * vel;
+    return (1.0 / 1.0) * vel;
 
     // vec4 v = pow(vel, vec4(1.0/3.0));
     // return v * 2.0 - 1.0;

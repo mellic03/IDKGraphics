@@ -52,21 +52,15 @@ struct SSBO_ParticleBuffer
 
 
 
-
 namespace
 {
     idk::WAllocator<ParticleSystem::Emitter> m_emitters;
-
-    uint32_t                m_quad_VAO;
-    uint32_t                m_quad_VBO;
 
     idk::glBufferObject<GL_SHADER_STORAGE_BUFFER> m_SSBO;
     idk::glBufferObject<GL_SHADER_STORAGE_BUFFER> m_SSBO_desc;
     idk::glBufferObject<GL_DRAW_INDIRECT_BUFFER>  m_DIB;
 }
 
-
-static void ParticleSystem_genQuadVAO();
 
 
 void
@@ -80,8 +74,6 @@ idk::ParticleSystem::init( idk::RenderEngine &ren )
     ren.createProgram("particle-gpass", idk::glShaderProgram(VS, FS));
     ren.createProgram("particle-update", idk::glShaderProgram(CS1));
     ren.createProgram("particle-clear", idk::glShaderProgram(CS2));
-
-    ParticleSystem_genQuadVAO();
 
     m_SSBO.init(shader_bindings::SSBO_Particles);
     m_SSBO.bufferData(sizeof(SSBO_ParticleBuffer), nullptr, GL_DYNAMIC_DRAW);
@@ -110,7 +102,7 @@ idk::ParticleSystem::init( idk::RenderEngine &ren )
 
 
 void
-idk::ParticleSystem::update( idk::RenderEngine &ren, float dt, const glm::vec3 &view, idk::RenderQueue &queue )
+idk::ParticleSystem::update( idk::RenderEngine &ren, float dt, const glm::vec3 &view )
 {
     static std::vector<int> cull(128);
     cull.clear();
@@ -300,38 +292,6 @@ idk::ParticleSystem::getEmitter( int id )
     return m_emitters.get(id);
 }
 
-
-
-
-static void
-ParticleSystem_genQuadVAO()
-{
-    float quad_vertices[] = {
-      -1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
-      -1.0f, -1.0f,  0.0f,  0.0f,  0.0f,
-       1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
-
-      -1.0f,  1.0f,  0.0f,  0.0f,  1.0f,
-       1.0f, -1.0f,  0.0f,  1.0f,  0.0f,
-       1.0f,  1.0f,  0.0f,  1.0f,  1.0f
-    };
-
-    // Send screen quad to GPU
-    // ------------------------------------------------------------------------------------
-    gl::genVertexArrays(1, &m_quad_VAO);
-    gl::genBuffers(1, &m_quad_VBO);
-
-    gl::bindVertexArray(m_quad_VAO);
-    gl::bindBuffer(GL_ARRAY_BUFFER, m_quad_VBO);
-    gl::bufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
-
-    gl::vertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5*sizeof(float), 0);
-    gl::enableVertexAttribArray(0);
-
-    gl::vertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5*sizeof(float), 3*sizeof(float));
-    gl::enableVertexAttribArray(1);
-    // ------------------------------------------------------------------------------------
-}
 
 
 

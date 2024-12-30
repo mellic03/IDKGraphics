@@ -69,6 +69,34 @@ namespace idk
 
 class IDK_VISIBLE idk::RenderEngine
 {
+public:
+
+    struct Prim
+    {
+        glm::vec4 albedo = glm::vec4(1.0f);
+
+        float roughness = 0.5f;
+        float metallic  = 0.0f;
+        float emission  = 0.0f;
+        float padding   = 0.0f;
+    
+        glm::mat4 T      = glm::mat4(1.0f);
+        glm::mat4 prev_T = glm::mat4(1.0f);
+
+        void updateTransform( const glm::mat4 &M )
+        {
+            prev_T = T;
+            T = M;
+        }
+    };
+
+    enum PrimType: uint32_t
+    {
+        PRIM_CUBE,
+        PRIM_SPHERE,
+    };
+
+
 private:
 
     struct TextQuad
@@ -129,6 +157,10 @@ private:
     std::vector<idk::glDrawCmd>                     m_DIB_buffer;
 
     idk::glBufferObject<GL_DRAW_INDIRECT_BUFFER>    m_lightsource_DIB;
+
+    idk::glBufferObject<GL_UNIFORM_BUFFER>          m_prim_UBO;
+    idk::glBufferObject<GL_DRAW_INDIRECT_BUFFER>    m_prim_DIB;
+    idk::WAllocator<Prim>                           m_primitives[2];
     // -----------------------------------------------------------------------------------------
 
 
@@ -353,9 +385,14 @@ public:
     void                                drawSphere( const glm::mat4& );
     void                                drawSphereWireframe( const glm::mat4& );
     void                                drawRect( const glm::mat4& );
+    void                                drawRect( const glm::mat4&, const glm::mat4& );
     void                                drawRectWireframe( const glm::mat4& );
     void                                drawLine( const glm::vec3 A, const glm::vec3 B, float thickness );
     void                                drawCapsule( const glm::vec3 A, const glm::vec3 B, float thickness );
+
+    int                                 createPrimitive  ( PrimType, const Prim& );
+    Prim                               &getPrimitive     ( PrimType, int id );
+    void                                destroyPrimitive ( PrimType, int id );
 
     void                                drawModel( int model, const glm::mat4& );
     void                                drawModel( int model, const glm::mat4&, const glm::mat4& );
@@ -475,7 +512,7 @@ public:
     glFramebuffer                       m_shadow_buffer;
     glFramebuffer                       m_volumetrics_buffer;
 
-    glFramebuffer                       m_SSAO_buffers[2];
+    glFramebuffer                      *m_SSAO_buffers[2];
     uint32_t                            m_SSAO_noise;
 
     glFramebuffer                       m_finalbuffer;
@@ -489,7 +526,9 @@ public:
     int                                 m_postprocess_fb;
 
     glFramebuffer                       m_prev_depth;
-    glFramebuffer                       m_mipbuffer[2];
+    glFramebuffer                       m_mipbuffer;
+    glFramebuffer                      *m_SSGI_buffers[2];
+
     glFramebuffer                       m_ui_buffer;
 
     const glFramebuffer&                getGBuffer() { return *(m_gbuffers[0]); }

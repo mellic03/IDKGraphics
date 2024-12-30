@@ -28,9 +28,9 @@ in mat3 TBNT;
 
 void main()
 {
-    vec2 texcoords = fsin_texcoords;
-
-    uint offset = IDK_SSBO_texture_offsets[drawID];
+    IDK_Camera cam = IDK_GetCamera();
+    vec2  texcoords = fsin_texcoords;
+    uint  offset = IDK_SSBO_texture_offsets[drawID];
 
     vec4  albedo = texture(IDK_SSBO_textures[offset+0], texcoords).rgba;
     vec3  normal = texture(IDK_SSBO_textures[offset+1], texcoords).xyz * 2.0 - 1.0;
@@ -44,12 +44,8 @@ void main()
     // vec3 N = normalize(TBN * normalize(normal)); // normalize(fsin_normal);
         //  N = normalize(mix(N, normalize(fsin_normal), 0.5));
 
-
     fsout_albedo = vec4(albedo.rgb, 1.0);
     fsout_normal = TBN * normalize(normal);
-    fsout_pbr    = vec4(roughness, metallic, ao, 0.0);
-    // fsout_pbr    = vec4(0.8, 0.001, 1.0, 0.0);
-
-
-    fsout_vel = PackVelocity(fsin_vdata);
+    fsout_pbr    = vec4(roughness, metallic, 1.0, emissv);
+    fsout_vel    = PackVelocity(fsin_vdata);
 }

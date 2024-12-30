@@ -152,7 +152,7 @@ idk::glDepthCascade::computeCascadeMatrices( float cam_fov,  float cam_aspect,
     for (int i=0; i<NUM_CASCADES; i++)
     {
         float far = cam_near + cascades[i];
-        float near = (i==0) ? cam_near : cascades[i-1];
+        // // float near = (i==0) ? cam_near : cascades[i-1];
 
         glm::mat4 P = glm::perspective(
             cam_fov, cam_aspect, near, far
@@ -160,6 +160,12 @@ idk::glDepthCascade::computeCascadeMatrices( float cam_fov,  float cam_aspect,
 
         auto corners = get_corners(P, cam_view);
         glm::mat4 V = get_view(light_dir, corners);
+
+        // glm::mat4 V = glm::lookAt(
+        //     glm::vec3(-cam_view[3]) - light_dir,
+        //     glm::vec3(-cam_view[3]),
+        //     glm::vec3(0, 1, 0)
+        // );
 
 
         glm::vec3 minv = glm::vec3(+INFINITY);
@@ -178,20 +184,18 @@ idk::glDepthCascade::computeCascadeMatrices( float cam_fov,  float cam_aspect,
         }
 
         glm::vec3 M = glm::max(xyzmult, 1.0f);
-
-        minv.x *= (minv.x < 0) ? M.x : 1.0f/M.x;
-        maxv.x *= (maxv.x < 0) ? 1.0f/M.x : M.x;
-
-        minv.y *= (minv.y < 0) ? M.x : 1.0f/M.x;
-        maxv.y *= (maxv.y < 0) ? 1.0f/M.x : M.x;
-
-        minv.z *= (minv.z < 0) ? M.x : 1.0f/M.x;
-        maxv.z *= (maxv.z < 0) ? 1.0f/M.x : M.x;
-
         minv.z *= (minv.z < 0) ? M.z : 1.0f/M.z;
         maxv.z *= (maxv.z < 0) ? 1.0f/M.z : M.z;
 
-        glm::mat4 proj =  glm::ortho(minv.x, maxv.x, minv.y, maxv.y, minv.z, maxv.z);
+        // float span = cascades[i];
+
+        // minv = glm::vec3(-cam_view[3]) - 0.5f*span;
+        // minv.y = -cam_view[3].y - 16.0f;
+
+        // maxv = glm::vec3(-cam_view[3]) + 0.5f*span;
+        // maxv.y = -cam_view[3].y + 16.0f;
+
+        glm::mat4 proj = glm::ortho(minv.x, maxv.x, minv.y, maxv.y, minv.z, maxv.z);
         cascade_matrices.push_back(proj * V);
     }
 

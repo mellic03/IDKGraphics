@@ -6,9 +6,12 @@
 #include "../include/util.glsl"
 #include "../include/pbr.glsl"
 #include "../include/noise.glsl"
+#include "../include/denoise.glsl"
 #include "../include/time.glsl"
 #include "../include/taa.glsl"
 
+
+#define SSGI_DIFFUSE
 
 
 out vec4 fsout_frag_color;
@@ -19,9 +22,17 @@ uniform sampler2D un_input[8];
 uniform sampler2D un_albedo;
 uniform sampler2D un_normal;
 uniform sampler2D un_pbr;
+uniform sampler2D un_velocity;
 uniform sampler2D un_fragdepth;
 uniform sampler2D un_BRDF_LUT;
 uniform sampler2D un_occlusion;
+uniform sampler2D un_prev_SSGI;
+uniform samplerCube un_skybox;
+uniform samplerCube un_skybox_diffuse;
+uniform samplerCube un_skybox_specular;
+
+uniform float un_factor    = 4.0;
+uniform float un_intensity = 1.0;
 
 
 #define RAY_OFFSET 0.02
@@ -60,6 +71,7 @@ float DepthToViewZ( sampler2D depthtex, vec2 uv, mat4 P )
 vec2 rotateUV( vec2 uv, float rotation )
 {
     float mid = 0.5;
+
     return vec2(
         cos(rotation) * (uv.x - mid) + sin(rotation) * (uv.y - mid) + mid,
         cos(rotation) * (uv.y - mid) - sin(rotation) * (uv.x - mid) + mid
@@ -102,11 +114,13 @@ vec2 bin_search( mat4 P, vec3 start, vec3 end )
 
 
 
-vec3 raymarch( int steps, float maxdist, mat4 P, mat4 V, vec3 R, float roughness, float n1, vec3 rp, vec3 rd )
+vec3 raymarch( int steps, float maxdist, mat4 P, mat4 V, vec3 R, float roughness, float n1, vec3 rp, vec3 rd,
+               vec3 N, vec3 Kd, vec3 brdf, vec3 albedo )
 {
     // #define MAXDIST    32.0
     #define RESOLUTION (maxdist / float(steps))
-    #define THICKNESS  -(RESOLUTION - 0.0)
+    #define THICKNESS  -(RESOLUTION - 0.25)
+    // #define THICKNESS  -0.2
 
     rp += n1*RESOLUTION*rd;
 
@@ -123,8 +137,7 @@ vec3 raymarch( int steps, float maxdist, mat4 P, mat4 V, vec3 R, float roughness
 
         if (uv.x <= 0.0 || uv.x >= 1.0 || uv.y <= 0.0 || uv.y >= 1.0)
         {
-            // result = vec3(1, 0, 0);
-            break;
+            return vec3(0, 0, 0);
         }
 
         float ray_z = rp.z;
@@ -133,29 +146,26 @@ vec3 raymarch( int steps, float maxdist, mat4 P, mat4 V, vec3 R, float roughness
 
         if (delta < 0.0 && delta > THICKNESS)
         {
-            uv     = bin_search(P, rp-RESOLUTION*rd, rp);
-            result = textureLod(un_input[level], uv, 0.0).rgb;
+            uv = bin_search(P, rp-RESOLUTION*rd, rp);
+    
+            vec3 N = textureLod(un_normal, uv, 0.0).xyz;
+                 N = normalize((V * vec4(N, 0.0)).xyz);
 
-            // vec4  RN   = norm * vec4(2, 2, 2, 1) - vec4(1, 1, 1, 0);
-            // float DBA  = smoothstep(-0.17, 0.0, dot(RN.xyz, -R));
-
-            // result *= DBA;
-
-            break;
+            result  = textureLod(un_input[level], uv, 0.0).rgb;
+            result *= (dot(N, rd) > 0.0) ? 0.0 : 1.0;
+            return result;
         }
     }
 
-    result = textureLod(un_input[level], uv, 0.0).rgb;
+    // vec3 irradiance = textureLod(un_skybox_diffuse, N, roughness).rgb;
+    // vec3 diffuse    = Kd * irradiance * albedo;
+    // vec3 prefilter  = textureLod(un_skybox_specular, R, roughness*4.0).rgb;
+    // vec3 specular   = prefilter * brdf;
+    // vec3 ambient    = (specular); // * ao;
 
-
-    vec3 N = textureLod(un_normal, uv, 0.0).xyz;
-         N = normalize((V * vec4(N, 0.0)).xyz);
-
-    result *= (dot(N, rd) > 0.0) ? 0.0 : 1.0;
-
+    // return ambient;
     return result;
 }
-
 
 
 const vec2 poisson16[] = vec2[]( // These are the Poisson Disk Samples
@@ -176,6 +186,26 @@ const vec2 poisson16[] = vec2[]( // These are the Poisson Disk Samples
     vec2(  0.19984126,   0.78641367 ),
     vec2(  0.14383161,  -0.14100790 )
 );
+
+
+vec2 randomSeed( vec2 texcoord )
+{
+    return vec2(fract(sin(dot(texcoord, vec2(12.9898, 78.233))) * 43758.5453));
+}
+
+vec2 fetchBlueNoise( vec2 uv, vec2 texcoord )
+{
+    vec2 seed = randomSeed(texcoord);
+    return IDK_BlueNoise(uv + seed).rg;
+}
+
+vec3 sampleBlueNoiseHemisphere( vec2 texcoord )
+{
+    vec2 noise = fetchBlueNoise(texcoord.xy, texcoord);
+    float theta = noise.x * 2.0 * PBR_PI;  // Azimuth angle
+    float phi = acos(1.0 - 2.0 * noise.y); // Elevation angle
+    return vec3(sin(phi) * cos(theta), sin(phi) * sin(theta), cos(phi));
+}
 
 
 void main()
@@ -221,47 +251,86 @@ void main()
     float n1 = bnoise[0];
 
 
+
     if (albedo.a < 1.0)
     {
         fsout_frag_color = vec4(0.0);
         return;
     }
 
+
+    vec3 Kd   = (vec3(1.0) - fresnel) * (1.0 - metallic);
+    vec2 BRDF = textureLod(un_BRDF_LUT, vec2(NdotV, roughness), 0.0).rg;
+    vec3 brdf = (fresnel * BRDF.x + BRDF.y);
+    float ao  = textureLod(un_occlusion, texcoord, 0.0).r;
+
+
+
     vec3  ro = (camera.V * vec4(fragpos, 1.0)).xyz;
     vec3  spec_rd = normalize((camera.V * vec4(R, 0.0)).xyz);
 
     vec3 norm_vspace = normalize((camera.V * vec4(N, 0.0)).xyz);
-    vec3 specular = raymarch(8, 16.0, camera.P, camera.V, R, roughness, n1, ro, spec_rd);
-    // vec3 diffuse  = raymarch(8, 16.0, camera.P, camera.V, R, 1.0, n1, ro, norm_vspace);
-
+    vec3 specular = raymarch(8, 16.0, camera.P, camera.V, R, roughness, n1, ro, spec_rd, N, Kd, brdf, albedo.rgb);
     vec3 diffuse  = vec3(0.0);
 
-    vec3  wnoise = IDK_WhiteNoiseTexel(ivec2(tsize*texcoord)).rgb;
-    float theta  = 2.0 * 3.14159 * (wnoise.r);
-    vec2  offset = rotateUV(texcoord, theta) * tsize + IDK_Vec2Noise(int(IDK_GetFrame()));
 
-    for (int i=0; i<2; i++)
     {
-        vec2 texel2 = tsize * (texcoord + (i+1)*IDK_GetIrrational());
-        vec3 noise  = IDK_BlueNoiseTexel(ivec2(texel2)).rgb * 2.0 - 1.0;
+        vec2  wnoise = vec2(IDK_GetIrrational()); // IDK_WhiteNoiseTexel(ivec2(texel)).rg;
+        float theta  = 1.0 * 3.14159 * (wnoise.r);
 
-        vec3 diff_rd  = normalize(noise);
-             diff_rd *= sign(dot(diff_rd, norm_vspace));
+        // vec3[4] noise = vec3[4](
+        //     IDK_BlueNoiseTexel(ivec2(texel2) + ivec2( 0,  0)).rgb,
+        //     IDK_BlueNoiseTexel(ivec2(texel2) + ivec2( 0, -1)).rgb,
+        //     IDK_BlueNoiseTexel(ivec2(texel2) + ivec2(+1,  0)).rgb,
+        //     IDK_BlueNoiseTexel(ivec2(texel2) + ivec2(-1, +1)).rgb
+        // );
 
-        diffuse += raymarch(4, 16.0, camera.P, camera.V, R, roughness, n1, ro, diff_rd);
-        offset  += IDK_Vec2Noise(i + int(IDK_GetFrame()));
+        vec2 offsets[9] = vec2[9](
+            vec2(-1, -1) / tsize,
+            vec2(-1,  0) / tsize,
+            vec2(-1, +1) / tsize,
+            vec2( 0, -1) / tsize,
+            vec2( 0,  0) / tsize,
+            vec2( 0, +1) / tsize,
+            vec2(+1, -1) / tsize,
+            vec2(+1,  0) / tsize,
+            vec2(+1, +1) / tsize
+        );
+
+        for (int i=0; i<9; i++)
+        {
+            vec2  noise_uv    = texcoord + rotateUV((4.0*poisson16[i]) / tsize, theta);
+            ivec2 noise_texel = ivec2(tsize * noise_uv);
+            vec3  noise       = IDK_BlueNoiseTexel(noise_texel).rgb * 2.0 - 1.0;
+
+            vec3 diff_rd  = normalize(noise);
+                 diff_rd *= sign(dot(diff_rd, norm_vspace));
+
+            diffuse += raymarch(8, 16.0, camera.P, camera.V, R, 0.0, n1, ro, diff_rd, N, Kd, brdf, albedo.rgb);
+        }
+        // diffuse *= albedo.rgb;
+        diffuse *= (un_intensity / 9.0);
     }
-    diffuse *= albedo.rgb;
-    diffuse /= 2.0;
 
+    vec3 curr_ssgi = (Kd*diffuse + brdf*specular);
+    vec2 curr_vel  = UnpackVelocity(textureLod(un_velocity, texcoord, 0.0)).xy;
+    vec2 prev_uv   = clamp(texcoord-curr_vel, vec2(0.0), vec2(1.0));
+    vec3 prev_ssgi = vec3(0.0);
 
-    vec3 Kd   = (vec3(1.0) - fresnel) * (1.0 - metallic);
-    vec2 BRDF = textureLod(un_BRDF_LUT, vec2(NdotV+1.0/128.0, roughness+1.0/128.0), 0.0).rg;
-    vec3 brdf = (fresnel * BRDF.x + BRDF.y);
-    float ao  = textureLod(un_occlusion, texcoord, 0.0).r;
+    // if (prev_uv.x < 0.5)
+    // {
+    //     prev_ssgi = texture(un_prev_SSGI, prev_uv).rgb;
+    // }
 
-    vec3  result  = (Kd*diffuse + brdf*specular) * ao;
-          result *= getFadeFactor();
+    // else
+    {
+        float d = 5.0;
+        float s = 2.5;
+        float t = 0.012;
+        prev_ssgi = smartDeNoise(un_prev_SSGI, prev_uv, d, s, t).rgb;
+    }
+
+    vec3 result = mix(prev_ssgi, curr_ssgi, 1.0/un_factor);
 
     fsout_frag_color = vec4(result, 1.0);
 }

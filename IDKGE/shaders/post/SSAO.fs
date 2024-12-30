@@ -5,6 +5,7 @@
 #include "../include/util.glsl"
 #include "../include/time.glsl"
 #include "../include/noise.glsl"
+#include "../include/taa.glsl"
 
 
 layout (location = 0) out float fsout_result;
@@ -13,6 +14,9 @@ in vec2 fsin_texcoords;
 
 uniform sampler2D un_gNormal;
 uniform sampler2D un_gDepth;
+
+uniform sampler2D un_prev_SSAO;
+uniform sampler2D un_velocity;
 
 uniform int   un_samples     = 9;
 uniform float un_intensity   = 1.0;
@@ -111,14 +115,17 @@ void main()
     vec3 n_wspace = textureLod(un_gNormal, texcoord, 0.0).xyz;
     vec3 n_vspace = normalize((camera.V * vec4(n_wspace, 0.0)).xyz);
 
-    float result = 0.0;
-
     float dsq    = abs(f_vspace.z) * abs(f_vspace.z);
     float radius = clamp(dsq/25.0, 0.1, 1.0);
 
-    result += SSAO(camera.P, f_vspace, n_vspace, texcoord, tsize, radius);
+    float curr_ssao = SSAO(camera.P, f_vspace, n_vspace, texcoord, tsize, radius);
+          curr_ssao = 1.0 - (curr_ssao / float(un_samples));
 
-    fsout_result = 1.0 - (result / float(un_samples));
+    vec2  curr_vel  = UnpackVelocity(textureLod(un_velocity, texcoord, 0.0)).xy;
+    vec2  prev_uv   = clamp(texcoord-curr_vel, vec2(0.0), vec2(1.0));
+    float prev_ssao = texture(un_prev_SSAO, prev_uv).r;
+
+    fsout_result = mix(prev_ssao, curr_ssao, 1.0/un_factor);
 }
 
 

@@ -58,7 +58,7 @@ namespace idk::TerrainRenderer
     float heightQuery( float x, float z );
     glm::vec3 slopeQuery( float x, float z );
 
-    float waterHeightQuery( float x, float z );
+    float waterHeightQuery( float x, float z, float *dx=nullptr, float *dz=nullptr );
 
 
     void setTerrainTransform( const glm::mat4& );

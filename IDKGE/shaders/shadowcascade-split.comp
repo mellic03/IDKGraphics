@@ -20,7 +20,7 @@ uniform int un_image_h = 2048;
 void main()
 {
     ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
-    vec2  texcoord = texel / float(un_image_w);
+    vec2  texcoord = texel / float(512.0); // float(un_image_w);
 
     for (int i=0; i<4; i++)
     {

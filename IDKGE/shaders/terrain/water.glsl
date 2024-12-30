@@ -26,7 +26,14 @@ vec3 WaterComputeHeight( float time, float x, float z )
 
     for (int i=0; i<waves; i++)
     {
-        vec2 dir = IDK_SSBO_Water_dirs[(i+32)%IDK_WATER_OCTAVES];
+        // vec2 dir  = IDK_BlueNoiseTexel(ivec2(i, 0)).rg * 2.0 - 1.0; // IDK_SSBO_Water_dirs[(i+32)%IDK_WATER_OCTAVES];
+        //      dir += IDK_BlueNoiseTexel(ivec2(0, i)).rg * 0.25;
+        //      dir  = normalize(dir);
+
+        vec2 dir  = IDK_SSBO_Water_dirs[i % IDK_WATER_OCTAVES];
+             dir += 2.0 * (IDK_SSBO_Water_dirs[(i+5) % IDK_WATER_OCTAVES] * 0.5 + 0.5);
+             dir  = normalize(dir);
+
         float xz = dot(vec2(x, z), dir);
 
         height   += a * sin(w*xz + t);

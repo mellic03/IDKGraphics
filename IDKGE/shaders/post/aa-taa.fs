@@ -3,6 +3,8 @@
 
 #include "../include/storage.glsl"
 #include "../include/util.glsl"
+#include "../include/pbr.glsl"
+#include "../include/denoise.glsl"
 #include "../include/taa.glsl"
 
 out vec4 fsout_frag_color;
@@ -13,10 +15,13 @@ uniform float un_factor = 16.0;
 
 uniform sampler2D un_curr_color;
 uniform sampler2D un_prev_color;
-uniform sampler2D un_prev_depth;
+
 uniform sampler2D un_curr_depth;
+
+uniform sampler2D un_curr_albedo;
+uniform sampler2D un_curr_SSGI;
+
 uniform sampler2D un_velocity;
-uniform sampler2D un_prev_velocity;
 
 
 
@@ -96,22 +101,36 @@ void main()
 {
     IDK_Camera camera = IDK_UBO_cameras[0];
 
-    vec2  isize = textureSize(un_curr_color, 0);
-    vec2  tsize = 1.0 / isize;
+    vec2 isize = textureSize(un_curr_color, 0);
+    vec2 tsize = 1.0 / isize;
 
     vec2 jitter   = camera.jitter.xy;
 
     vec4 vdata    = UnpackVelocity(textureLod(un_velocity, fsin_texcoords, 0.0));
     vec2 curr_vel = vdata.xy;
     vec2 curr_uv  = fsin_texcoords;
-    vec2 prev_uv  = clamp(fsin_texcoords-curr_vel, vec2(0.0), vec2(1.0));
+    vec2 prev_uv  = clamp(curr_uv-curr_vel, vec2(0.0), vec2(1.0));
 
-    vec3 curr_color = texture(un_curr_color, curr_uv).rgb;
+    vec3 curr_color  = texture(un_curr_color, curr_uv).rgb;
+    vec3 curr_albedo = texture(un_curr_albedo, curr_uv).rgb;
 
- 
 
-    vec3  min_color  = min(vec3(+1000.0), curr_color);
-    vec3  max_color  = max(vec3(-1000.0), curr_color);
+    // if (curr_uv.x < 0.5)
+    // {
+    //     curr_color += curr_albedo * texture(un_curr_SSGI, curr_uv).rgb;
+    // }
+
+    // else
+    {
+        float d = 5.0;
+        float s = 2.5;
+        float t = 0.02;
+
+        curr_color += curr_albedo * smartDeNoise(un_curr_SSGI, curr_uv, d, s, t).rgb;
+    }
+
+    vec3 min_color  = min(vec3(+1000.0), curr_color);
+    vec3 max_color  = max(vec3(-1000.0), curr_color);
 
     for (int i=-1; i<=1; i++)
     {

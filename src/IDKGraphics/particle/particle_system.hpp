@@ -5,7 +5,6 @@
 
 namespace idk
 {
-    class RenderQueue;
     class RenderEngine;
     class ModelAllocator;
     class EngineAPI;
@@ -21,7 +20,7 @@ namespace idk::ParticleSystem
 
     void init( idk::RenderEngine& );
     void render( idk::RenderEngine&, idk::ModelAllocator& );
-    void update( idk::RenderEngine&, float dt, const glm::vec3 &view, idk::RenderQueue& );
+    void update( idk::RenderEngine&, float dt, const glm::vec3 &view );
 
     int  createEmitter( const EmitterDesc&, const ParticleDesc& );
 

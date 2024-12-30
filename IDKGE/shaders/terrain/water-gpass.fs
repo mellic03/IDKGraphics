@@ -15,6 +15,7 @@ layout (location = 2) out vec4 fsout_pbr;
 layout (location = 3) out vec4 fsout_vel;
 
 
+
 in FS_in
 {
     vec3 fragpos;
@@ -40,8 +41,8 @@ vec3 computeNormal()
     float t1 = IDK_GetTime();
     vec2  pd = WaterComputeHeight(t0, x, z).yz;
 
-    x -= pd[0];
-    z -= pd[1];
+    x -= wscale*pd[0];
+    z -= wscale*pd[1];
 
     pd = WaterComputeHeight(t1, x, z).yz;
 
@@ -68,6 +69,8 @@ vec3 computeNormal2()
 
 
 uniform sampler2D un_tmp_depth;
+uniform sampler2D un_prev_albedo;
+
 
 void main()
 {
@@ -78,7 +81,7 @@ void main()
 
     float prev_z = IDK_ViewFromDepth(un_tmp_depth, texcoord, cam.P).z;
     float curr_z = (cam.V * vec4(fsin.fragpos, 1.0)).z;
-    float wdepth = prev_z - curr_z;
+    float wdepth = abs(prev_z - curr_z);
     
     float A = IDK_SSBO_Terrain.water_color[2].r / 255.0;
     float B = IDK_SSBO_Terrain.water_color[2].g / 255.0;
@@ -89,22 +92,22 @@ void main()
     vec4 shallow_color = IDK_SSBO_Terrain.water_color[0];
     vec4 deep_color    = IDK_SSBO_Terrain.water_color[1];
 
+
     vec4 albedo = mix(shallow_color, deep_color, 1.0-alpha);
+         albedo.a = 1.0-alpha;
+
+
+    // alpha = 1.0 / (1.0 + wdepth);
+    // albedo = mix(albedo, vec4(albedo.rgb, 0.0), alpha);
+
     vec3 normal = computeNormal();
 
     IDK_Dirlight light = IDK_UBO_dirlights[0];
 
 
-    vec4 diffuse = light.diffuse;
-    vec3 V = normalize(fsin.fragpos - cam.position.xyz);
-    vec3 L = normalize(-light.direction.xyz);
-
-    float transmittance = max(dot(V, L), 0.0);
-          transmittance = pow(transmittance, 8.0);
-    // float transmittance = max(dot(normal, light.direction.xyz), 0.0);
     //       transmittance *= max(dot(normal, V), 0.0);
 
-    albedo = mix(albedo, diffuse*shallow_color, transmittance);
+    // albedo = mix(albedo, diffuse*shallow_color, transmittance);
 
     // // if (fsin.dy < -0.5)
     // {
